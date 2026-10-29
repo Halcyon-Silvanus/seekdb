@@ -412,12 +412,12 @@ int ObTriggerResolver::resolve_order_clause(const peg::Node &definition, ObCreat
         if (OB_FAIL(ret)) {
         } else if (NULL == ref_trg_info) {
           ret = OB_ERR_TRG_ORDER;
-          LOG_MYSQL_USER_ERROR(OB_ERR_TRG_ORDER, ref_trg_name.ptr());
+          LOG_MYSQL_USER_ERROR(OB_ERR_TRG_ORDER, trg_info.get_ref_trg_name().ptr());
         } else {
           if (!ObTriggerInfo::is_same_timing_event(trg_info, *ref_trg_info)
               || trg_info.get_base_object_id() != ref_trg_info->get_base_object_id()) {
             ret = OB_ERR_TRG_ORDER;
-            LOG_MYSQL_USER_ERROR(OB_ERR_TRG_ORDER, ref_trg_name.ptr());
+            LOG_MYSQL_USER_ERROR(OB_ERR_TRG_ORDER, trg_info.get_ref_trg_name().ptr());
           }
         }
       }
