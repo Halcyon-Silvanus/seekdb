@@ -230,6 +230,7 @@ pub(crate) mod ffi {
         Number,
         Double,
         String,
+        NationalString,
         StringColumnName,
         StringConcat,
         CollectionType,

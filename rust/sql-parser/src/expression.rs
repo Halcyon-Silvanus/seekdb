@@ -75,7 +75,7 @@ pub(crate) fn odbc_operand(expression: &Node) -> &Node {
 
 pub(crate) fn odbc_action(expression: &Node) -> OdbcAction {
     let operand = odbc_operand(expression);
-    if !matches!(operand.kind, Kind::String | Kind::Parameter | Kind::CharsetLiteral) {
+    if !matches!(operand.kind, Kind::String | Kind::NationalString | Kind::Parameter | Kind::CharsetLiteral) {
         return OdbcAction::Expression;
     }
     match expression.value {
@@ -97,6 +97,7 @@ pub(crate) fn is_literal(expression: &Node) -> bool {
             | Kind::Number
             | Kind::Double
             | Kind::String
+            | Kind::NationalString
             | Kind::HexString
             | Kind::BitString
             | Kind::Bool
@@ -131,6 +132,7 @@ pub(crate) fn expression_literal(expression: &Node) -> ExpressionLiteral<'_> {
         Kind::Number | Kind::SampleDecimal => LiteralKind::Decimal,
         Kind::Double | Kind::HiddenDouble => LiteralKind::Float,
         Kind::String | Kind::HiddenString | Kind::CharsetName => LiteralKind::String,
+        Kind::NationalString => LiteralKind::NationalString,
         Kind::HexString | Kind::BitString => LiteralKind::Binary,
         Kind::Bool => LiteralKind::Boolean,
         Kind::Null | Kind::DefaultNull | Kind::HiddenNull => LiteralKind::Null,

@@ -245,7 +245,11 @@ peg::parser! {
                 Node::new(Kind::String,children).text(text).expression(start,end)
             }
         rule string() -> Node = string_token(<"'">) / enabled(!mode.ansi_quotes) value:string_token(<"\"">) { value }
-        rule string_expression() -> Node = first:string() rest:string()* {?
+        rule string_expression() -> Node
+            = start:position!() ['n'|'N'] value:string_token(<"'">) {
+                Node { kind:Kind::NationalString,start,..value }
+            }
+            / first:string() rest:string()* {?
             if rest.is_empty() { Ok(first) }
             else {
                 let (start,end)=(first.start,rest.last().unwrap().end);
