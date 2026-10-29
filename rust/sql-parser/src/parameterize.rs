@@ -493,7 +493,12 @@ impl<'a> Collector<'a> {
             | Kind::Delete => self.query(node, scope)?,
             Kind::PlCall => self.list(routine_call_arguments(node), scope)?,
             Kind::PlNamedArgument => self.collect(named_argument_value(node), scope)?,
-            Kind::Explain => self.collect(explain_statement(node), scope)?,
+            Kind::Explain => {
+                if explain_has_statement_id(node) {
+                    self.exclude(explain_statement_id(node));
+                }
+                self.collect(explain_statement(node), scope)?;
+            }
             Kind::CreateOutline | Kind::AlterOutline => {
                 let outline = outline_definition(node);
                 if outline.source == OutlineSource::Statement {

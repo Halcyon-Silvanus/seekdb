@@ -2351,7 +2351,12 @@ peg::parser! {
                 / kw("format") "=" _ kind:(kw("traditional") { Kind::ExplainTraditional } / kw("json") { Kind::ExplainJson }) { kind })?
             display:(kw("pretty") { Kind::ExplainPretty } / kw("pretty_color") { Kind::ExplainPrettyColor })?
             into:(enabled(format.is_none() && display.is_none()) kw("into") name:ident() { Node::name(name) })?
-            statement_id:(enabled(format.is_none() && display.is_none()) kw("set") kw("statement_id") "=" _ value:(string_expression() / number() / bool_null() / binary_literal() / temporal_literal()) { value })?
+            statement_id:(enabled(format.is_none() && display.is_none()) kw("set") kw("statement_id") "=" _ value:(charset_literal() / string_expression() / number() / bool_null() / binary_literal() / temporal_literal()) {
+                if value.kind==Kind::StringConcat {
+                    let text=crate::expression::call_arguments(&value).iter().map(|part| part.text.as_str()).collect();
+                    Node::new(Kind::String,vec![]).text(text).at(value.start,value.end)
+                } else { value }
+            })?
             value:(select(0) / insert() / update() / delete()) {
                 let mut children=vec![];
                 children.extend(format.map(|kind| Node::new(kind,vec![])));

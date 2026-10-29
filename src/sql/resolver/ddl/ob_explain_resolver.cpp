@@ -70,8 +70,14 @@ int ObExplainResolver::resolve(const peg::Node &query)
       if (peg::explain_has_statement_id(query)) {
         const auto &node = peg::explain_statement_id(query);
         ObString name;
-        const auto node_text = node.text();
-        OZ(ob_write_string(*allocator_, ObString(node_text.size(), node_text.data()), name));
+        const auto literal = peg::expression_literal(node);
+        if (literal.binary_notation != peg::BinaryNotation::None) {
+          const auto bytes = peg::decode_binary_literal(literal.text, literal.binary_notation);
+          OZ(ob_write_string(*allocator_,
+              ObString(bytes.size(), reinterpret_cast<const char *>(bytes.data())), name));
+        } else {
+          OZ(ob_write_string(*allocator_, ObString(literal.text.size(), literal.text.data()), name));
+        }
         OX(statement->set_statement_id(name));
       }
     }
