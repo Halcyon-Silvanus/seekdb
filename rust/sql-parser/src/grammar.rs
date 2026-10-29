@@ -1377,10 +1377,20 @@ peg::parser! {
             / kw("time") { "time" } / kw("date") { "date" } / kw("year") { "year" } / kw("json") { "json" }
             / kw("bit") { "bit" }
         rule type_size() -> Node = start:position!() text:$(['0'..='9']+) !cont() end:position!() _ {? Node::number(text, start, end) }
+        rule fractional_type_size() -> Node
+            = start:position!() text:$(['0'..='9']+ "." ['0'..='9']* / "." ['0'..='9']+) !cont() end:position!() _ {?
+                let whole=text.split('.').next().unwrap();
+                let value=if whole.is_empty() { 0 } else { whole.parse::<u64>().unwrap_or(u64::MAX) };
+                let kind=if value<=i64::MAX as u64 { Kind::Int } else { Kind::Uint };
+                Node::new(kind,vec![]).text(text.into()).value(value).expression(start,end)
+            }
+        rule string_length() -> Node = fractional_type_size() / value:type_size() {
+            if value.kind==Kind::Number { Node { kind:Kind::Uint,value:u64::MAX,..value } } else { value }
+        }
         rule charset_keyword() = kw("charset") / (kw("character") / kw("char")) kw("set")
         rule cast_type() -> Node
             = start:position!() (kw("nchar") / kw("national") (kw("char") / kw("character")))
-                parameters:("(" _ value:type_size() ")" _ { vec![value] })? end:position!() {?
+                parameters:("(" _ value:string_length() ")" _ { vec![value] })? end:position!() {?
                 let mut value=Node::data_type("char",parameters.unwrap_or_default(),None,false,start,end)?;
                 value.kind=Kind::CastType;
                 value.children.push(Node::new(Kind::Charset,vec![]).text("utf8mb4".into()));
@@ -1392,7 +1402,8 @@ peg::parser! {
                 / (kw("decimal") / kw("dec") / kw("numeric") / kw("number") / kw("fixed")) { "decimal" }
                 / kw("double") { "double" } / kw("float") { "float" } / kw("json") { "json" }
                 / kw("datetime") { "datetime" } / kw("date") { "date" } / kw("time") { "time" } / kw("year") { "year" })
-            parameters:("(" _ values:(type_size() ++ ("," _)) ")" _ { values })?
+            parameters:("(" _ values:(enabled(matches!(name,"char"|"binary")) value:string_length() { vec![value] }
+                / values:(type_size() ++ ("," _)) { values }) ")" _ { values })?
             charset:(enabled(name=="char") charset_keyword() !kw("default") value:charset_name() {
                 let literal=value.kind==Kind::String;Node { kind:Kind::Charset,..value }.value(u64::from(literal))
             })? end:position!() {?
@@ -1409,7 +1420,7 @@ peg::parser! {
                 (kw("nvarchar") / kw("nchar") (kw("varchar") / kw("varcharacter"))
                     / kw("national") ((kw("char") / kw("character")) kw("varying") / kw("varchar") / kw("varcharacter"))) { "varchar" }
                 / (kw("nchar") / kw("national") (kw("char") / kw("character"))) { "char" })
-            parameters:("(" _ value:type_size() ")" _ { vec![value] })?
+            parameters:("(" _ value:string_length() ")" _ { vec![value] })?
             binary:kw("binary")? collation:(enabled(routine) kw("collate") value:collation_name() { Node { kind:Kind::Collation,..value } })? end:position!() {?
                 let parameters=parameters.unwrap_or_else(|| if routine { vec![Node::new(Kind::Int,vec![]).value(1)] } else { vec![] });
                 let mut value=Node::data_type(name,parameters,None,false,start,end)?;
@@ -1444,7 +1455,9 @@ peg::parser! {
             / geometry_type()
             / national_type(false)
             / start:position!() name:type_name()
-            parameters:("(" _ values:(type_size() ++ ("," _)) ")" _ { values })?
+            parameters:("(" _ values:(enabled(matches!(name,"char"|"varchar"|"binary"|"varbinary"|"text"|"blob"))
+                value:string_length() { vec![value] } / enabled(name=="float") value:fractional_type_size() { vec![value] }
+                / values:(type_size() ++ ("," _)) { values }) ")" _ { values })?
             unsigned:(kw("unsigned") { true } / kw("signed") { false })? zerofill:kw("zerofill")? binary:kw("binary")?
             charset:(charset_keyword() !kw("default") value:charset_name() { Node { kind:Kind::Charset,..value } })? end:position!() {?
                 let mut value=Node::data_type(name, parameters.unwrap_or_default(), unsigned, zerofill.is_some(), start, end)?;

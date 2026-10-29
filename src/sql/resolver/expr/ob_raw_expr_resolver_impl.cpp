@@ -2704,7 +2704,6 @@ int ObRawExprResolverImpl::process_json_query_node(const peg::Node &node, ObRawE
   const auto &target_node = peg::json_returning(node);
   ObRawExprResType target;
   OZ(ObResolverUtils::resolve_cast_type(target_node, target));
-  OZ(cast_accuracy_check(target, source_text(peg::json_document(node))));
   ObString path;
   if (peg::is_literal(peg::json_path(node))) {
     const auto literal = peg::expression_literal(peg::json_path(node));
@@ -2715,6 +2714,7 @@ int ObRawExprResolverImpl::process_json_query_node(const peg::Node &node, ObRawE
     ret = OB_ERR_JSON_PATH_EXPRESSION_SYNTAX_ERROR;
     LOG_USER_ERROR(OB_ERR_JSON_PATH_EXPRESSION_SYNTAX_ERROR, path.length(), path.ptr());
   }
+  OZ(cast_accuracy_check(target, source_text(peg::json_document(node))));
   if (OB_SUCC(ret) && target.get_type() == ObJsonType) {
     bool inferred = false;
     ObRawExprResType inferred_type;
@@ -2880,6 +2880,10 @@ int ObRawExprResolverImpl::build_cast_type(const peg::Node &node,
 {
   int ret = OB_SUCCESS;
   const auto syntax = peg::type_syntax(node);
+  if (ob_is_string_tc(target.get_type()) && syntax.has_length && syntax.length > UINT32_MAX) {
+    ret = OB_ERR_TOO_BIG_DISPLAYWIDTH;
+    LOG_USER_ERROR(OB_ERR_TOO_BIG_DISPLAYWIDTH, "cast of char", static_cast<int64_t>(UINT32_MAX));
+  }
   OZ(build_cast_argument(target, ObString(syntax.charset.size(), syntax.charset.data()), expr));
   if (OB_SUCC(ret) && target.get_type() == ObGeometryType) {
     auto *constant = static_cast<ObConstRawExpr *>(expr);

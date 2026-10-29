@@ -391,7 +391,8 @@ int ObResolverUtils::resolve_cast_type(const peg::Node &node, ObRawExprResType &
   target.set_precision(0);
   target.set_scale(0);
   if (ob_is_string_tc(target.get_type())) {
-    target.set_length(syntax.has_length ? std::min<uint64_t>(syntax.length, INT32_MAX) : -1);
+    target.set_length(!syntax.has_length || syntax.length > INT32_MAX
+        ? -1 : static_cast<int32_t>(syntax.length));
   } else if (ob_is_numeric_type(target.get_type())) {
     if (syntax.name == peg::TypeName::Float || syntax.name == peg::TypeName::Double || syntax.name == peg::TypeName::Decimal) {
       target.set_precision(syntax.has_precision ? std::min<uint64_t>(syntax.precision, INT16_MAX)
