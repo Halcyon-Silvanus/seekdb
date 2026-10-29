@@ -716,6 +716,8 @@ pub(crate) mod ffi {
         CreateUser,
         DropUser,
         LockUser,
+        MaxConnectionsPerHour,
+        MaxUserConnections,
         CreateRole,
         DropRole,
         GrantRole,
@@ -1034,6 +1036,14 @@ pub(crate) mod ffi {
         admin_option: bool,
         ignore_unknown_user: bool,
         locked: bool,
+    }
+
+    #[derive(Default)]
+    struct AccountLimits {
+        has_connections_per_hour: bool,
+        connections_per_hour: u64,
+        has_user_connections: bool,
+        user_connections: u64,
     }
 
     struct PrivilegeTarget {
@@ -2245,6 +2255,7 @@ pub(crate) mod ffi {
         fn prepared_source(node: &Node) -> &Node;
         fn execution_arguments(node: &Node) -> &[Node];
         fn access_options(statement: &Node) -> AccessOptions;
+        fn account_limits(statement: &Node) -> AccountLimits;
         fn access_accounts(statement: &Node) -> &[Node];
         fn access_roles(statement: &Node) -> &[Node];
         fn access_privileges(statement: &Node) -> &[Node];
@@ -2515,7 +2526,7 @@ pub(crate) mod ffi {
 use crate::access::{
     access_accounts, access_options, access_privileges, access_role_selection, access_roles,
     access_target, access_target_database, access_target_object, account_authentication,
-    account_has_host, account_has_plugin, account_host, account_identity, account_kind,
+    account_has_host, account_has_plugin, account_host, account_identity, account_kind, account_limits,
     account_name, account_name_form, account_password, account_plugin, privilege_columns,
     privilege_name,
 };

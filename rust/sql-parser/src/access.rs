@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::bridge::ffi::{
-    AccessOptions, AccountIdentity, AccountKind, AccountNameForm, AuthenticationKind,
+    AccessOptions, AccountIdentity, AccountKind, AccountLimits, AccountNameForm, AuthenticationKind,
     PrivilegeObject, PrivilegeScope, PrivilegeTarget, RoleSelection,
 };
 use crate::node::{Kind, Node};
@@ -48,6 +48,24 @@ pub(crate) fn access_options(statement: &Node) -> AccessOptions {
         ignore_unknown_user: child(statement, Kind::IgnoreUnknownUser).is_some(),
         locked: statement.kind == Kind::LockUser && statement.value != 0,
     }
+}
+
+pub(crate) fn account_limits(statement: &Node) -> AccountLimits {
+    let mut limits = AccountLimits::default();
+    for option in &statement.children {
+        match option.kind {
+            Kind::MaxConnectionsPerHour => {
+                limits.has_connections_per_hour = true;
+                limits.connections_per_hour = option.value;
+            }
+            Kind::MaxUserConnections => {
+                limits.has_user_connections = true;
+                limits.user_connections = option.value;
+            }
+            _ => {}
+        }
+    }
+    limits
 }
 
 pub(crate) fn access_accounts(statement: &Node) -> &[Node] {

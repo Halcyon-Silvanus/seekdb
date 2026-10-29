@@ -16,6 +16,7 @@
 
 #define USING_LOG_PREFIX SQL_RESV
 
+#include <algorithm>
 #include <cctype>
 
 #include "sql/resolver/dcl/access_control_resolver.h"
@@ -199,6 +200,9 @@ int resolve_create_user(const peg::Node &node, ObResolverParams &params, ObStmt 
   OZ (create_resolved_statement(params, created));
   if (OB_SUCC(ret)) {
     created->set_if_not_exists(peg::access_options(node).if_not_exists);
+    const auto limits = peg::account_limits(node);
+    created->set_max_connections_per_hour(std::min<uint64_t>(limits.connections_per_hour, UINT32_MAX));
+    created->set_max_user_connections(std::min<uint64_t>(limits.user_connections, UINT32_MAX));
     for (const auto &account : peg::access_accounts(node)) {
       if (OB_FAIL(ret)) { break; }
       ObString name;
@@ -286,6 +290,8 @@ int resolve_password(const peg::Node &node, ObResolverParams &params, ObStmt *&s
   OZ (create_resolved_statement(params, changed));
   if (OB_SUCC(ret)) {
     const auto &account = peg::access_accounts(node)[0];
+    const auto limits = peg::account_limits(node);
+    const bool modifying_limits = limits.has_connections_per_hour || limits.has_user_connections;
     ObString name;
     ObString host;
     ObString password;
@@ -296,12 +302,22 @@ int resolve_password(const peg::Node &node, ObResolverParams &params, ObStmt *&s
       LOG_WARN("empty user cannot be used by SET PASSWORD", K(ret));
     }
     if (OB_SUCC(ret)) {
-      changed->set_for_current_user(name == params.session_info_->get_user_name()
+      changed->set_for_current_user(!modifying_limits && name == params.session_info_->get_user_name()
                                     && host == params.session_info_->get_host_name());
     }
     OZ (check_reserved_account(params, name, host));
-    OZ (copy_text(peg::account_password(account), params, password));
-    OZ (check_password_strength(password, params));
+    if (modifying_limits) {
+      changed->set_modify_max_connections(true);
+      if (limits.has_connections_per_hour) {
+        changed->set_max_connections_per_hour(std::min<uint64_t>(limits.connections_per_hour, UINT32_MAX));
+      }
+      if (limits.has_user_connections) {
+        changed->set_max_user_connections(std::min<uint64_t>(limits.user_connections, UINT32_MAX));
+      }
+    } else {
+      OZ (copy_text(peg::account_password(account), params, password));
+      OZ (check_password_strength(password, params));
+    }
     if (OB_SUCC(ret)) {
       changed->set_need_enc(!password.empty());
       OZ (changed->set_user_password(name, host, password));

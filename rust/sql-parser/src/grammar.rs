@@ -2179,10 +2179,17 @@ peg::parser! {
         rule purge() -> Node = kw("purge") value:(kw("recyclebin") { Node::new(Kind::PurgeRecyclebin,vec![]) }
             / kind:(kw("table") { Kind::PurgeTable } / kw("index") { Kind::PurgeIndex }) name:name() {? Ok(Node::new(kind,vec![Node::relation(name)?])) }
             / (kw("database") / kw("schema")) name:ident() { Node::new(Kind::PurgeDatabase,vec![Node::name(name)]) }) { value }
+        rule account_resource_limits() -> Vec<Node> = kw("with") limits:(
+            kind:(kw("max_connections_per_hour") { Kind::MaxConnectionsPerHour }
+                / kw("max_user_connections") { Kind::MaxUserConnections }) value:number() {?
+                if !matches!(value.kind,Kind::Int | Kind::Uint) { return Err("integer account resource limit"); }
+                Ok(Node::new(kind,vec![]).value(value.value))
+            })+ { limits }
         rule account_statement() -> Node
-            = kw("create") kw("user") absent:if_not_exists()? users:(user_spec(true) ++ ("," _)) {
+            = kw("create") kw("user") absent:if_not_exists()? users:(user_spec(true) ++ ("," _)) limits:account_resource_limits()? {
                 let mut children=vec![Node::new(Kind::Users,users)];
                 children.extend(absent);
+                children.extend(limits.into_iter().flatten());
                 Node::new(Kind::CreateUser,children)
             }
             / kw("drop") kw("user") exists:if_exists()? users:accounts() {
@@ -2194,6 +2201,11 @@ peg::parser! {
                 Node::new(Kind::UserSpec,vec![Node::new(Kind::CurrentUser,vec![])])
             } / user_spec(false)) ++ ("," _)) kw("account") locked:(kw("lock") { true } / kw("unlock") { false }) {
                 Node::new(Kind::LockUser,vec![Node::new(Kind::Users,users)]).value(u64::from(locked))
+            }
+            / kw("alter") kw("user") user:user_spec(false) limits:account_resource_limits() {
+                let mut children=vec![Node::new(Kind::Users,vec![user])];
+                children.extend(limits);
+                Node::new(Kind::SetPassword,children)
             }
             / kw("alter") kw("user") user:account() auth:authentication() {
                 Node::new(Kind::SetPassword,vec![Node::new(Kind::Users,vec![Node::new(Kind::UserSpec,vec![user,auth])])])
