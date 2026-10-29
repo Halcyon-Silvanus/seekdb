@@ -576,6 +576,7 @@ fn query_block(hint: &Node) -> Option<&Node> {
             | Kind::NoPartJoinFilter
             | Kind::PqMap
             | Kind::PqSet
+            | Kind::PqSubquery
             | Kind::PqGroupBy
             | Kind::PqDistinct
             | Kind::TableParallel
@@ -681,7 +682,7 @@ pub(crate) fn hint_subquery_names(hint: &Node) -> &[Node] {
 }
 pub(crate) fn hint_distribution_methods(hint: &Node) -> &[Node] {
     match hint.kind {
-        Kind::PqSet => list(hint, Kind::DistributeMethods),
+        Kind::PqSet | Kind::PqSubquery => list(hint, Kind::DistributeMethods),
         Kind::PqDistribute if hint.children[2].kind != Kind::Missing => &hint.children[2..4],
         Kind::PqGroupBy | Kind::PqDistinct => &hint.children[1..2],
         _ => &[],

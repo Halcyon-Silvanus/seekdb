@@ -6859,6 +6859,7 @@ ObItemType semantic_hint_type(peg::NodeKind kind)
     case peg::NodeKind::NoPartJoinFilter: return T_NO_PX_PART_JOIN_FILTER;
     case peg::NodeKind::PqMap: return T_PQ_MAP;
     case peg::NodeKind::PqSet: return T_PQ_SET;
+    case peg::NodeKind::PqSubquery: return T_PQ_SUBQUERY;
     case peg::NodeKind::PredicateDeduce: return T_PRED_DEDUCE;
     case peg::NodeKind::ProjectPrune: return T_PROJECT_PRUNE;
     case peg::NodeKind::PullupExpr: return T_PULLUP_EXPR;
@@ -7352,6 +7353,9 @@ int ObDMLResolver::resolve_optimize_hint(const peg::Node &hint_node,
     case peg::NodeKind::PqSet:
       OZ(resolve_pq_set_hint(hint_node, opt_hint));
       break;
+    case peg::NodeKind::PqSubquery:
+      OZ(resolve_pq_subquery_hint(hint_node, opt_hint));
+      break;
     case peg::NodeKind::PqGroupBy:
     case peg::NodeKind::PqDistinct:
       OZ(resolve_normal_pq_hint(hint_node, opt_hint));
@@ -7671,6 +7675,46 @@ int ObDMLResolver::resolve_pq_distribute_hint(const peg::Node &hint_node, ObOptH
     OZ(ObQueryHint::create_hint(allocator_, T_PQ_DISTRIBUTE, hint));
     OZ(resolve_qb_name_node(query_block_in_hint(hint_node), qb_name));
     OZ(resolve_simple_table_list_in_hint(peg::hint_tables(hint_node)[0], hint->get_tables()));
+    if (OB_SUCC(ret)) {
+      hint->set_qb_name(qb_name);
+      hint->set_dist_algo(dist_algo);
+      opt_hint = hint;
+    }
+  }
+  return ret;
+}
+
+int ObDMLResolver::resolve_pq_subquery_hint(const peg::Node &hint_node, ObOptHint *&opt_hint)
+{
+  int ret = OB_SUCCESS;
+  opt_hint = nullptr;
+  const auto methods = peg::hint_distribution_methods(hint_node);
+  DistAlgo dist_algo = DistAlgo::DIST_INVALID_METHOD;
+  if (methods.empty() || (methods.size() == 1 && methods[0].kind() == peg::NodeKind::DistributeBasic)) {
+    dist_algo = DistAlgo::DIST_BASIC_METHOD;
+  } else if (methods.size() == 2) {
+    const ObItemType outer = distribution_method(methods[0].kind());
+    const ObItemType inner = distribution_method(methods[1].kind());
+    if (T_DISTRIBUTE_LOCAL == outer && T_DISTRIBUTE_LOCAL == inner) {
+      dist_algo = DistAlgo::DIST_PULL_TO_LOCAL;
+    } else if (T_DISTRIBUTE_NONE == outer && T_DISTRIBUTE_NONE == inner) {
+      dist_algo = DistAlgo::DIST_PARTITION_WISE;
+    } else if (T_DISTRIBUTE_PARTITION == outer && T_DISTRIBUTE_NONE == inner) {
+      dist_algo = DistAlgo::DIST_PARTITION_NONE;
+    } else if (T_DISTRIBUTE_NONE == outer && T_DISTRIBUTE_ALL == inner) {
+      dist_algo = DistAlgo::DIST_NONE_ALL;
+    } else if (T_DISTRIBUTE_RANDOM == outer && T_DISTRIBUTE_ALL == inner) {
+      dist_algo = DistAlgo::DIST_RANDOM_ALL;
+    } else if (T_DISTRIBUTE_HASH == outer && T_DISTRIBUTE_ALL == inner) {
+      dist_algo = DistAlgo::DIST_HASH_ALL;
+    }
+  }
+  if (dist_algo != DistAlgo::DIST_INVALID_METHOD) {
+    ObPQSubqueryHint *hint = nullptr;
+    ObString qb_name;
+    OZ(ObQueryHint::create_hint(allocator_, T_PQ_SUBQUERY, hint));
+    OZ(resolve_qb_name_node(query_block_in_hint(hint_node), qb_name));
+    OZ(resolve_qb_name_list(peg::hint_subquery_names(hint_node), hint->get_sub_qb_names()));
     if (OB_SUCC(ret)) {
       hint->set_qb_name(qb_name);
       hint->set_dist_algo(dist_algo);

@@ -985,6 +985,11 @@ peg::parser! {
             / kw("pq_map") "(" _ qb:hint_qb()? tables:hint_join_item() ")" _ { Node::new(Kind::PqMap,vec![Node::optional(qb),tables]) }
             / kw("pq_set") "(" _ qb:hint_qb() target:(!distribute_method() value:hint_qb_name() { value })?
                 methods:(distribute_method() ** (("," _)?)) ")" _ { Node::new(Kind::PqSet,vec![qb,Node::optional(target),Node::list(Kind::DistributeMethods,methods)]) }
+            / kw("pq_subquery") "(" _ qb:hint_qb()? ("," _)? names:hint_qb_names()?
+                methods:(distribute_method() ** (("," _)?)) ")" _ {
+                    Node::new(Kind::PqSubquery,vec![Node::optional(qb),Node::optional(names),
+                        Node::list(Kind::DistributeMethods,methods)])
+                }
             / kind:(kw("pq_gby") { Kind::PqGroupBy } / kw("pq_distinct") { Kind::PqDistinct }) "(" _ qb:hint_qb()?
                 method:distribute_method() sort:(enabled(kind==Kind::PqGroupBy) ("," _)? value:type_size() { value })? ")" _ {
                     Node::new(kind,vec![Node::optional(qb),method,Node::optional(sort)])

@@ -573,6 +573,7 @@ pub(crate) mod ffi {
         NoPartJoinFilter,
         PqMap,
         PqSet,
+        PqSubquery,
         DistributeMethods,
         UseConcat,
         NoExpand,

@@ -675,6 +675,7 @@ private:
   int resolve_pq_map_hint(const peg::Node &hint_node, ObOptHint *&opt_hint);
   int resolve_pq_distribute_hint(const peg::Node &hint_node, ObOptHint *&opt_hint);
   int resolve_pq_set_hint(const peg::Node &hint_node, ObOptHint *&opt_hint);
+  int resolve_pq_subquery_hint(const peg::Node &hint_node, ObOptHint *&opt_hint);
   int resolve_normal_pq_hint(const peg::Node &hint_node, ObOptHint *&opt_hint);
   int resolve_view_merge_hint(const peg::Node &hint_node, ObTransHint *&result);
   int resolve_or_expand_hint(const peg::Node &hint_node, ObTransHint *&result);
