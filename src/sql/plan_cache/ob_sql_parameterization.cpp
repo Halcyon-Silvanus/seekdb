@@ -77,15 +77,6 @@ ParamProperty parameter_property(peg::ParameterAction action)
   }
 }
 
-ParameterOrigin parameter_origin(peg::ParameterOrigin origin)
-{
-  switch (origin) {
-    case peg::ParameterOrigin::UnaryNegation: return ParameterOrigin::UnaryNegation;
-    case peg::ParameterOrigin::Subtraction: return ParameterOrigin::Subtraction;
-    default: return ParameterOrigin::Literal;
-  }
-}
-
 int parameter_tokens(const ObIArray<ObPCParam *> &raw, std::vector<peg::ParameterToken> &tokens,
                      const SqlInfo *info = nullptr)
 {
@@ -134,37 +125,6 @@ int materialize_value(const peg::ParameterValue &descriptor, const LiteralDecode
   if (OB_SUCC(ret)) {
     value = decoded;
     OZ (ob_write_obj(allocator, decoded, value));
-  }
-  return ret;
-}
-
-int materialize_lowering(const peg::ParameterLowering &record, ObIAllocator &allocator,
-                         ParameterizationResult &bindings)
-{
-  int ret = OB_SUCCESS;
-  if (record.operation == peg::ParameterLoweringKind::AddNegatedOperand) {
-    ret = bindings.add_negated_operand(&record.node);
-  } else {
-    NumericKind kind;
-    switch (record.value.kind) {
-      case peg::LiteralKind::Integer: kind = NumericKind::Integer; break;
-      case peg::LiteralKind::Unsigned: kind = NumericKind::Unsigned; break;
-      case peg::LiteralKind::Decimal: kind = NumericKind::Decimal; break;
-      case peg::LiteralKind::Float: kind = NumericKind::Double; break;
-      default: return OB_ERR_UNEXPECTED;
-    }
-    ObString spelling;
-    OZ (ob_write_string(allocator, text(record.value.text), spelling));
-    void *storage = OB_SUCC(ret) ? allocator.alloc(sizeof(NumericLiteral)) : nullptr;
-    if (OB_SUCC(ret) && storage == nullptr) ret = OB_ALLOCATE_MEMORY_FAILED;
-    if (OB_SUCC(ret)) {
-      const auto *literal = new (storage) NumericLiteral{kind, record.value.integer, spelling};
-      if (record.operation == peg::ParameterLoweringKind::FoldUnaryExpression) {
-        ret = bindings.fold_negation(&record.node, literal);
-      } else {
-        ret = bindings.negate_literal(&record.node, literal);
-      }
-    }
   }
   return ret;
 }
@@ -225,7 +185,7 @@ int ObSqlParameterization::transform_syntax_tree(ObIAllocator &allocator,
       outline, from_pl, is_no_unsigned_subtraction(session.get_sql_mode()), projection_names != nullptr,
       SelectItemParamInfo::PARAMED_FIELD_BUF_LEN, static_cast<size_t>(parameter_base)};
   if (OB_SUCC(ret)) {
-    const auto result = peg::parameterize(*parsed.statement(), bytes(parsed.source()), bytes(parsed.original_source()),
+    auto result = peg::parameterize(*parsed.statement(), bytes(parsed.source()), bytes(parsed.original_source()),
         {tokens.data(), tokens.size()}, options);
     OZ (parameter_error(result.error));
     for (size_t i = 0; OB_SUCC(ret) && i < result.tokens.size(); ++i) {
@@ -252,10 +212,6 @@ int ObSqlParameterization::transform_syntax_tree(ObIAllocator &allocator,
       if (policy.excluded_placeholder) OZ (sql_info.ps_not_param_offsets_.push_back(policy.placeholder));
     }
     for (auto offset : result.unchecked_placeholders) OZ (sql_info.no_check_type_offsets_.push_back(offset));
-    for (const auto &record : result.lowerings) {
-      if (OB_FAIL(ret)) break;
-      OZ (materialize_lowering(record, allocator, bindings));
-    }
     for (const auto &record : result.bindings) {
       if (OB_FAIL(ret)) break;
       const auto &token = *raw_params->at(record.raw_index);
@@ -275,7 +231,6 @@ int ObSqlParameterization::transform_syntax_tree(ObIAllocator &allocator,
       value.set_is_boolean(value.is_boolean() || record.boolean);
       value.set_raw_text_info(token.source_offset_, token.literal_->source.length());
       if (record.append) {
-        OZ (bindings.bind(&record.node, record.parameter_index, record.raw_index, parameter_origin(record.origin)));
         OZ (params.push_back(value));
       }
     }
@@ -291,6 +246,7 @@ int ObSqlParameterization::transform_syntax_tree(ObIAllocator &allocator,
       }
     }
     if (OB_SUCC(ret)) {
+      bindings.install(std::move(result.effects));
       sql_info.total_ = result.tokens.size();
       sql_info.ps_need_parameterized_ = result.ps_eligible;
     }

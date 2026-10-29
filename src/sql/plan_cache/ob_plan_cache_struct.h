@@ -17,6 +17,7 @@
 #ifndef OCEANBASE_SQL_PLAN_CACHE_OB_PLAN_CACHE_STRUCT_
 #define OCEANBASE_SQL_PLAN_CACHE_OB_PLAN_CACHE_STRUCT_
 
+#include <functional>
 #include "lib/container/ob_iarray.h"
 #include "lib/container/ob_se_array.h"
 #include "lib/hash/ob_hashmap.h"
@@ -318,6 +319,15 @@ struct SelectItemParamInfo
                K_(name_len),
                K_(esc_str_flag),
                K(common::ObString(name_len_, paramed_field_name_)));
+};
+
+struct SyntaxIdentityHash
+{
+  int operator()(const peg::Node *node, uint64_t &hash) const
+  {
+    hash = reinterpret_cast<uintptr_t>(node);
+    return common::OB_SUCCESS;
+  }
 };
 
 // Projection identities are borrowed only during this compilation, never stored in the plan cache.

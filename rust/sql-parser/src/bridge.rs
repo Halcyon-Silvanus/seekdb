@@ -1388,10 +1388,33 @@ pub(crate) mod ffi {
         fixed: bool,
         append: bool,
     }
-    struct ParameterLowering<'a> {
-        node: &'a Node,
+    struct ParameterBinding {
+        parameter_index: usize,
+        raw_index: usize,
+        origin: ParameterOrigin,
+    }
+    struct NumericValue {
+        kind: LiteralKind,
+        integer: u64,
+        text: Vec<u8>,
+    }
+    struct ParameterLowering {
         operation: ParameterLoweringKind,
-        value: ParameterValue,
+        value: NumericValue,
+    }
+    struct UnaryResolution<'a> {
+        operand: &'a Node,
+        literal: bool,
+        kind: LiteralKind,
+        integer: u64,
+        text: &'a [u8],
+        negations: usize,
+    }
+    struct ProjectionNames<'a> {
+        expression: &'a [u8],
+        alias: &'a [u8],
+        explicit_alias: &'a [u8],
+        has_alias: bool,
     }
     struct ParameterProjection<'a> {
         node: &'a Node,
@@ -1405,7 +1428,7 @@ pub(crate) mod ffi {
     struct Parameterization<'a> {
         tokens: Vec<ParameterTokenPolicy>,
         bindings: Vec<ParameterBindingRecord<'a>>,
-        lowerings: Vec<ParameterLowering<'a>>,
+        effects: Box<ParameterEffects>,
         projections: Vec<ParameterProjection<'a>>,
         user_variables: Vec<String>,
         unchecked_placeholders: Vec<usize>,
@@ -1636,6 +1659,15 @@ pub(crate) mod ffi {
         fn compress_insert(sql: &[u8], values_offset: usize) -> BatchCompression;
         fn compress_values(sql: &[u8], values_offset: usize) -> BatchCompression;
         fn fast_parameterization_allowed(sql: &[u8], mode: SqlMode) -> bool;
+
+        type ParameterEffects;
+        unsafe fn parameter_binding<'a>(self: &'a ParameterEffects, node: &Node) -> &'a [ParameterBinding];
+        unsafe fn numeric_lowering<'a>(self: &'a ParameterEffects, node: &Node) -> &'a [ParameterLowering];
+        unsafe fn resolve_plain_unary<'a>(node: &'a Node, syntax_sql: &'a [u8]) -> UnaryResolution<'a>;
+        unsafe fn resolve_parameterized_unary<'a>(node: &'a Node, syntax_sql: &'a [u8], effects: &ParameterEffects) -> UnaryResolution<'a>;
+
+        unsafe fn projection_names<'a>(projection: &'a Node, expression_source: &'a [u8], null_template: bool) -> ProjectionNames<'a>;
+        unsafe fn parameterized_projection_names<'a>(projection: &'a Node, expression_source: &'a [u8], effects: &ParameterEffects, null_template: bool) -> ProjectionNames<'a>;
 
         unsafe fn parameterize<'a>(tree: &'a Node, syntax_sql: &[u8], original_sql: &[u8], tokens: &[ParameterToken], options: ParameterOptions) -> Parameterization<'a>;
         fn classify_parameter_tokens(tokens: &[ParameterToken], expected: usize, check_order: bool) -> ParameterClassification;
@@ -2358,3 +2390,30 @@ use crate::prefix::{classify_statement, explain_body_offset, normalized_sql_leng
 use crate::batch::{compress_insert, compress_values, restore_parameter_sql};
 
 use crate::lex::{normalize_numeric_sign, integer_literal_is_nonnegative};
+
+use crate::parameterize::ParameterEffects;
+
+fn unary_resolution<'a>(node: &'a Node, result: crate::numeric::UnaryResolution<'a>) -> ffi::UnaryResolution<'a> {
+    use crate::numeric::UnaryOperand;
+    let (operand, literal, kind, integer, text) = match result.operand {
+        UnaryOperand::Resolve(operand) => (operand, false, ffi::LiteralKind::Null, 0, &[][..]),
+        UnaryOperand::Literal { kind, integer, text } => (node, true, kind, integer, text),
+    };
+    ffi::UnaryResolution { operand, literal, kind, integer, text, negations: result.negations }
+}
+
+fn resolve_plain_unary<'a>(node: &'a Node, syntax_sql: &'a [u8]) -> ffi::UnaryResolution<'a> {
+    unary_resolution(node, crate::numeric::resolve_unary(node, syntax_sql, None))
+}
+
+fn resolve_parameterized_unary<'a>(node: &'a Node, syntax_sql: &'a [u8], effects: &ParameterEffects) -> ffi::UnaryResolution<'a> {
+    unary_resolution(node, crate::numeric::resolve_unary(node, syntax_sql, Some(effects)))
+}
+
+fn projection_names<'a>(projection: &'a Node, expression_source: &'a [u8], null_template: bool) -> ffi::ProjectionNames<'a> {
+    crate::query::Projection::new(projection).names(expression_source, None, null_template)
+}
+
+fn parameterized_projection_names<'a>(projection: &'a Node, expression_source: &'a [u8], effects: &ParameterEffects, null_template: bool) -> ffi::ProjectionNames<'a> {
+    crate::query::Projection::new(projection).names(expression_source, Some(effects), null_template)
+}

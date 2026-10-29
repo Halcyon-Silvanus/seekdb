@@ -3163,6 +3163,7 @@ int ObSql::parser_and_check(const ObString &outlined_stmt,
     pctx->reset_datum_param_store();
     pctx->get_param_store_for_update().reuse();
     ObParser parser(allocator, session->get_sql_mode());
+    pc_ctx.parameterization_.reset();
     if (OB_FAIL(parser.parse(outlined_stmt, parsed))) {
     } else if ((PC_PS_MODE == pc_ctx.mode_ || PC_PL_MODE == pc_ctx.mode_)
       && OB_FAIL(construct_param_store_from_parameterized_params(

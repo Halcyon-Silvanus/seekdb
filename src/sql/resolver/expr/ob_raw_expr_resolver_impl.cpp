@@ -437,7 +437,7 @@ int ObRawExprResolverImpl::do_recursive_resolve(const peg::Node &node,
   } else if (node.kind() == peg::NodeKind::CharsetName) {
     OZ(process_char_charset_node(node, expr));
   } else if (binding != nullptr || peg::is_literal(node)
-      || (lowering != nullptr && lowering->kind != NumericLowering::Kind::AddNegatedOperand)) {
+      || (lowering != nullptr && lowering->operation != peg::ParameterLoweringKind::AddNegatedOperand)) {
     OZ (process_datatype_or_questionmark(node, expr));
   } else {
     switch (node.kind()) {
@@ -1041,27 +1041,26 @@ int ObRawExprResolverImpl::process_datatype_or_questionmark(const peg::Node &nod
   } else if (binding != nullptr) {
     val.set_unknown(binding->parameter_index);
     val.set_param_meta(val.get_meta());
-  } else if (lowering != nullptr && lowering->kind != NumericLowering::Kind::AddNegatedOperand) {
-    if (OB_ISNULL(lowering->literal)) {
-      ret = OB_ERR_UNEXPECTED;
-    } else {
-      const NumericLiteral &literal = *lowering->literal;
-      const NumericLiteralOptions options{session_info->get_stmt_type(), enable_decimal_int,
-          nullptr != ctx_.secondary_namespace_, ctx_.formalize_const_int_prec_,
-          session_info->get_min_const_integer_precision()};
-      switch (literal.kind) {
-        case NumericKind::Integer: expr_type = T_INT; break;
-        case NumericKind::Unsigned: expr_type = T_UINT64; break;
-        case NumericKind::Decimal: expr_type = T_NUMBER; break;
-        case NumericKind::Float: expr_type = T_FLOAT; break;
-        case NumericKind::Double: expr_type = T_DOUBLE; break;
-      }
-      if (OB_FAIL(ObResolverUtils::resolve_numeric_literal(literal, options,
-              ctx_.expr_factory_.get_allocator(), val, literal_prefix))) {
-      } else if (node.kind() == peg::NodeKind::DateUnit && span.start != span.end
-                 && (literal.kind == NumericKind::Integer || literal.kind == NumericKind::Unsigned)) {
-        literal_prefix = literal.text;
-      }
+  } else if (lowering != nullptr && lowering->operation != peg::ParameterLoweringKind::AddNegatedOperand) {
+    const auto &value = lowering->value;
+    NumericKind kind = NumericKind::Integer;
+    switch (value.kind) {
+      case peg::LiteralKind::Integer: kind = NumericKind::Integer; expr_type = T_INT; break;
+      case peg::LiteralKind::Unsigned: kind = NumericKind::Unsigned; expr_type = T_UINT64; break;
+      case peg::LiteralKind::Decimal: kind = NumericKind::Decimal; expr_type = T_NUMBER; break;
+      case peg::LiteralKind::Float: kind = NumericKind::Double; expr_type = T_DOUBLE; break;
+      default: ret = OB_ERR_UNEXPECTED; break;
+    }
+    const NumericLiteral literal{kind, value.integer,
+        ObString(value.text.size(), reinterpret_cast<const char *>(value.text.data()))};
+    const NumericLiteralOptions options{session_info->get_stmt_type(), enable_decimal_int,
+        nullptr != ctx_.secondary_namespace_, ctx_.formalize_const_int_prec_,
+        session_info->get_min_const_integer_precision()};
+    OZ (ObResolverUtils::resolve_numeric_literal(literal, options,
+        ctx_.expr_factory_.get_allocator(), val, literal_prefix));
+    if (OB_SUCC(ret) && node.kind() == peg::NodeKind::DateUnit && span.start != span.end
+        && (literal.kind == NumericKind::Integer || literal.kind == NumericKind::Unsigned)) {
+      literal_prefix = literal.text;
     }
   } else {
     const LiteralDecodeOptions options{{session_info->get_stmt_type(), enable_decimal_int,
@@ -1744,44 +1743,22 @@ int ObRawExprResolverImpl::process_not_node(const peg::Node &node, ObRawExpr *&e
 int ObRawExprResolverImpl::process_pos_or_neg_node(const peg::Node &node, ObRawExpr *&expr)
 {
   int ret = OB_SUCCESS;
-  int64_t negations = 0;
   int64_t remaining = 0;
-  const peg::Node *operand = &node;
-  const peg::Node *last_sign = nullptr;
-  while (operand->kind() == peg::NodeKind::Parenthesized
-      || (operand->kind() == peg::NodeKind::Unary
-          && (peg::unary_operator(*operand) == peg::UnaryOperator::Plus
-              || peg::unary_operator(*operand) == peg::UnaryOperator::Minus))) {
-    if (operand != &node && ctx_.parameterization_ != nullptr) {
-      const auto *lowering = ctx_.parameterization_->numeric_lowering(operand);
-      if (ctx_.parameterization_->find(operand) != nullptr
-          || (lowering != nullptr && lowering->kind == NumericLowering::Kind::FoldUnaryExpression)) { break; }
-    }
-    if (operand->kind() == peg::NodeKind::Parenthesized) {
-      operand = &peg::parenthesized_expression(*operand);
-    } else {
-      last_sign = operand;
-      negations += peg::unary_operator(*operand) == peg::UnaryOperator::Minus;
-      operand = &peg::unary_operand(*operand);
-    }
-  }
-  const peg::Node *literal_node = operand;
-  while (literal_node->kind() == peg::NodeKind::Parenthesized) literal_node = &peg::parenthesized_expression(*literal_node);
-  const bool has_binding = ctx_.parameterization_ != nullptr
-      && (ctx_.parameterization_->find(literal_node) != nullptr || ctx_.parameterization_->numeric_lowering(literal_node) != nullptr);
-  if (last_sign != nullptr && peg::unary_operator(*last_sign) == peg::UnaryOperator::Minus
-      && literal_node->kind() == peg::NodeKind::Uint && !has_binding) {
-    const auto literal = peg::expression_literal(*literal_node);
-    if (&peg::unary_operand(*last_sign) == literal_node && literal.integer == (uint64_t(1) << 63)) {
-      OZ(build_implicit_literal({peg::LiteralKind::Integer, literal.integer, source_text(*last_sign), {}, false, 0}, expr));
-      --negations;
-    } else {
-      OZ(build_implicit_literal({peg::LiteralKind::Decimal, 0,
-          ObString(literal.text.size(), literal.text.data()), {}, false, 0}, expr));
-    }
+  const rust::Slice<const uint8_t> source{
+      reinterpret_cast<const uint8_t *>(ctx_.syntax_source_.ptr()),
+      static_cast<size_t>(ctx_.syntax_source_.length())};
+  const auto *effects = ctx_.parameterization_ != nullptr ? ctx_.parameterization_->effects() : nullptr;
+  const auto resolution = effects != nullptr
+      ? peg::resolve_parameterized_unary(node, source, *effects)
+      : peg::resolve_plain_unary(node, source);
+  if (resolution.literal) {
+    OZ(build_implicit_literal({resolution.kind, resolution.integer,
+        ObString(resolution.text.size(), reinterpret_cast<const char *>(resolution.text.data())),
+        {}, false, 0}, expr));
   } else {
-    OZ(recursive_resolve(*operand, expr));
+    OZ(recursive_resolve(resolution.operand, expr));
   }
+  const int64_t negations = resolution.negations;
   OZ (try_negate_const(expr, negations, remaining));
   for (int64_t i = 0; OB_SUCC(ret) && i < remaining; ++i) {
     ObOpRawExpr *negation = nullptr;
@@ -1827,7 +1804,7 @@ int ObRawExprResolverImpl::process_operator_node(const peg::Node &node, ObRawExp
   bool happened = false;
   const auto *lowering = ctx_.parameterization_ != nullptr
       ? ctx_.parameterization_->numeric_lowering(&node) : nullptr;
-  const ObItemType type = lowering != nullptr && lowering->kind == NumericLowering::Kind::AddNegatedOperand
+  const ObItemType type = lowering != nullptr && lowering->operation == peg::ParameterLoweringKind::AddNegatedOperand
       ? T_OP_ADD : binary_expression_type(peg::binary_operator(node));
   const bool formalize = type == T_OP_DIV || type == T_OP_MINUS || type == T_OP_ADD;
   ctx_.formalize_const_int_prec_ = formalize;

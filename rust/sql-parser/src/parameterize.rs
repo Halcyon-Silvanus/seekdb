@@ -18,10 +18,51 @@ use crate::bridge::ffi::*;
 use crate::expression::*;
 use crate::inspect::syntax_literals;
 use crate::node::{Kind, Node};
+use crate::numeric::{negative_operand, negative_unsigned_kind, NegativeOperand, UnaryPath};
 use crate::query::*;
 use crate::routine::routine_call_arguments;
 
 type Result<T> = std::result::Result<T, ParameterError>;
+
+#[derive(Default)]
+pub struct ParameterEffects {
+    by_node: HashMap<*const Node, NodeEffect>,
+}
+
+#[derive(Default)]
+struct NodeEffect {
+    binding: Option<ParameterBinding>,
+    lowering: Option<ParameterLowering>,
+}
+
+impl ParameterEffects {
+    pub fn binding(&self, node: &Node) -> Option<&ParameterBinding> {
+        self.by_node.get(&(node as *const Node))?.binding.as_ref()
+    }
+
+    pub fn lowering(&self, node: &Node) -> Option<&ParameterLowering> {
+        self.by_node.get(&(node as *const Node))?.lowering.as_ref()
+    }
+
+    pub(crate) fn parameter_binding(&self, node: &Node) -> &[ParameterBinding] {
+        self.binding(node).map_or(&[], std::slice::from_ref)
+    }
+
+    pub(crate) fn numeric_lowering(&self, node: &Node) -> &[ParameterLowering] {
+        self.lowering(node).map_or(&[], std::slice::from_ref)
+    }
+
+    fn bind(&mut self, node: &Node, binding: ParameterBinding) {
+        self.by_node.entry(node as *const Node).or_default().binding = Some(binding);
+    }
+
+    fn lower(&mut self, node: &Node, operation: ParameterLoweringKind, value: ParameterValue) {
+        self.by_node.entry(node as *const Node).or_default().lowering = Some(ParameterLowering {
+            operation,
+            value: NumericValue { kind: value.kind, integer: value.integer, text: value.text },
+        });
+    }
+}
 
 #[derive(Clone, Copy, Default)]
 struct Scope<'a> {
@@ -378,6 +419,43 @@ impl<'a> Collector<'a> {
         Ok(())
     }
 
+    fn unary(&mut self, node: &'a Node, mut scope: Scope<'a>) -> Result<()> {
+        let mut path = UnaryPath::new(node);
+        for step in path.by_ref() {
+            let Some(operator) = step.operator else { continue };
+            scope.direct_value = false;
+            scope.ignore_scale = false;
+            let negative = (operator == UnaryOperator::Minus)
+                .then(|| negative_operand(step.operand));
+            if !scope.excluded {
+                if let Some(NegativeOperand::DirectLiteral(operand)) = negative {
+                    let value = expression_literal(operand);
+                    if numeric(value.kind) {
+                        self.literal(operand, step.node, scope, ParameterOrigin::UnaryNegation);
+                    } else {
+                        scope.arithmetic = false;
+                        self.literal(
+                            operand,
+                            operand,
+                            scope,
+                            if value.kind == LiteralKind::String {
+                                ParameterOrigin::UnaryNegation
+                            } else {
+                                ParameterOrigin::Literal
+                            },
+                        );
+                    }
+                    return Ok(());
+                }
+            }
+            scope.arithmetic = false;
+            if matches!(negative, Some(NegativeOperand::ParenthesizedUnsigned(_))) {
+                scope.excluded = true;
+            }
+        }
+        self.collect(path.operand(), scope)
+    }
+
     fn collect(&mut self, node: &'a Node, mut scope: Scope<'a>) -> Result<()> {
         if scope.excluded {
             self.ps_eligible = false;
@@ -402,45 +480,16 @@ impl<'a> Collector<'a> {
             | Kind::Relation
             | Kind::Default
             | Kind::SystemVariable => {}
-            Kind::Parenthesized => self.collect(parenthesized_expression(node), scope)?,
+            Kind::Parenthesized => self.unary(node, scope)?,
             Kind::UserVariable | Kind::GetUserVariable => {
                 self.user_variables.push(variable_name(node).into())
             }
             Kind::UserAssignment => self.collect(variable_assignment_value(node), scope)?,
             Kind::Unary => {
-                let operand = unary_operand(node);
-                scope.direct_value = false;
-                scope.ignore_scale = false;
-                if !scope.excluded
-                    && unary_operator(node) == UnaryOperator::Minus
-                    && is_literal(operand)
-                {
-                    let value = expression_literal(operand);
-                    if numeric(value.kind) {
-                        self.literal(operand, node, scope, ParameterOrigin::UnaryNegation);
-                    } else {
-                        scope.arithmetic = false;
-                        self.literal(
-                            operand,
-                            operand,
-                            scope,
-                            if value.kind == LiteralKind::String {
-                                ParameterOrigin::UnaryNegation
-                            } else {
-                                ParameterOrigin::Literal
-                            },
-                        );
-                    }
+                if matches!(unary_operator(node), UnaryOperator::Plus | UnaryOperator::Minus) {
+                    self.unary(node, scope)?;
                 } else {
-                    scope.arithmetic = false;
-                    let mut value = operand;
-                    while value.kind == Kind::Parenthesized {
-                        value = parenthesized_expression(value);
-                    }
-                    if unary_operator(node) == UnaryOperator::Minus && value.kind == Kind::Uint {
-                        scope.excluded = true;
-                    }
-                    self.collect(operand, scope)?;
+                    self.collect(unary_operand(node), scope.expression())?;
                 }
             }
             Kind::Binary => {
@@ -591,11 +640,7 @@ fn token_value(token: &ParameterToken<'_>) -> ParameterValue {
 fn numeric_value(node: &Node, negative: bool) -> ParameterValue {
     let mut value = syntax_value(node);
     if value.kind == LiteralKind::Unsigned && negative {
-        value.kind = if value.integer == 1 << 63 {
-            LiteralKind::Integer
-        } else {
-            LiteralKind::Decimal
-        };
+        value.kind = negative_unsigned_kind(value.integer);
     }
     if negative {
         value.text.insert(0, b'-');
@@ -622,7 +667,7 @@ fn empty_result() -> Parameterization<'static> {
     Parameterization {
         tokens: Vec::new(),
         bindings: Vec::new(),
-        lowerings: Vec::new(),
+        effects: Box::default(),
         projections: Vec::new(),
         user_variables: Vec::new(),
         unchecked_placeholders: Vec::new(),
@@ -641,7 +686,6 @@ fn apply<'a>(
     let mut result = empty_result();
     let mut unchecked = Vec::new();
     let mut checked = HashSet::new();
-    let mut bindings: HashMap<*const Node, usize> = HashMap::new();
     collector
         .literals
         .sort_by_key(|occurrence| occurrence.literal.start);
@@ -720,11 +764,11 @@ fn apply<'a>(
         {
             if token.start < occurrence.literal.start {
                 lowered = Some(numeric_value(occurrence.literal, true));
-                result.lowerings.push(ParameterLowering {
-                    node: occurrence.expression,
-                    operation: ParameterLoweringKind::FoldUnaryExpression,
-                    value: numeric_value(occurrence.literal, true),
-                });
+                result.effects.lower(
+                    occurrence.expression,
+                    ParameterLoweringKind::FoldUnaryExpression,
+                    numeric_value(occurrence.literal, true),
+                );
             } else {
                 occurrence.expression = occurrence.literal;
                 occurrence.origin = ParameterOrigin::Literal;
@@ -733,16 +777,12 @@ fn apply<'a>(
         }
         if let Some((parent, _)) = subtraction {
             lowered = Some(numeric_value(occurrence.literal, !options.from_pl));
-            result.lowerings.push(ParameterLowering {
-                node: occurrence.literal,
-                operation: ParameterLoweringKind::NegateLiteral,
-                value: numeric_value(occurrence.literal, !options.from_pl),
-            });
-            result.lowerings.push(ParameterLowering {
-                node: parent,
-                operation: ParameterLoweringKind::AddNegatedOperand,
-                value: empty_value(),
-            });
+            result.effects.lower(
+                occurrence.literal,
+                ParameterLoweringKind::NegateLiteral,
+                numeric_value(occurrence.literal, !options.from_pl),
+            );
+            result.effects.lower(parent, ParameterLoweringKind::AddNegatedOperand, empty_value());
         }
         let origin = if subtraction.is_some() {
             ParameterOrigin::Subtraction
@@ -778,7 +818,11 @@ fn apply<'a>(
         let parameter_index =
             options.parameter_base + if append { result.bindings.len() } else { 0 };
         if append {
-            bindings.insert(occurrence.expression as *const Node, result.bindings.len());
+            result.effects.bind(occurrence.expression, ParameterBinding {
+                parameter_index,
+                raw_index,
+                origin,
+            });
         }
         result.bindings.push(ParameterBindingRecord {
             node: occurrence.expression,
@@ -807,13 +851,11 @@ fn apply<'a>(
     }
     if options.projection_names {
         for projection in &collector.projections {
-            if let Some(template) = projection_template(
-                projection,
+            if let Some(template) = Projection::new(projection).parameter_template(
                 syntax_sql,
-                &collector.literals,
+                collector.literals.iter().map(|occurrence| (occurrence.literal, occurrence.expression)),
                 tokens,
-                &result.bindings,
-                &bindings,
+                &result.effects,
                 options.projection_name_limit,
             )? {
                 result.projections.push(template);
@@ -827,93 +869,6 @@ fn apply<'a>(
     result.user_variables = std::mem::take(&mut collector.user_variables);
     result.ps_eligible = collector.ps_eligible;
     Ok(result)
-}
-
-fn projection_template<'a>(
-    projection: &'a Node,
-    syntax_sql: &[u8],
-    occurrences: &[Occurrence<'a>],
-    tokens: &[ParameterToken<'_>],
-    bindings: &[ParameterBindingRecord<'a>],
-    binding_indices: &HashMap<*const Node, usize>,
-    limit: usize,
-) -> Result<Option<ParameterProjection<'a>>> {
-    if projection_alias_form(projection) != AliasForm::Absent {
-        return Ok(None);
-    }
-    let expression = projection_expression(projection);
-    if expression.kind == Kind::Star
-        || (expression.kind == Kind::Column && name_is_wildcard(expression))
-    {
-        return Ok(None);
-    }
-    let mut display = expression;
-    while display.kind == Kind::Parenthesized {
-        display = parenthesized_expression(display);
-    }
-    let string_literal =
-        is_literal(display) && expression_literal(display).kind == LiteralKind::String;
-    let original = syntax_sql
-        .get(expression.start..expression.end)
-        .ok_or(ParameterError::Unsupported)?;
-    let mut result = ParameterProjection {
-        node: projection,
-        name: Vec::new(),
-        questions: Vec::new(),
-        parameters: Vec::new(),
-        negative_parameters: Vec::new(),
-        escaped_string: false,
-        null_literal: false,
-    };
-    let mut position = expression.start;
-    for occurrence in occurrences {
-        let Some(&index) = binding_indices.get(&(occurrence.expression as *const Node)) else {
-            continue;
-        };
-        if occurrence.literal.start < expression.start || occurrence.literal.end > expression.end {
-            continue;
-        }
-        if result.name.len() >= limit {
-            break;
-        }
-        let binding = &bindings[index];
-        let token = &tokens[binding.raw_index];
-        if !string_literal && token.start > position {
-            let start = position
-                .checked_sub(expression.start)
-                .ok_or(ParameterError::Unsupported)?;
-            let count = (token.start - position).min(limit - result.name.len());
-            result.name.extend_from_slice(
-                original
-                    .get(start..start + count)
-                    .ok_or(ParameterError::Unsupported)?,
-            );
-        }
-        position = token.end;
-        result.questions.push(result.name.len());
-        result.parameters.push(binding.raw_index);
-        if result.name.len() < limit {
-            result.name.push(b'?');
-        }
-        if binding.origin == ParameterOrigin::UnaryNegation {
-            result.negative_parameters.push(binding.raw_index);
-        }
-    }
-    if !string_literal {
-        let offset = position
-            .checked_sub(expression.start)
-            .ok_or(ParameterError::Unsupported)?;
-        let suffix = original.get(offset..).ok_or(ParameterError::Unsupported)?;
-        result
-            .name
-            .extend_from_slice(&suffix[..suffix.len().min(limit - result.name.len())]);
-    }
-    result.escaped_string =
-        string_literal && binding_indices.contains_key(&(display as *const Node));
-    if result.parameters.len() == 1 && result.name == b"?" {
-        result.null_literal = tokens[result.parameters[0]].kind == LiteralKind::Null;
-    }
-    Ok((!result.parameters.is_empty()).then_some(result))
 }
 
 pub fn parameterize<'a>(

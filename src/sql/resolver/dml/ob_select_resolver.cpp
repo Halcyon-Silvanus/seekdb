@@ -1269,42 +1269,24 @@ int ObSelectResolver::resolve_field_list(rust::Slice<const peg::Node> projection
   for (const peg::Node &projection : projections) {
     if (OB_FAIL(ret)) { break; }
     const peg::Node &project_node = peg::projection_expression(projection);
-    const bool has_alias = peg::projection_alias_form(projection) != peg::AliasForm::Absent;
     SelectItem select_item;
     const SelectItemParamInfo *param_info = params_.select_item_param_infos_ != nullptr
         && params_.select_item_param_infos_->created()
         ? params_.select_item_param_infos_->get(&projection) : nullptr;
-    const peg::Node *display_node = &project_node;
-    while (display_node->kind() == peg::NodeKind::Parenthesized) {
-      display_node = &peg::parenthesized_expression(*display_node);
-    }
-    ObString source_name = params_.syntax_->source(project_node);
-    if (!has_alias && peg::is_literal(*display_node)) {
-      const auto literal = peg::expression_literal(*display_node);
-      if (literal.kind == peg::LiteralKind::String) {
-        source_name.assign_ptr(literal.text.data(), literal.first_part_length);
-      }
-    }
-    if (param_info != nullptr && param_info->null_literal_) {
-      source_name = ObString::make_string("NULL");
-    }
-    // Rule for expr_name and alias_name
-    // expr_name is filled with expr name, both ref_expr and other complex expr.
-    // alias_name is filled with expr_name for default, but updated with real alias name if exists.
-    // the special case is the column ref, which expr_name will be replaced with unqualified column name.
-    OZ(ob_write_string(*allocator_, source_name, select_item.expr_name_));
-    // In PS mode, the alias name of the bind variable is ":" + num, not the actual value. As follows:
-    // PREPARE STMT FROM 'SELECT ?, ?, ? FROM DUAL';
-    // SET @I1 = 1;
-    // EXECUTE STMT USING @I1, @I1, @I1;
-    // col_name1 is ":1", col_name2 is ":2", col_name3 is ":3"
-    if (display_node->kind() == peg::NodeKind::Null
-        && (params_.parameterization_ == nullptr
-            || params_.parameterization_->find(display_node) == nullptr)) {
-      OZ(ob_write_string(*allocator_, ObString::make_string("NULL"), select_item.alias_name_));
-    } else {
-      OZ(ob_write_string(*allocator_, source_name, select_item.alias_name_));
-    }
+    const ObString expression_source = params_.syntax_->source(project_node);
+    const rust::Slice<const uint8_t> source{
+        reinterpret_cast<const uint8_t *>(expression_source.ptr()),
+        static_cast<size_t>(expression_source.length())};
+    const auto *effects = params_.parameterization_ != nullptr ? params_.parameterization_->effects() : nullptr;
+    const bool null_template = param_info != nullptr && param_info->null_literal_;
+    const auto names = effects != nullptr
+        ? peg::parameterized_projection_names(projection, source, *effects, null_template)
+        : peg::projection_names(projection, source, null_template);
+    const bool has_alias = names.has_alias;
+    OZ(ob_write_string(*allocator_, ObString(names.expression.size(),
+        reinterpret_cast<const char *>(names.expression.data())), select_item.expr_name_));
+    OZ(ob_write_string(*allocator_, ObString(names.alias.size(),
+        reinterpret_cast<const char *>(names.alias.data())), select_item.alias_name_));
     if (project_node.kind() == peg::NodeKind::Star
         || (project_node.kind() == peg::NodeKind::Column && peg::name_is_wildcard(project_node))) {
       if (project_node.kind() == peg::NodeKind::Star) {
@@ -1338,10 +1320,9 @@ int ObSelectResolver::resolve_field_list(rust::Slice<const peg::Node> projection
     }
     bool is_auto_gen = false;
     if (OB_SUCC(ret) && has_alias) {
-      const peg::Node &alias = peg::projection_alias(projection);
       select_item.is_real_alias_ = true;
-      const auto alias_text = alias.text();
-      OZ(ob_write_string(*allocator_, ObString(alias_text.size(), alias_text.data()), select_item.alias_name_));
+      OZ(ob_write_string(*allocator_, ObString(names.explicit_alias.size(),
+          reinterpret_cast<const char *>(names.explicit_alias.data())), select_item.alias_name_));
     }
 
     if (OB_SUCC(ret)) {

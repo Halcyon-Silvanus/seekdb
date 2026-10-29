@@ -16,101 +16,44 @@
 
 #pragma once
 
-#include <functional>
-#include "lib/hash/ob_hashmap.h"
+#include <optional>
 #include "rust/sql_parser.h"
 
 namespace oceanbase::sql
 {
-struct NumericLiteral;
-
-struct SyntaxIdentityHash
-{
-  int operator()(const peg::Node *node, uint64_t &hash) const
-  {
-    hash = reinterpret_cast<uintptr_t>(node);
-    return common::OB_SUCCESS;
-  }
-};
-
-enum class ParameterOrigin { Literal, UnaryNegation, Subtraction };
-
-struct NumericLowering
-{
-  enum class Kind { FoldUnaryExpression, NegateLiteral, AddNegatedOperand };
-  Kind kind;
-  const NumericLiteral *literal;
-};
-
-struct ParameterBinding
-{
-  int64_t parameter_index;
-  int64_t raw_token_index;
-  ParameterOrigin origin;
-};
+using ParameterBinding = peg::ParameterBinding;
+using NumericLowering = peg::ParameterLowering;
 
 class ParameterizationResult
 {
 public:
-  int bind(const peg::Node *node, int64_t parameter_index, int64_t raw_token_index,
-           ParameterOrigin origin = ParameterOrigin::Literal)
+  void install(rust::Box<peg::ParameterEffects> effects)
   {
-    int ret = common::OB_SUCCESS;
-    if (!bindings_.created()) {
-      ret = bindings_.create(1, "SqlParamBind");
-    }
-    if (OB_SUCC(ret)) {
-      ret = bindings_.set_refactored(node, ParameterBinding{parameter_index, raw_token_index, origin}, 1);
-    }
-    return ret;
+    effects_ = std::move(effects);
   }
 
   const ParameterBinding *find(const peg::Node *node) const
   {
-    return bindings_.created() ? bindings_.get(node) : nullptr;
+    if (!effects_ || node == nullptr) return nullptr;
+    const auto binding = (*effects_)->parameter_binding(*node);
+    return binding.empty() ? nullptr : binding.data();
   }
 
   const NumericLowering *numeric_lowering(const peg::Node *node) const
   {
-    return numeric_lowerings_.created() ? numeric_lowerings_.get(node) : nullptr;
+    if (!effects_ || node == nullptr) return nullptr;
+    const auto lowering = (*effects_)->numeric_lowering(*node);
+    return lowering.empty() ? nullptr : lowering.data();
   }
 
-  int fold_negation(const peg::Node *node, const NumericLiteral *literal)
+  const peg::ParameterEffects *effects() const
   {
-    return lower_numeric(node, {NumericLowering::Kind::FoldUnaryExpression, literal});
+    return effects_ ? &**effects_ : nullptr;
   }
 
-  int negate_literal(const peg::Node *node, const NumericLiteral *literal)
-  {
-    return lower_numeric(node, {NumericLowering::Kind::NegateLiteral, literal});
-  }
-
-  int add_negated_operand(const peg::Node *node)
-  {
-    return lower_numeric(node, {NumericLowering::Kind::AddNegatedOperand, nullptr});
-  }
-
-  void reset()
-  {
-    if (bindings_.created()) bindings_.clear();
-    if (numeric_lowerings_.created()) numeric_lowerings_.clear();
-  }
+  void reset() { effects_.reset(); }
 
 private:
-  int lower_numeric(const peg::Node *node, const NumericLowering &lowering)
-  {
-    int ret = common::OB_SUCCESS;
-    if (!numeric_lowerings_.created()) ret = numeric_lowerings_.create(1, "SqlNumeric");
-    if (OB_SUCC(ret)) ret = numeric_lowerings_.set_refactored(node, lowering, 1);
-    return ret;
-  }
-
-  template <typename Value>
-  using SyntaxMap = common::hash::ObHashMap<const peg::Node *, Value, common::hash::NoPthreadDefendMode,
-      SyntaxIdentityHash, std::equal_to<const peg::Node *>,
-      common::hash::SimpleAllocer<typename common::hash::HashMapTypes<const peg::Node *, Value>::AllocType>,
-      common::hash::NormalPointer, common::ObMalloc, 2>;
-  SyntaxMap<ParameterBinding> bindings_;
-  SyntaxMap<NumericLowering> numeric_lowerings_;
+  std::optional<rust::Box<peg::ParameterEffects>> effects_;
 };
 }

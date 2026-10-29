@@ -26,6 +26,7 @@ mod grammar;
 mod inspect;
 mod lex;
 mod node;
+pub mod numeric;
 mod parser;
 pub mod query;
 mod routine;
@@ -51,7 +52,7 @@ pub use bridge::ffi::{
     SqlSymbol, SqlSymbolBinding, EmbeddedSql, ParameterMode, ParameterOptions,
     ParameterAction, ParameterError, ParameterOrigin, ParameterLoweringKind, ParameterScalePolicy,
     ParameterRepresentation, ParameterTypeCheck, NumericSignMode, NumericSignResult, ParameterToken,
-    ParameterValue, ParameterTokenPolicy, ParameterBindingRecord, ParameterLowering, ParameterProjection,
+    ParameterValue, ParameterTokenPolicy, ParameterBindingRecord, ParameterBinding, NumericValue, ParameterLowering, ParameterProjection, ProjectionNames,
     Parameterization, ParameterSql, ParameterClassification, StatementClass, TransactionCommand,
     PlPrefix, StatementInfo, RestoreParameter, RestoredParameter, RestoredSql,
     BatchCompression, TableSelectMode, ColumnGeneration, ColumnPosition, IndexKind,
@@ -65,7 +66,7 @@ pub use parser::{parse, Parsed, ParseFailure};
 pub use inspect::syntax_literals;
 pub use batch::{compress_insert, compress_values, restore_parameter_sql};
 pub use prefix::{classify_statement, explain_body_offset, normalized_sql_length, is_single_statement, split_sql, fast_parameterization_allowed, transaction_command, insert_outline_hint};
-pub use parameterize::{parameterize, classify_parameter_tokens, rewrite_parameter_sql, fold_parameter_in_lists, unchecked_parameter_types};
+pub use parameterize::{ParameterEffects, parameterize, classify_parameter_tokens, rewrite_parameter_sql, fold_parameter_in_lists, unchecked_parameter_types};
 pub use scan::{begin_scan, finish_scan, Scanner};
 pub use fts::{parse_search_query};
 pub use embedded_sql::{embedded_sql_symbols, rewrite_embedded_sql};
