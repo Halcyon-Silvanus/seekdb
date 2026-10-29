@@ -694,6 +694,8 @@ impl Node {
             name.text = "substr".into();
         } else if function == "schema" {
             name.text = "database".into();
+        } else if matches!(function.as_str(), "session_user" | "system_user") {
+            name.text = "user".into();
         }
         let timestamp = matches!(
             kind,
