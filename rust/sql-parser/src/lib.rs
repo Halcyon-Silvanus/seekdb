@@ -18,6 +18,7 @@ mod parameterize;
 mod prefix;
 mod bridge;
 mod command;
+mod load_data;
 mod ddl;
 mod defaults;
 mod embedded_sql;
@@ -60,6 +61,7 @@ pub use bridge::ffi::{
     IndexMethod, PartitionKind, PartitionValues, ReferenceEvent, ReferenceAction,
     DropBehavior, TableOrganization, TableRowFormat, TableDefinition, ColumnDefinition,
     IndexDefinition, PartitionDefinition, PartitionElement, ForeignKeyDefinition, ReferentialAction,
+    LoadDataDefinition, LoadDuplicate, LoadLocation, LoadFormatKind, LoadFormatOption,
     ShowFilter, LiteralReference, StatisticsScope, StatisticsSizeKind, StatisticsColumnKind,
 };
 pub use node::Node;

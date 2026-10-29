@@ -120,6 +120,7 @@ SQL_PUBLIC_HEADER_ROOTS = [
     "privilege_check/ob_privilege_check.h",
     "resolver/ddl/ob_create_index_resolver.h",
     "resolver/ddl/ob_create_view_resolver.h",
+    "resolver/cmd/load_data_resolver.h",
     "resolver/ddl/outline_resolver.h",
     "resolver/ddl/lock_table_resolver.h",
     "resolver/ddl/ob_ddl_resolver.h",

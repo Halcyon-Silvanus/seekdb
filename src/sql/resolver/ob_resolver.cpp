@@ -55,6 +55,7 @@
 #include "sql/resolver/cmd/ob_variable_set_resolver.h"
 #include "sql/resolver/cmd/ob_show_resolver.h"
 #include "sql/resolver/cmd/ob_kill_resolver.h"
+#include "sql/resolver/cmd/load_data_resolver.h"
 #include "sql/resolver/cmd/ob_set_names_resolver.h"
 #include "sql/resolver/cmd/ob_set_transaction_resolver.h"
 #include "sql/resolver/cmd/ob_empty_query_resolver.h"
@@ -190,6 +191,10 @@ int ObResolver::resolve(const peg::Node &statement, ObStmt *&stmt)
       case peg::NodeKind::UnlockTables:
         params_.resolver_scope_stmt_type_ = T_LOCK_TABLE;
         ret = stmt_resolver_func<LockTableResolver>(params_, statement, stmt);
+        break;
+      case peg::NodeKind::LoadData:
+        params_.resolver_scope_stmt_type_ = T_LOAD_DATA;
+        ret = stmt_resolver_func<LoadDataResolver>(params_, statement, stmt);
         break;
       case peg::NodeKind::Kill:
         params_.resolver_scope_stmt_type_ = T_KILL;

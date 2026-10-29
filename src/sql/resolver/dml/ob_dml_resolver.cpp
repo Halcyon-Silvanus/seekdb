@@ -7085,6 +7085,13 @@ int ObDMLResolver::resolve_global_hint(const peg::Node &hint_node,
       global_hint.merge_read_consistency_hint(
           peg::hint_read_consistency(hint_node) == peg::ReadConsistency::Frozen ? FROZEN : STRONG, -1);
       break;
+    case Kind::LogLevel: {
+      const auto text = peg::hint_log_level(hint_node);
+      ObString owned;
+      OZ(ob_write_string(*allocator_, ObString(text.size(), text.data()), owned));
+      OX(global_hint.merge_log_level_hint(owned));
+      break;
+    }
     case Kind::OptParam: {
       const peg::Node &name = peg::hint_parameter_name(hint_node);
       const peg::Node &value = peg::hint_parameter_value(hint_node);

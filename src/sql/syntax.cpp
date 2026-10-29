@@ -58,6 +58,7 @@ std::optional<NativeStatementTraits> native_statement_traits(Kind kind)
     case Kind::SetNames:
     case Kind::SetCharset: return NativeStatementTraits{stmt::T_SET_NAMES, true, false};
     case Kind::Kill: return NativeStatementTraits{stmt::T_KILL, false, false};
+    case Kind::LoadData: return NativeStatementTraits{stmt::T_LOAD_DATA, false, true};
     case Kind::Diagnostics: return NativeStatementTraits{stmt::T_DIAGNOSTICS, false, false};
     case Kind::Prepare: return NativeStatementTraits{stmt::T_PREPARE, false, false};
     case Kind::Execute: return NativeStatementTraits{stmt::T_EXECUTE, false, false};
@@ -188,7 +189,8 @@ int ObParser::parse_entry(const ObString &sql, ParsedSql &owner, peg::ParseMode 
   result.is_dynamic_sql_ = dynamic_sql;
   const auto kind = parsed->root().kind();
   result.contain_sensitive_data_ = kind == Kind::SetConfig
-      || kind == Kind::CreateUser || kind == Kind::SetPassword || kind == Kind::Grant;
+      || kind == Kind::CreateUser || kind == Kind::SetPassword || kind == Kind::Grant
+      || (kind == Kind::LoadData && peg::load_data_definition(parsed->root()).contains_sensitive_data);
   const auto parameters = parsed->parameters();
   result.question_mark_ctx_.count_ = parameters;
   result.question_mark_ctx_.by_ordinal_ = !parsed->has_parameter_names() && parameters != 0;

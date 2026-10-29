@@ -335,6 +335,23 @@ pub(crate) mod ffi {
         LockTables,
         UnlockTables,
         TableLock,
+        LoadData,
+        LoadLocal,
+        LoadFile,
+        LoadCompression,
+        LoadCharset,
+        LoadIgnoreRows,
+        LoadFormats,
+        LoadFields,
+        LoadPartitions,
+        LoadFieldTerminated,
+        LoadEnclosed,
+        LoadOptionallyEnclosed,
+        LoadEscaped,
+        LoadLineStarting,
+        LoadLineTerminated,
+        LoadBatchSize,
+        LogLevel,
         TransactionCharacteristics,
         Commit,
         Rollback,
@@ -1553,6 +1570,33 @@ pub(crate) mod ffi {
         output_end: usize,
     }
 
+    enum LoadLocation { Server, Client }
+    enum LoadDuplicate { Stop, Ignore, Replace }
+    enum LoadFormatKind {
+        FieldTerminated, Enclosed, OptionallyEnclosed, Escaped, LineStarting, LineTerminated,
+    }
+    struct LoadFormatOption<'a> {
+        kind: LoadFormatKind,
+        value: &'a Node,
+    }
+    struct LoadDataDefinition<'a> {
+        table: &'a Node,
+        filename: &'a Node,
+        location: LoadLocation,
+        duplicate: LoadDuplicate,
+        has_compression: bool,
+        compression: &'a str,
+        default_charset: bool,
+        charset: &'a str,
+        ignore_rows: u64,
+        format_options: &'a [Node],
+        input_fields: &'a [Node],
+        assignments: &'a [Node],
+        partitions: &'a [Node],
+        hints: &'a [Node],
+        contains_sensitive_data: bool,
+    }
+
     enum TableSelectMode {
         None,
         Select,
@@ -2270,6 +2314,12 @@ pub(crate) mod ffi {
         fn hint_parallel_policy(hint: &Node) -> ParallelPolicy;
         fn hint_parallel_degree(hint: &Node) -> &Node;
         fn hint_timeout(hint: &Node) -> &Node;
+        fn hint_log_level(hint: &Node) -> &str;
+        fn hint_load_batch_size(hint: &Node) -> u64;
+        fn hint_load_buffer_size(hint: &Node) -> &str;
+        fn hint_has_load_buffer_size(hint: &Node) -> bool;
+        unsafe fn load_data_definition<'a>(node: &'a Node) -> LoadDataDefinition<'a>;
+        unsafe fn load_format_option<'a>(node: &'a Node) -> LoadFormatOption<'a>;
         fn hint_topk_minimum(hint: &Node) -> &Node;
         fn hint_topk_precision(hint: &Node) -> &Node;
         fn hint_sampling_level(hint: &Node) -> &Node;
@@ -2298,6 +2348,7 @@ use crate::access::{
     account_name, account_name_form, account_password, account_plugin, privilege_columns,
     privilege_name,
 };
+use crate::load_data::{load_data_definition, load_format_option};
 use crate::defaults::{default_expression, default_literal, default_arguments, DefaultArguments};
 use crate::fts::{parse_search_query, SearchNode, SearchTree};
 use crate::inspect::inspect_expression;
@@ -2342,7 +2393,8 @@ use crate::query::{
     hint_parameter_name, hint_parameter_value, hint_plan_cache_policy, hint_query_block,
     hint_query_block_groups, hint_query_block_names, hint_read_consistency, hint_sampling_blocks,
     hint_sampling_level, hint_sort_method, hint_table_has_query_block, hint_table_query_block,
-    hint_table_relation, hint_tables, hint_target, hint_timeout, hint_topk_minimum,
+    hint_table_relation, hint_tables, hint_target, hint_timeout,
+    hint_log_level, hint_load_batch_size, hint_load_buffer_size, hint_has_load_buffer_size, hint_topk_minimum,
     hint_topk_precision, identifier_is_quoted, index_hint_kind, index_hint_names,
     insert_assignments, insert_columns, insert_on_duplicate, insert_query, insert_replace,
     insert_rows, insert_source, insert_target, join_columns, join_condition, join_kind, join_left,

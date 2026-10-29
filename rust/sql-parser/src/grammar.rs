@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::{access, ddl, lex::decode_string as decode, node::*, SqlMode};
+use crate::{access, ddl, load_data, lex::decode_string as decode, node::*, SqlMode};
 use std::borrow::Cow;
 
 const WEIGHT_STRING_PAD_WITH_SPACE: u64 = 0x40;
@@ -878,6 +878,12 @@ peg::parser! {
                 / kw("no_parallel") { Kind::NoParallel }) { Node::new(kind,vec![]) }
             / kw("dml_parallel") "(" _ value:type_size() ")" _ { Node::new(Kind::DmlParallel,vec![value]) }
             / kw("query_timeout") "(" _ value:type_size() ")" _ { Node::new(Kind::QueryTimeout,vec![value]) }
+            / kw("log_level") "(" _ value:(&"'" value:load_string() { value } / name:hint_name() { Node::name(name) }) ")" _ {
+                Node::new(Kind::LogLevel,vec![value])
+            }
+            / kw("load_batch_size") "(" _ size:hint_integer() buffer:("," _ &"'" value:load_string() { value })? ")" _ {
+                let mut children=vec![size];children.extend(buffer);Node::new(Kind::LoadBatchSize,children)
+            }
             / kw("topk") "(" _ minimum:type_size() precision:type_size() ")" _ { Node::new(Kind::TopK,vec![minimum,precision]) }
             / kw("read_consistency") "(" _ level:(kw("weak") { 3 } / kw("strong") { 4 } / kw("frozen") { 2 }) ")" _ { Node::new(Kind::ReadConsistency,vec![]).value(level) }
             / kw("dynamic_sampling") "(" _ value:(value:type_size() { Node::new(Kind::DynamicSampling,vec![value]) }
@@ -2126,7 +2132,52 @@ peg::parser! {
                 children.push(value);
                 Node::new(Kind::Explain,children)
         }
-        rule sql_statement() -> Node = select(0) / insert() / update() / delete() / transaction() / ddl() / account_statement() / role_statement() / setting() / explain() / show() / alter_system() / prepared_statement() / diagnostics() / analyze() / lock_tables() / kill() / purge()
+        rule load_string() -> Node = start:position!() text:(string_segment(<"'">)
+                / enabled(!mode.ansi_quotes) value:string_segment(<"\"">) { value }) end:position!() _ {
+            Node::new(Kind::String,vec![]).text(decode(text,mode.no_backslash_escapes)).at(start,end)
+        }
+        rule load_text() -> Node = load_string() / binary_literal()
+        rule load_integer() -> Node = value:type_size() {?
+            if matches!(value.kind,Kind::Int|Kind::Uint) { Ok(value) } else { Err("integer") }
+        }
+        rule hint_integer() -> Node = value:type_size() {?
+            if value.kind == Kind::Int { Ok(value) } else { Err("signed integer hint argument") }
+        }
+        rule load_field_option() -> Node
+            = kw("terminated") kw("by") value:load_text() { Node::new(Kind::LoadFieldTerminated,vec![value]) }
+            / optional:kw("optionally")? kw("enclosed") kw("by") value:load_text() {
+                Node::new(if optional.is_some() { Kind::LoadOptionallyEnclosed } else { Kind::LoadEnclosed },vec![value])
+            }
+            / kw("escaped") kw("by") value:load_text() { Node::new(Kind::LoadEscaped,vec![value]) }
+        rule load_line_option() -> Node
+            = kw("starting") kw("by") value:load_text() { Node::new(Kind::LoadLineStarting,vec![value]) }
+            / kw("terminated") kw("by") value:load_text() { Node::new(Kind::LoadLineTerminated,vec![value]) }
+        rule load_prefix() -> Option<Vec<Node>>
+            = keyword("load") space()+ keyword("data") hints:hint_slot() { hints }
+            / kw("load") kw("data") { None }
+        rule load_extended_option()
+            = (kw("logfile") / kw("badfile")) ("=" _)? load_string()
+            / kw("reject") kw("limit") ("=" _)? load_integer()
+        rule load_data() -> Node = hints:load_prefix() local:kw("local")? kw("infile") filename:load_string()
+            duplicate:(kw("ignore") { crate::LoadDuplicate::Ignore } / kw("replace") { crate::LoadDuplicate::Replace })?
+            kw("into") kw("table") table:name()
+            partitions:(kw("partition") "(" _ names:(ident() ++ ("," _)) ")" _ { names.into_iter().map(Node::name).collect() })?
+            compression:(kw("compression") ("=" _)? value:(load_string() / name:ident() { Node::name(name) }) { value })?
+            charset:(kw("character") kw("set") value:charset_name() { value })?
+            fields:((kw("fields") / kw("columns")) values:load_field_option()+ { values })?
+            lines:(kw("lines") values:load_line_option()+ { values })?
+            ignore_rows:((kw("ignore") / kw("generated")) value:load_integer() (kw("lines") / kw("rows")) { value })?
+            input_fields:("(" _ values:((column() / user_variable()) ** ("," _)) ")" _ { values })?
+            assignments:(kw("set") values:assignments() { values })? load_extended_option()* {?
+                let mut formats=fields.unwrap_or_default();formats.extend(lines.unwrap_or_default());
+                Ok(load_data::LoadData {
+                    table:Node::relation(table)?,filename,local:local.is_some(),
+                    duplicate:duplicate.unwrap_or(crate::LoadDuplicate::Stop),compression,charset,ignore_rows,
+                    formats,fields:input_fields.unwrap_or_default(),assignments:assignments.unwrap_or_default(),
+                    partitions:partitions.unwrap_or_default(),hints:hints.unwrap_or_default(),
+                }.into_node())
+            }
+        rule sql_statement() -> Node = select(0) / insert() / update() / delete() / transaction() / ddl() / account_statement() / role_statement() / setting() / explain() / show() / alter_system() / prepared_statement() / diagnostics() / analyze() / lock_tables() / load_data() / kill() / purge()
         rule statement() -> Node = _ value:(package_statement() / routine_statement() / pl_call() / sql_statement()) { value }
         #[no_eof]
         pub rule statement_end() -> usize = (statement() / _) (";" / ![_]) end:position!() { end }

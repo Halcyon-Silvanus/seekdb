@@ -116,6 +116,13 @@ pub fn parse(sql: &[u8], mode: SqlMode, parse_mode: ParseMode) -> Result<Parsed,
         offset,
         expanded_sql: std::mem::take(&mut expanded_sql),
     })?;
+    if root.kind == Kind::LoadData && parameters != 0 {
+        return Err(ParseFailure {
+            message: "LOAD DATA does not accept parameter markers".into(),
+            offset: root.start,
+            expanded_sql,
+        });
+    }
     let named_parameters = parameter_names.iter().any(|name| !name.as_bytes()[1].is_ascii_digit());
     Ok(Parsed { root, expanded_sql, parameters, parameter_names, named_parameters })
 }

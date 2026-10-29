@@ -684,6 +684,18 @@ pub(crate) fn hint_parallel_degree(hint: &Node) -> &Node {
 pub(crate) fn hint_timeout(hint: &Node) -> &Node {
     &hint.children[0]
 }
+pub(crate) fn hint_log_level(hint: &Node) -> &str {
+    &hint.children[0].text
+}
+pub(crate) fn hint_load_batch_size(hint: &Node) -> u64 {
+    hint.children[0].value
+}
+pub(crate) fn hint_has_load_buffer_size(hint: &Node) -> bool {
+    hint.children.len() > 1
+}
+pub(crate) fn hint_load_buffer_size(hint: &Node) -> &str {
+    hint.children.get(1).map_or("", |node| node.text.as_str())
+}
 pub(crate) fn hint_topk_minimum(hint: &Node) -> &Node {
     &hint.children[0]
 }
