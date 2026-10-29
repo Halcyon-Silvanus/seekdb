@@ -1360,6 +1360,7 @@ SQL_UNITY_GROUPS = [
             "src/sql/resolver/ddl/ob_optimize_resolver.cpp",
             "src/sql/resolver/ddl/ob_optimize_stmt.cpp",
             "src/sql/resolver/ddl/ob_purge_resolver.cpp",
+            "src/sql/resolver/ddl/restore_table_resolver.cpp",
             "src/sql/resolver/ddl/ob_rename_table_resolver.cpp",
             "src/sql/resolver/ddl/ob_rename_table_stmt.cpp",
             "src/sql/resolver/ddl/ob_trigger_resolver.cpp",

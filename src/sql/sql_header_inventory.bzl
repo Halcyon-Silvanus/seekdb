@@ -123,6 +123,7 @@ SQL_PUBLIC_HEADER_ROOTS = [
     "resolver/cmd/load_data_resolver.h",
     "resolver/ddl/outline_resolver.h",
     "resolver/ddl/lock_table_resolver.h",
+    "resolver/ddl/restore_table_resolver.h",
     "resolver/ddl/ob_ddl_resolver.h",
     "resolver/ddl/alter_database_resolver.h",
     "resolver/ddl/database_options.h",

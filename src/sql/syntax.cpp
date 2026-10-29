@@ -98,6 +98,7 @@ std::optional<NativeStatementTraits> native_statement_traits(Kind kind)
     case Kind::RenameTables: return NativeStatementTraits{stmt::T_RENAME_TABLE, false, false};
     case Kind::TruncateTable: return NativeStatementTraits{stmt::T_TRUNCATE_TABLE, false, false};
     case Kind::PurgeTable: return NativeStatementTraits{stmt::T_PURGE_TABLE, false, false};
+    case Kind::RestoreTable: return NativeStatementTraits{stmt::T_RECYCLEBIN_RESTORE_TABLE, false, false};
     case Kind::PurgeIndex: return NativeStatementTraits{stmt::T_PURGE_INDEX, false, false};
     case Kind::PurgeDatabase: return NativeStatementTraits{stmt::T_PURGE_DATABASE, false, false};
     case Kind::PurgeRecyclebin: return NativeStatementTraits{stmt::T_PURGE_RECYCLEBIN, false, false};

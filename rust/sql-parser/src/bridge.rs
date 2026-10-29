@@ -410,6 +410,7 @@ pub(crate) mod ffi {
         OptimizeTable,
         PurgeRecyclebin,
         PurgeTable,
+        RestoreTable,
         PurgeIndex,
         PurgeDatabase,
         RenameTables,
@@ -1946,6 +1947,9 @@ pub(crate) mod ffi {
         unsafe fn analyze_definition<'a>(node: &'a Node) -> AnalyzeDefinition<'a>;
         fn partition_element_values(node: &Node) -> &Node;
         fn purge_relation(node: &Node) -> &Node;
+        fn restore_table_source(node: &Node) -> &Node;
+        fn restore_table_has_target(node: &Node) -> bool;
+        fn restore_table_target(node: &Node) -> &Node;
         fn query_has_mixed_string_array(node: &Node) -> bool;
         fn vector_parameters(option: &Node) -> &[Node];
         fn routine_parameter_list(node: &Node) -> &Node;
@@ -2689,7 +2693,8 @@ use crate::query::vector_parameters;
 
 use crate::inspect::query_has_mixed_string_array;
 
-use crate::ddl::{analyze_definition, optimize_relations, purge_relation};
+use crate::ddl::{analyze_definition, optimize_relations, purge_relation,
+    restore_table_source, restore_table_has_target, restore_table_target};
 use crate::statistics::{
     statistics_bucket_count, statistics_clauses, statistics_column_kind, statistics_column_name,
     statistics_columns, statistics_scope, statistics_size,

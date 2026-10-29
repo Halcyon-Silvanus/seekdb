@@ -811,6 +811,16 @@ pub(crate) fn purge_relation(node: &Node) -> &Node {
     &node.children[0]
 }
 
+pub(crate) fn restore_table_source(node: &Node) -> &Node {
+    &node.children[0]
+}
+pub(crate) fn restore_table_has_target(node: &Node) -> bool {
+    node.children.len() > 1
+}
+pub(crate) fn restore_table_target(node: &Node) -> &Node {
+    &node.children[1]
+}
+
 pub(crate) fn partition_element_values(node: &Node) -> &Node {
     node.children.iter().find(|child| matches!(child.kind, Kind::ExprList | Kind::Default)).unwrap()
 }
