@@ -1829,10 +1829,10 @@ int ObSPIService::spi_prepare(common::ObIAllocator &allocator,
                               bool is_cursor,
                               pl::ObPLBlockNS *secondary_namespace,
                               ObSPIPrepareResult &prepare_result,
-                              pl::ObPLAstUnit &func)
+                              const peg::Node &origin,
+                              const ObString &origin_source)
 {
   int ret = OB_SUCCESS;
-  UNUSED(func);
   if (OB_SUCC(ret)) {
     ret = spi_parse_prepare(allocator,
                             session,
@@ -1842,13 +1842,15 @@ int ObSPIService::spi_prepare(common::ObIAllocator &allocator,
                             pl_sql_runtime,
                             sql,
                             secondary_namespace,
-                            prepare_result);
+                            prepare_result,
+                            origin,
+                            origin_source);
   }
   return ret;
 }
 
 namespace {
-int bind_embedded_sql(const ParsedSql &parsed, const ObPLBlockNS &ns,
+int bind_embedded_sql(const ParsedSql &parsed, const peg::Node &origin, const ObPLBlockNS &ns,
                       ObIAllocator &allocator, ObString &sql,
                       ObIArray<const peg::Node *> &bindings)
 {
@@ -1868,7 +1870,8 @@ int bind_embedded_sql(const ParsedSql &parsed, const ObPLBlockNS &ns,
     }
   }
   auto rewritten = peg::rewrite_embedded_sql(*parsed.statement(), text,
-      rust::Slice<const peg::SqlSymbolBinding>(symbols.data(), symbols.size()));
+      rust::Slice<const peg::SqlSymbolBinding>(symbols.data(), symbols.size()), origin);
+  CK (rewritten.parameters_match);
   OZ (ob_write_string(allocator, ObString(rewritten.sql.size(), rewritten.sql.data()), sql));
   for (const auto &binding : rewritten.bindings) {
     OZ (bindings.push_back(&binding.node));
@@ -1885,7 +1888,9 @@ int ObSPIService::spi_parse_prepare(common::ObIAllocator &allocator,
                                     ObIPLSqlRuntime *pl_sql_runtime,
                                     const ObString &sql,
                                     pl::ObPLBlockNS *secondary_namespace,
-                                    ObSPIPrepareResult &prepare_result)
+                                    ObSPIPrepareResult &prepare_result,
+                                    const peg::Node &origin,
+                                    const ObString &origin_source)
 {
   int ret = OB_SUCCESS;
   if (sql.empty() || OB_ISNULL(secondary_namespace)) {
@@ -1895,7 +1900,7 @@ int ObSPIService::spi_parse_prepare(common::ObIAllocator &allocator,
     ParsedSql parsed;
     ObSEArray<const peg::Node *, 8> bindings;
     if (OB_FAIL(parser.parse_pl_sql(sql, parsed))) {
-    } else if (OB_FAIL(bind_embedded_sql(parsed, *secondary_namespace, allocator,
+    } else if (OB_FAIL(bind_embedded_sql(parsed, origin, *secondary_namespace, allocator,
                                         prepare_result.route_sql_, bindings))) {
     } else {
       PLPrepareCtx pl_prepare_ctx(session, NULL, false, false, false);
@@ -1915,7 +1920,7 @@ int ObSPIService::spi_parse_prepare(common::ObIAllocator &allocator,
           prepare_result.for_update_ = pl_prepare_result.result_set_->get_is_select_for_update();
           prepare_result.has_hidden_rowid_ = false;
           if (OB_FAIL(ret)) {
-          } else if (OB_FAIL(resolve_exec_params(bindings, parsed.source(),
+          } else if (OB_FAIL(resolve_exec_params(bindings, parsed.source(), origin_source,
                                           session,
                                           schema_guard,
                                           expr_factory,
@@ -5809,6 +5814,7 @@ int ObSPIService::force_refresh_schema(int64_t refresh_version)
 
 int ObSPIService::resolve_exec_params(const ObIArray<const peg::Node *> &bindings,
                                       const ObString &source,
+                                      const ObString &origin_source,
                                       ObSQLSessionInfo &session,
                                       share::schema::ObSchemaGetterGuard &schema_guard,
                                       sql::ObRawExprFactory &expr_factory,
@@ -5820,7 +5826,11 @@ int ObSPIService::resolve_exec_params(const ObIArray<const peg::Node *> &binding
   for (int64_t i = 0; OB_SUCC(ret) && i < bindings.count(); ++i) {
     const peg::Node *binding = bindings.at(i);
     ObRawExpr *expr = nullptr;
-    if (session.is_for_trigger_package() && ObRawExprUtils::is_new_old_column_ref(*binding)) {
+    if (binding->kind() == peg::NodeKind::Parameter) {
+      const bool is_prepare = secondary_namespace.get_external_ns()->get_resolve_ctx().is_prepare_protocol_;
+      OZ (ObPLResolver::resolve_raw_expr(*binding, origin_source, allocator, expr_factory,
+          secondary_namespace, is_prepare, expr));
+    } else if (session.is_for_trigger_package() && ObRawExprUtils::is_new_old_column_ref(*binding)) {
       OZ (ObPLResolver::resolve_raw_expr(*binding, source, allocator, expr_factory,
           secondary_namespace, false, expr));
     } else {

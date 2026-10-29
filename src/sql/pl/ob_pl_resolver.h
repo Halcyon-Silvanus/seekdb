@@ -560,6 +560,7 @@ private:
   int resolve_repeat(const peg::Node *parse_tree, ObPLRepeatStmt *stmt, ObPLFunctionAST &func);
   int resolve_loop(const peg::Node *parse_tree, ObPLLoopStmt *stmt, ObPLFunctionAST &func);
   int resolve_return(const peg::Node *parse_tree, ObPLReturnStmt *stmt, ObPLFunctionAST &func);
+  int resolve_do(const peg::Node *parse_tree, ObPLDoStmt *stmt, ObPLFunctionAST &func);
   int resolve_sql(const peg::Node *parse_tree, ObPLSqlStmt *stmt, ObPLFunctionAST &func);
   int resolve_declare_cond(const peg::Node *parse_tree, ObPLPackageAST &package_ast);
   int resolve_declare_cond(const peg::Node *parse_tree,

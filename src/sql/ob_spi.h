@@ -507,7 +507,8 @@ public:
                          bool is_cursor,
                          pl::ObPLBlockNS *secondary_namespace,
                          ObSPIPrepareResult &prepare_result,
-                         pl::ObPLAstUnit &func);
+                         const peg::Node &origin,
+                         const ObString &origin_source);
   static int spi_execute_with_expr_idx(pl::ObPLExecCtx *ctx,
                                        const ObString &ps_sql,
                                        int64_t type,
@@ -895,7 +896,9 @@ private:
                                ObIPLSqlRuntime *pl_sql_runtime,
                                const ObString &sql,
                                pl::ObPLBlockNS *secondary_namespace,
-                               ObSPIPrepareResult &prepare_result);
+                               ObSPIPrepareResult &prepare_result,
+                               const peg::Node &origin,
+                               const ObString &origin_source);
 
 
   static int spi_inner_execute(pl::ObPLExecCtx *ctx,
@@ -1070,6 +1073,7 @@ private:
 
   static int resolve_exec_params(const common::ObIArray<const peg::Node *> &bindings,
                                  const common::ObString &source,
+                                 const common::ObString &origin_source,
                                  ObSQLSessionInfo &session,
                                  share::schema::ObSchemaGetterGuard &schema_guard,
                                  sql::ObRawExprFactory &expr_factory,

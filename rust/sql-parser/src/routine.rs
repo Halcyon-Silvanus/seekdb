@@ -14,6 +14,23 @@
 
 use crate::node::{Kind, Node};
 
+pub(crate) fn do_statement(expressions: Vec<Node>) -> Result<Node, &'static str> {
+    for expression in &expressions {
+        let mut root = expression;
+        while root.kind == Kind::Parenthesized {
+            root = crate::expression::parenthesized_expression(root);
+        }
+        if root.kind == Kind::Column {
+            return Err("DO cannot evaluate a bare column reference");
+        }
+    }
+    Ok(Node::new(Kind::PlDo, expressions))
+}
+
+pub(crate) fn do_expressions(node: &Node) -> &[Node] {
+    &node.children
+}
+
 pub(crate) fn block_declarations(node: &Node) -> &[Node] {
     &node.children[0].children
 }

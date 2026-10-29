@@ -2112,6 +2112,13 @@ peg::parser! {
             items:(diagnostics_item(condition.is_some()) ++ ("," _)) {
                 Node::new(Kind::Diagnostics,vec![Node::new(Kind::Bool,vec![]).value(u64::from(condition.is_some())),Node::new(Kind::Bool,vec![]).value(current.unwrap_or(1)),Node::optional(condition),Node::new(Kind::Link,items)])
             }
+        rule pl_do(level: usize) -> Node = kw("do") values:(pl_expression(level) ++ ("," _)) ("," _)* {?
+            crate::routine::do_statement(values)
+        }
+        rule anonymous_statement() -> Node = start:position!() value:(pl_do(0) / pl_signal()) end:position!() {
+            Node::new(Kind::PlBlock,vec![Node::new(Kind::PlDeclarations,vec![]),
+                Node::new(Kind::PlStatements,vec![value.at(start,end)])]).at(start,end)
+        }
         rule pl_statement(level: usize) -> Node = depth(level) start:position!() value:(
             label:pl_ident() ":" _ body:(pl_block(level+1) / pl_control(level+1)) tail:pl_ident()? {
                 Node::new(if body.kind==Kind::PlBlock { Kind::PlLabeledBlock } else { Kind::PlLabeledControl },vec![Node::name(label),body,tail.map(Node::name).unwrap_or_else(Node::missing)])
@@ -2128,10 +2135,10 @@ peg::parser! {
             / kw("fetch") (kw("next") kw("from") / kw("from"))? name:pl_ident() kw("into") variables:(pl_expression(level+1) ++ ("," _)) {
                 Node::new(Kind::PlFetch,vec![Node::name(name),Node::new(Kind::IntoVariables,vec![Node::new(Kind::PlInto,variables)])])
             }
-            / pl_call() / pl_signal() / pl_setting(level+1)
+            / pl_call() / pl_signal() / pl_do(level+1) / pl_setting(level+1)
             / statement:sql_statement() { Node::new(Kind::PlSql,vec![statement]) }
         ) end:position!() { value.at(start,end) }
-        pub rule routine_body() -> Node = _ value:(package_block() / kw("create") value:routine_definition(true) { value }
+        pub rule routine_body() -> Node = _ value:(anonymous_statement() / package_block() / kw("create") value:routine_definition(true) { value }
             / value:routine_definition(true) { value.children.into_iter().last().unwrap() } / pl_statement(0)) (";" _)* { value }
         rule prepared_statement() -> Node
             = kw("prepare") name:ident() kw("from") source:(string() / user_variable()) {
@@ -2230,7 +2237,7 @@ peg::parser! {
                 }.into_node())
             }
         rule sql_statement() -> Node = select(0) / insert() / update() / delete() / transaction() / ddl() / account_statement() / role_statement() / setting() / explain() / show() / alter_system() / prepared_statement() / diagnostics() / analyze() / lock_tables() / load_data() / kill() / purge()
-        rule statement() -> Node = _ value:(package_statement() / routine_statement() / pl_call() / sql_statement()) { value }
+        rule statement() -> Node = _ value:(package_statement() / routine_statement() / pl_call() / anonymous_statement() / sql_statement()) { value }
         #[no_eof]
         pub rule statement_end() -> usize = (statement() / _) (";" / ![_]) end:position!() { end }
         pub rule query() -> Node = value:statement() (";" _)* { value }

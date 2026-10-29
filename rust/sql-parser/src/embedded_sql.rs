@@ -17,7 +17,7 @@ use std::collections::HashMap;
 use crate::bridge::ffi::{
     AliasForm, EmbeddedSql, SqlReference, SqlReferenceKind as Role, SqlSymbol, SqlSymbolBinding,
 };
-use crate::inspect::embedded_sql_references;
+use crate::inspect::{embedded_sql_references, syntax_literals};
 use crate::node::{Kind, Node};
 use crate::query::{name_is_wildcard, name_parts, projection_alias_form, projection_expression};
 
@@ -59,7 +59,25 @@ pub fn rewrite_embedded_sql<'a>(
     statement: &'a Node,
     sql: &str,
     symbols: &[SqlSymbolBinding<'_>],
+    origin: &'a Node,
 ) -> EmbeddedSql<'a> {
+    fn placeholders(node: &Node) -> Vec<&Node> {
+        let mut nodes: Vec<_> = syntax_literals(node).into_iter()
+            .map(|literal| literal.node)
+            .filter(|node| node.kind == Kind::Parameter)
+            .collect();
+        nodes.sort_by_key(|node| node.start);
+        nodes
+    }
+    let parsed_parameters = placeholders(statement);
+    let original_parameters = placeholders(origin);
+    if parsed_parameters.len() != original_parameters.len() {
+        return EmbeddedSql { parameters_match: false, sql: String::new(), bindings: Vec::new() };
+    }
+    let original_parameters: HashMap<*const Node, &Node> = parsed_parameters.into_iter()
+        .zip(original_parameters)
+        .map(|(parsed, original)| (parsed as *const Node, original))
+        .collect();
     let parameters: HashMap<*const Node, i64> = symbols
         .iter()
         .map(|binding| (binding.node as *const Node, binding.parameter))
@@ -68,6 +86,11 @@ pub fn rewrite_embedded_sql<'a>(
     for reference in embedded_sql_references(statement) {
         let node = reference.node;
         match reference.kind {
+            Role::Parameter => {
+                let original = original_parameters[&(node as *const Node)];
+                replacements.push((node.start, node.end,
+                    Replacement::Parameter(original, crate::expression::placeholder_index(original) as i64)));
+            }
             Role::Into => replacements.push((node.start, node.end, Replacement::Into)),
             Role::Column if !name_is_wildcard(node) => {
                 let names = name_parts(node);
@@ -105,7 +128,7 @@ pub fn rewrite_embedded_sql<'a>(
                 output.push(':');
                 output.push_str(&index.to_string());
                 bindings.push(SqlReference {
-                    kind: Role::Column,
+                    kind: if node.kind == Kind::Parameter { Role::Parameter } else { Role::Column },
                     node,
                 });
             }
@@ -136,6 +159,7 @@ pub fn rewrite_embedded_sql<'a>(
     }
     output.push_str(&sql[offset..]);
     EmbeddedSql {
+        parameters_match: true,
         sql: output,
         bindings,
     }

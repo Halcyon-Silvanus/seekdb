@@ -777,6 +777,7 @@ pub(crate) mod ffi {
         PlLoop,
         PlRepeat,
         PlReturn,
+        PlDo,
         PlLeave,
         PlIterate,
         PlLabeledBlock,
@@ -1406,6 +1407,7 @@ pub(crate) mod ffi {
         SchemaId,
     }
     enum SqlReferenceKind {
+        Parameter,
         Column,
         Relation,
         Function,
@@ -1425,6 +1427,7 @@ pub(crate) mod ffi {
         parameter: i64,
     }
     struct EmbeddedSql<'a> {
+        parameters_match: bool,
         sql: String,
         bindings: Vec<SqlReference<'a>>,
     }
@@ -1974,6 +1977,7 @@ pub(crate) mod ffi {
             statement: &'a Node,
             sql: &str,
             symbols: &[SqlSymbolBinding],
+            origin: &'a Node,
         ) -> EmbeddedSql<'a>;
         fn transaction_setting(statement: &Node) -> TransactionSetting;
         fn empty_query_has_comment(statement: &Node) -> bool;
@@ -2019,6 +2023,7 @@ pub(crate) mod ffi {
         fn control_alternative(node: &Node) -> &Node;
         fn case_branches(node: &Node) -> &[Node];
         fn return_expression(node: &Node) -> &Node;
+        fn do_expressions(node: &Node) -> &[Node];
         fn loop_target(node: &Node) -> &Node;
         fn cursor_name(node: &Node) -> &Node;
         fn cursor_query(node: &Node) -> &Node;
@@ -2477,7 +2482,7 @@ use crate::routine::{
     control_has_alternative, cursor_fetch_targets, cursor_name, cursor_query, declaration_default,
     declaration_has_default, declaration_names, declaration_type, handler_body, handler_conditions,
     handler_continues, interface_name, labeled_body, loop_target, package_declarations,
-    package_has_initialization, package_initialization, return_expression, routine_call_arguments,
+    package_has_initialization, package_initialization, return_expression, do_expressions, routine_call_arguments,
     routine_call_names, routine_parameter_default, routine_parameter_has_default,
     routine_parameter_input, routine_parameter_name, routine_parameter_output,
     routine_parameter_type, routine_sql_statement, row_type_names, signal_condition,

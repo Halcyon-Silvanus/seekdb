@@ -372,6 +372,10 @@ int ObPLResolver::resolve(const peg::Node *parse_tree, ObPLFunctionAST &func)
         RESOLVE_STMT(PL_INTERFACE, resolve_interface, ObPLInterfaceStmt);
         break;
       }
+      case peg::NodeKind::PlDo: {
+        RESOLVE_STMT(PL_DO, resolve_do, ObPLDoStmt);
+        break;
+      }
       case peg::NodeKind::PlReturn: {
         RESOLVE_STMT(PL_RETURN, resolve_return, ObPLReturnStmt);
         // OB_ERR_FUNCTION_UNKNOWN need set too.
@@ -2396,6 +2400,22 @@ int ObPLResolver::resolve_loop(const peg::Node *node, ObPLLoopStmt *stmt, ObPLFu
   return ret;
 }
 
+int ObPLResolver::resolve_do(const peg::Node *node, ObPLDoStmt *stmt, ObPLFunctionAST &func)
+{
+  int ret = OB_SUCCESS;
+  if (OB_ISNULL(node) || OB_ISNULL(stmt) || OB_ISNULL(current_block_)) {
+    ret = OB_ERR_UNEXPECTED;
+  } else {
+    for (const auto &value : peg::do_expressions(*node)) {
+      ObRawExpr *expr = nullptr;
+      OZ(resolve_expr(&value, func, expr, combine_line_and_col(value), true, nullptr));
+      OZ(stmt->add_value(func.get_expr_count() - 1));
+      if (OB_FAIL(ret)) { break; }
+    }
+  }
+  return ret;
+}
+
 int ObPLResolver::resolve_return(const peg::Node *parse_tree, ObPLReturnStmt *stmt, ObPLFunctionAST &func)
 {
   int ret = OB_SUCCESS;
@@ -2551,7 +2571,8 @@ int ObPLResolver::resolve_static_sql(const peg::Node *parse_tree, ObPLSql &stati
                                             is_cursor,
                                             &current_block_->get_namespace(),
                                             prepare_result,
-                                            func))) {
+                                            *parse_tree,
+                                            source_))) {
         if (OB_ERR_TOO_BIG_DISPLAYWIDTH == ret) {
           LOG_USER_ERROR(OB_ERR_TOO_BIG_DISPLAYWIDTH, sql_text.ptr(), OB_MAX_BIT_LENGTH);
         } else {
@@ -3717,7 +3738,8 @@ int ObPLResolver::resolve_cursor_def(const ObString &cursor_name,
                                           true, /*is_cursor*/
                                           &sql_ns,
                                           prepare_result,
-                                          func))) {
+                                          *sql_node,
+                                          source_))) {
     } else if (!prepare_result.into_exprs_.empty()) {
       ret = OB_ER_SP_BAD_CURSOR_SELECT;
       LOG_USER_ERROR(OB_ER_SP_BAD_CURSOR_SELECT);
@@ -4953,7 +4975,8 @@ int ObPLResolver::transform_subquery_expr(const peg::Node *node,
                               false,
                               &current_block_->get_namespace(),
                               prepare_result,
-                              func))) {
+                              *node,
+                              source_))) {
     } else if (0 != prepare_result.into_exprs_.count()) {
       ret = OB_ERR_UNEXPECTED;
     } else if (OB_FAIL(func.add_sql_exprs(prepare_result.exec_params_))) {

@@ -99,6 +99,7 @@ pub(crate) fn embedded_sql_references(statement: &Node) -> Vec<bridge::ffi::SqlR
             visit(child, references);
         }
         let kind = match node.kind {
+            Kind::Parameter => Role::Parameter,
             Kind::Column => Role::Column,
             Kind::Relation => Role::Relation,
             Kind::Function => Role::Function,
