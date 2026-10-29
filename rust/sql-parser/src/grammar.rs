@@ -1072,6 +1072,11 @@ peg::parser! {
                     if !groups.is_empty() { children.push(Node::new(Kind::HintQbGroups,groups)); }
                     Node::new(kind,children)
                 }
+            / kind:(kw("use_distributed_dml") { Kind::UseDistributedDml }
+                / kw("no_use_distributed_dml") { Kind::NoUseDistributedDml })
+                qb:("(" _ qb:hint_qb()? ")" _ { qb })? !"(" {
+                    Node::new(kind,vec![Node::optional(qb.flatten())])
+                }
             / kind:(kw("no_rewrite") { Kind::NoRewrite }
                 / kw("outer_to_inner") { Kind::OuterToInner } / kw("no_outer_to_inner") { Kind::NoOuterToInner }
                 / kw("unnest") { Kind::Unnest } / kw("no_unnest") { Kind::NoUnnest }

@@ -6827,6 +6827,7 @@ ObItemType semantic_hint_type(peg::NodeKind kind)
     case peg::NodeKind::NoPushLimit: return T_NO_PUSH_LIMIT;
     case peg::NodeKind::NoPushPredCte: return T_NO_PUSH_PRED_CTE;
     case peg::NodeKind::NoPushSubq: return T_NO_PUSH_SUBQ;
+    case peg::NodeKind::NoUseDistributedDml: return T_NO_USE_DISTRIBUTED_DML;
     case peg::NodeKind::NoReplaceConst: return T_NO_REPLACE_CONST;
     case peg::NodeKind::NoRewrite: return T_NO_REWRITE;
     case peg::NodeKind::NoSemiToInner: return T_NO_SEMI_TO_INNER;
@@ -6864,6 +6865,7 @@ ObItemType semantic_hint_type(peg::NodeKind kind)
     case peg::NodeKind::PushLimit: return T_PUSH_LIMIT;
     case peg::NodeKind::PushPredCte: return T_PUSH_PRED_CTE;
     case peg::NodeKind::PushSubq: return T_PUSH_SUBQ;
+    case peg::NodeKind::UseDistributedDml: return T_USE_DISTRIBUTED_DML;
     case peg::NodeKind::ReplaceConst: return T_REPLACE_CONST;
     case peg::NodeKind::SemiToInner: return T_SEMI_TO_INNER;
     case peg::NodeKind::SimplifyDistinct: return T_SIMPLIFY_DISTINCT;
@@ -7368,6 +7370,8 @@ int ObDMLResolver::resolve_optimize_hint(const peg::Node &hint_node,
     case peg::NodeKind::NoHashSet:
     case peg::NodeKind::PushSubq:
     case peg::NodeKind::NoPushSubq:
+    case peg::NodeKind::UseDistributedDml:
+    case peg::NodeKind::NoUseDistributedDml:
       OZ(resolve_normal_optimize_hint(hint_node, opt_hint));
       break;
     default:

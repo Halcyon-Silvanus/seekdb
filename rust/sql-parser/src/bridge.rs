@@ -668,6 +668,8 @@ pub(crate) mod ffi {
         NoTransformDistinctAgg,
         PushSubq,
         NoPushSubq,
+        UseDistributedDml,
+        NoUseDistributedDml,
         Inline,
         UseDas,
         NoUseDas,
