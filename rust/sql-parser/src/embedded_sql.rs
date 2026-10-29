@@ -21,7 +21,7 @@ use crate::inspect::embedded_sql_references;
 use crate::node::{Kind, Node};
 use crate::query::{name_is_wildcard, name_parts, projection_alias_form, projection_expression};
 
-pub(crate) fn embedded_sql_symbols<'a>(statement: &'a Node, sql: &str) -> Vec<SqlSymbol<'a>> {
+pub fn embedded_sql_symbols<'a>(statement: &'a Node, sql: &str) -> Vec<SqlSymbol<'a>> {
     let mut symbols = Vec::new();
     for reference in embedded_sql_references(statement) {
         let node = reference.node;
@@ -55,7 +55,7 @@ enum Replacement<'a> {
     Into,
 }
 
-pub(crate) fn rewrite_embedded_sql<'a>(
+pub fn rewrite_embedded_sql<'a>(
     statement: &'a Node,
     sql: &str,
     symbols: &[SqlSymbolBinding<'_>],

@@ -293,17 +293,9 @@ int ObDDLResolver::resolve_default_value(const peg::Node &node, ObDefaultValueRe
     ObString owned_text;
     int16_t scale = -1;
     if (literal.binary_notation != peg::BinaryNotation::None) {
-      const bool bits = literal.binary_notation == peg::BinaryNotation::Bit;
-      const int64_t length = bits ? ob_parse_bit_string_len(text.length()) : ob_parse_binary_len(text.length());
-      char *bytes = static_cast<char *>(allocator_->alloc(length + 1));
-      if (OB_ISNULL(bytes)) {
-        ret = OB_ALLOCATE_MEMORY_FAILED;
-      } else {
-        if (bits) { ob_parse_bit_string(text.ptr(), text.length(), bytes); }
-        else { ob_parse_binary(text.ptr(), text.length(), bytes); }
-        bytes[length] = '\0';
-        text.assign_ptr(bytes, length);
-      }
+      const auto bytes = peg::decode_binary_literal(literal.text, literal.binary_notation);
+      OZ (ob_write_string(*allocator_,
+          ObString(bytes.size(), reinterpret_cast<const char *>(bytes.data())), text, true));
     }
     if (OB_SUCC(ret)) {
       const auto kind = value.kind == Kind::CharsetLiteral ? peg::LiteralKind::String : literal.kind;

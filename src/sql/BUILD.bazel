@@ -176,7 +176,7 @@ cc_library(
     deps = [
         ":sql_runtime_interface",
         "//src/sql/optimizer:optimizer_internal_headers",
-        "//src/sql/parser:retrieval_composition_parser_headers",
+        "//rust:sql_parser_headers",
     ],
     tags = ["manual"],
     visibility = ["//src/observer:__pkg__"],

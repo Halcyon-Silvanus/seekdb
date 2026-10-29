@@ -58,9 +58,8 @@ struct SqlInfo: public ParameterizationHashValue
     ps_not_param_offsets_ = that.ps_not_param_offsets_;
     fixed_param_idx_ = that.fixed_param_idx_;
     no_check_type_offsets_ = that.no_check_type_offsets_;
-    need_check_type_param_offsets_ = that.need_check_type_param_offsets_;
+    token_actions_ = that.token_actions_;
     ps_need_parameterized_ = that.ps_need_parameterized_;
-    parse_infos_ = that.parse_infos_;
     need_check_fp_ = that.need_check_fp_;
     fmt_int_or_ch_decint_idx_ = that.fmt_int_or_ch_decint_idx_;
     return *this;
@@ -81,7 +80,7 @@ struct SqlInfo: public ParameterizationHashValue
   common::ObSEArray<int64_t, 32> ps_not_param_offsets_; //used for ps mode not param
   common::ObSEArray<int64_t, 32> fixed_param_idx_;
   common::ObSEArray<int64_t, 32> no_check_type_offsets_;
-  common::ObBitSet<> need_check_type_param_offsets_;
+  common::ObSEArray<peg::ParameterAction, 32> token_actions_;
   // Check whether the ps parameter can be a parameterized template.
   // this is the optimization of the following statement hitting the same plan_cache:
   // prepare stmt from 'select * from t1 where c1 = 1 and c2 = 1';
@@ -92,7 +91,6 @@ struct SqlInfo: public ParameterizationHashValue
   // because this will cause the parameterized SQL to report a syntax error in the parser.
   // such as prepare stmt from 'select * from t1 where c1 = ? and c2 is null';
   bool ps_need_parameterized_;
-  common::ObSEArray<ObPCParseInfo, 4> parse_infos_;
   bool need_check_fp_;
 
   SqlInfo();
@@ -159,24 +157,6 @@ public:
   static int formalize_sql_text(ObIAllocator &allocator, const ObString &src_sql,
                                 ObString &fmt_sql, const SqlInfo &sql_info,
                                 const FPContext &fp_ctx);
-  static int construct_not_param(const ObString &no_param_sql,
-                                  ObPCParam *pc_param,
-                                  char *buf,
-                                  int32_t buf_len,
-                                  int32_t &pos,
-                                  int32_t &idx);
-  static int construct_neg_param(const ObString &no_param_sql,
-                                  ObPCParam *pc_param,
-                                  char *buf,
-                                  int32_t buf_len,
-                                  int32_t &pos,
-                                  int32_t &idx);
-  static int construct_trans_neg_param(const ObString &no_param_sql,
-                                      ObPCParam *pc_param,
-                                      char *buf,
-                                      int32_t buf_len,
-                                      int32_t &pos,
-                                      int32_t &idx);
   static int construct_sql(const common::ObString &no_param_sql,
                            common::ObIArray<ObPCParam *> &not_params,
                            char *buf,
@@ -187,17 +167,6 @@ public:
                            int32_t buf_len,
                            int32_t &pos,
                            bool& can_format);
-  static int search_vector(const char* start, const int64_t buf_len,
-                           int64_t& vec_start, int64_t& vec_end,
-                           bool &is_valid, int64_t& qm_cnt);
-  static bool is_in_expr_prefix(char c);
-  static int search_in_expr_pos(const char* buf, const int64_t buf_len,
-                                int64_t& pos, bool& found);
-  static int construct_sql_for_pl(const common::ObString &no_param_sql,
-                                  common::ObIArray<ObPCParam *> &not_params,
-                                  char *buf,
-                                  int32_t buf_len,
-                                  int32_t &pos);
   static int parameterize_syntax_tree(common::ObIAllocator &allocator,
                                       bool is_transform_outline,
                                       ObPlanCacheCtx &pc_ctx,
@@ -209,7 +178,6 @@ public:
                                   ParamStore &params,
                                   ObPlanCacheCtx &pc_ctx);
   static int construct_no_check_type_params(const ObIArray<int64_t> &no_check_type_offsets,
-                                            const ObBitSet<> &need_check_type_offsets,
                                             ParamStore &params);
   static SQL_EXECUTION_MODE get_sql_execution_mode(ObPlanCacheCtx &pc_ctx);
   static bool is_prepare_mode(SQL_EXECUTION_MODE mode);
@@ -217,7 +185,6 @@ public:
   static bool is_text_mode(SQL_EXECUTION_MODE mode);
 private:
   DISALLOW_COPY_AND_ASSIGN(ObSqlParameterization);
-  static bool need_fast_parser(const ObString &sql);
 };
 
 }

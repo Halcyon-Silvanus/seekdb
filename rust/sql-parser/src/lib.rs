@@ -13,6 +13,9 @@
 // limitations under the License.
 
 mod access;
+mod batch;
+mod parameterize;
+mod prefix;
 mod bridge;
 mod command;
 mod ddl;
@@ -28,4 +31,12 @@ mod routine;
 mod scan;
 mod statistics;
 
-pub use bridge::ffi::SqlMode;
+pub use bridge::ffi::*;
+pub use bridge::{parse_sql};
+pub use batch::{compress_insert, compress_values, restore_parameter_sql};
+pub use prefix::{classify_statement, normalized_sql_length, is_single_statement, split_sql, fast_parameterization_allowed};
+pub use parameterize::{parameterize, classify_parameter_tokens, rewrite_parameter_sql, fold_parameter_in_lists, unchecked_parameter_types};
+pub use scan::{begin_scan, finish_scan, Scanner};
+pub use fts::{parse_search_query};
+pub use embedded_sql::{embedded_sql_symbols, rewrite_embedded_sql};
+pub use lex::{decode_binary_literal, identifier_requires_quotes, normalize_numeric_sign, integer_literal_is_nonnegative};

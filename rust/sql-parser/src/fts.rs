@@ -53,7 +53,7 @@ peg::parser! {
     }
 }
 
-pub(crate) fn parse_search_query(input: &[u8]) -> SearchTree {
+pub fn parse_search_query(input: &[u8]) -> SearchTree {
     let parsed = std::str::from_utf8(input)
         .map_err(|error| error.to_string())
         .and_then(|input| search::query(input).map_err(|error| error.to_string()));

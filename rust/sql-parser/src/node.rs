@@ -316,7 +316,7 @@ impl Node {
         Ok(self.at(start, end))
     }
 
-    pub fn name(name: Name) -> Self {
+    pub(crate) fn name(name: Name) -> Self {
         Self::new(Kind::Ident, vec![])
             .text(name.text)
             .value(u64::from(name.quoted))
@@ -343,7 +343,7 @@ impl Node {
             .expression(start, end)
     }
 
-    pub fn column(
+    pub(crate) fn column(
         names: Vec<Name>,
         star: bool,
         start: usize,
@@ -452,7 +452,7 @@ impl Node {
         Self::new(Kind::JsonQuery, children).expression(start, end)
     }
 
-    pub fn call(
+    pub(crate) fn call(
         mut name: Vec<Name>,
         modifier: Option<Kind>,
         mut arguments: Vec<Self>,
@@ -723,7 +723,7 @@ impl Node {
         )
     }
 
-    pub fn relation(names: Vec<Name>) -> Result<Self, &'static str> {
+    pub(crate) fn relation(names: Vec<Name>) -> Result<Self, &'static str> {
         if names.len() > 2 {
             return Err("table names have at most two parts");
         }
@@ -733,7 +733,7 @@ impl Node {
         Ok(Self::new(Kind::Relation, children).text(text))
     }
 
-    pub fn table(source: Self, alias: Option<Name>) -> Result<Self, &'static str> {
+    pub(crate) fn table(source: Self, alias: Option<Name>) -> Result<Self, &'static str> {
         let mut children = vec![source];
         if let Some(alias) = alias {
             children.push(Self::new(Kind::TableAlias, vec![Self::name(alias)]));
@@ -767,7 +767,7 @@ impl Node {
         Self::new(Kind::Projection, vec![value]).at(start, end)
     }
 
-    pub fn select(query: Select) -> Result<Self, &'static str> {
+    pub(crate) fn select(query: Select) -> Result<Self, &'static str> {
         if query.into.is_some() && query.into_end.is_some() {
             return Err("one INTO clause");
         }

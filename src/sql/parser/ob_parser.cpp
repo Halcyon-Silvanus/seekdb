@@ -20,7 +20,6 @@
 #include "ob_parser.h"
 #include "lib/utility/ob_smart_call.h"
 #include "lib/oblog/ob_log.h"
-#include "parse_malloc.h"
 #include "parse_node.h"
 #include "ob_fast_parser.h"
 #include "rust/sql_parser.h"
@@ -41,488 +40,39 @@ ObParser::ObParser(common::ObIAllocator &allocator,
 ObParser::~ObParser()
 {}
 
-#define ISSPACE(c) ((c) == ' ' || (c) == '\n' || (c) == '\r' || (c) == '\t' || (c) == '\f' || (c) == '\v')
+namespace {
+rust::Slice<const uint8_t> sql_bytes(const ObString &sql)
+{
+  return rust::Slice<const uint8_t>(reinterpret_cast<const uint8_t *>(sql.ptr()), sql.length());
+}
+
+peg::SqlMode parser_mode(ObSQLMode mode)
+{
+  return peg::SqlMode{bool(mode & SMO_ANSI_QUOTES), bool(mode & SMO_NO_BACKSLASH_ESCAPES),
+                      bool(mode & SMO_PIPES_AS_CONCAT), bool(mode & SMO_HIGH_NOT_PRECEDENCE)};
+}
+}
 
 bool ObParser::is_pl_stmt(const ObString &stmt, bool *is_create_func, bool *is_call_procedure)
 {
-  int ret = OB_SUCCESS;
-
-  State state = S_START;
-  State save_state = state;
-
-  const char *p = stmt.ptr();
-  const char *p_start = p;
-  const char *p_end = p + stmt.length();
-  bool is_pl = false;
-  bool is_not_pl = false;
-  const char *p_normal_start = nullptr;
-
-  while (p < p_end && !is_pl && !is_not_pl) {
-    switch (state) {
-      case S_START:
-      case S_CREATE:
-      case S_DD:
-      case S_BEGIN:
-      case S_DROP:
-      case S_ALTER:
-      case S_UPDATE: {
-        if (ISSPACE(*p)) {
-          p++;
-        } else {
-          if ('-' == *p) {
-            if ((p + 1) < p_end && '-' == *(p + 1)) {
-              save_state = state;
-              state = S_COMMENT;
-              p += 2;
-            }
-          } else if ('/' == *p) {
-            if ((p + 1) < p_end && '*' == *(p + 1)) {
-              save_state = state;
-              state = S_C_COMMENT;
-              p += 2;
-            }
-          } else if ('#' == *p) {
-            save_state = state;
-            state = S_COMMENT;
-            p += 1;
-          }
-          if (state != S_COMMENT && state != S_C_COMMENT) {
-            p_normal_start = p;
-            save_state = state;
-            state = S_NORMAL;
-            p++;
-          }
-        }
-      } break;
-      case S_COMMENT: {
-        if (*p == '\n') {
-          state = save_state;
-        }
-        p++;
-      } break;
-      case S_C_COMMENT: {
-        if (*p == '*') {
-          if ((p + 1 < p_end) && '/' == *(p + 1)) {
-            state = save_state;
-            p++;
-          }
-        }
-        p++;
-      } break;
-      case S_NORMAL: {
-        if (ISSPACE(*p) || (p == (p_end - 1))) {
-          int64_t length = (p - p_normal_start) + (ISSPACE(*p) ? 0 : 1);
-          ObString normal(length, p_normal_start);
-          state = transform_normal(
-            save_state, normal, is_pl, is_not_pl, is_create_func, is_call_procedure);
-        }
-        p++;
-      } break;
-      default: {
-        is_not_pl = true;
-      } break;
-    }
-  }
-  return is_pl;
+  const auto info = peg::classify_statement(sql_bytes(stmt), peg::SqlMode{});
+  if (is_create_func != nullptr) *is_create_func = info.pl == peg::PlPrefix::Function;
+  if (is_call_procedure != nullptr) *is_call_procedure = info.pl == peg::PlPrefix::Call;
+  return info.pl != peg::PlPrefix::None;
 }
 
-// Check if stmt is explain statement.
-// On success, set p_normal_start to first char after explain syntax; on error, set p_normal_start to null.
-//
-// For example, call is_explain_stmt() with SQL query below would return true,
-// and p_normal_start would be set as shown below.
-//
-//   explain update t1 set b=0 where a=1;update t1 set b=0 where a=2;
-//           ^
-//           p_normal_start
-//
-// Note that, when using is_explain_stmt(), we assume given SQL query has no syntax errors.
-bool ObParser::is_explain_stmt(const ObString &stmt, const char *&p_normal_start)
+bool ObParser::is_explain_stmt(const ObString &stmt, const char *&body)
 {
-  State state = S_START;
-  State save_state = state;
-
-  const char *p = stmt.ptr();
-  const char *p_start = p;
-  const char *p_end = p + stmt.length();
-  bool is_explain = false;
-  bool has_error = false;
-  p_normal_start = nullptr;
-  int i = 0;
-
-  static const char *lower[S_MAX] = { nullptr };
-  static const char *upper[S_MAX] = { nullptr };
-  static bool inited = false;
-
-  if (!inited) {
-    lower[S_EXPLAIN] = "explain";
-    lower[S_EXPLAIN_BASIC] = "basic";
-    lower[S_EXPLAIN_EXTENDED] = "extended";
-    lower[S_EXPLAIN_EXTENDED_NOADDR] = "extended_noaddr";
-    lower[S_EXPLAIN_PARTITIONS] = "partitions";
-
-    upper[S_EXPLAIN] = "EXPLAIN";
-    upper[S_EXPLAIN_BASIC] = "BASIC";
-    upper[S_EXPLAIN_EXTENDED] = "EXTENDED";
-    upper[S_EXPLAIN_EXTENDED_NOADDR] = "EXTENDED_NOADDR";
-    upper[S_EXPLAIN_PARTITIONS] = "PARTITIONS";
-    inited = true;
-  }
-
-  while (p < p_end && !has_error) {
-    switch (state) {
-      case S_START:
-      case S_EXPLAIN_FORMAT: {
-        if (ISSPACE(*p)) {
-          p++;
-        } else {
-          if (!is_comment(p, p_end, save_state, state, S_INVALID) && state != S_INVALID) {
-            if (S_START == state) {
-              // p is at first key token (e.g. not comments or white spaces),
-              // move to S_EXPLAIN to check if there is 'explain' keyword
-              save_state = state;
-              state = S_EXPLAIN;
-            } else if (S_EXPLAIN_FORMAT == state) {
-              if (lower[S_EXPLAIN_BASIC][0] == *p || upper[S_EXPLAIN_BASIC][0] == *p) {
-                save_state = state;
-                state = S_EXPLAIN_BASIC;
-              } else if (lower[S_EXPLAIN_EXTENDED][0] == *p || upper[S_EXPLAIN_EXTENDED][0] == *p) {
-                save_state = state;
-                state = S_EXPLAIN_EXTENDED;
-              } else if (lower[S_EXPLAIN_PARTITIONS][0] == *p || upper[S_EXPLAIN_PARTITIONS][0] == *p) {
-                save_state = state;
-                state = S_EXPLAIN_PARTITIONS;
-              } else {
-                save_state = state;
-                state = S_NORMAL;
-              }
-            }
-          }
-        }
-      } break;
-      // since we have assumed SQL has no syntax errors,
-      // we will always find end tokens (e.g. '\n', '*/') for comments.
-      case S_COMMENT: {
-        if (*p == '\n') {
-          // end of '--' comments
-          state = save_state;
-        }
-        p++;
-      } break;
-      case S_C_COMMENT: {
-        if (*p == '*') {
-          if ((p + 1 < p_end) && '/' == *(p + 1)) {
-            // end of '/**/' comments
-            state = save_state;
-            p++;
-          }
-        }
-        p++;
-      } break;
-      case S_EXPLAIN:
-      case S_EXPLAIN_BASIC:
-      case S_EXPLAIN_EXTENDED:
-      case S_EXPLAIN_PARTITIONS: {
-        State next_state = S_NORMAL;
-        if (S_EXPLAIN == state) {
-          // after checking 'explain' keyword,
-          // we should move to S_EXPLAIN_FORMAT to check extra keywords such as 'basic'
-          next_state = S_EXPLAIN_FORMAT;
-        } else if (S_EXPLAIN_EXTENDED == state) {
-          // after checking 'extended' keyword,
-          // we should move to S_EXPLAIN_EXTENDED_NOADDR to check if 'extended_noaddr' matches
-          next_state = S_EXPLAIN_EXTENDED_NOADDR;
-        }
-        match_state(p,
-                    is_explain,
-                    has_error,
-                    lower,
-                    upper,
-                    i,
-                    save_state,
-                    state,
-                    next_state);
-      } break;
-      case S_EXPLAIN_EXTENDED_NOADDR: {
-        if (i == 0) {
-          // we have just finished checking 'extended' keyword,
-          // continue checking only if next letter is '_'
-          if ('_' == *p) {
-            i = strlen(lower[S_EXPLAIN_EXTENDED]);
-          } else {
-            state = S_NORMAL;
-          }
-        } else {
-          match_state(p,
-                      is_explain,
-                      has_error,
-                      lower,
-                      upper,
-                      i,
-                      save_state,
-                      state,
-                      S_NORMAL);
-        }
-      } break;
-      case S_NORMAL: {
-        // we have finished checking keywords,
-        // find start of first non-space and non-comment char
-        if (ISSPACE(*p)) {
-          p++;
-        } else if (!is_comment(p, p_end, save_state, state, S_NORMAL)) {
-          p_normal_start = p;
-          p = p_end;
-        }
-      } break;
-      case S_INVALID:
-      default: {
-        is_explain = false;
-        has_error = true;
-      } break;
-    }
-  }
-  return is_explain && !has_error;
-}
-
-// Check if p matches keyword at index i.
-// When all letters have matched, set is_explain=true if there hasn't been any errors
-// On success, move state to next_state; on error, move state to S_INVALID.
-//
-// Note that, when using match_state(), we assume index i is valid.
-void ObParser::match_state(const char*&p,
-                           bool &is_explain,
-                           bool &has_error,
-                           const char *lower[S_MAX],
-                           const char *upper[S_MAX],
-                           int &i,
-                           State &save_state,
-                           State &state,
-                           State next_state)
-{
-  if (lower[state][i] == *p || upper[state][i] == *p) {
-    i++;
-    p++;
-    if (i == strlen(lower[state])) {
-      is_explain = !has_error;
-      save_state = state;
-      state = next_state;
-      i = 0;
-    }
-  } else {
-    save_state = state;
-    state = S_INVALID;
-  }
-}
-
-// Check if comments start at p.
-bool ObParser::is_comment(const char *&p,
-                          const char *&p_end,
-                          State &save_state,
-                          State &state,
-                          State error_state)
-{
-  bool found_comment = false;
-  if ('-' == *p) {
-    if ((p + 1) < p_end && '-' == *(p + 1)) {
-      save_state = state;
-      state = S_COMMENT;
-      p += 2;
-      found_comment = true;
-    } else {
-      state = error_state;
-    }
-  } else if ('/' == *p) {
-    if ((p + 1) < p_end && '*' == *(p + 1)) {
-      save_state = state;
-      state = S_C_COMMENT;
-      p += 2;
-      found_comment = true;
-    } else {
-      state = error_state;
-    }
-  }
-  return found_comment;
-}
-
-ObParser::State ObParser::transform_normal(ObString &normal)
-{
-  State state = S_INVALID;
-
-#define IF(len, s, str) \
-  if (len == normal.length() && 0 == STRNCASECMP(normal.ptr(), str, len)) { \
-    state = s; \
-  }
-#define ELSIF(len, s, str) \
-  else if (len == normal.length() && 0 == STRNCASECMP(normal.ptr(), str, len)) { \
-    state = s; \
-  }
-#define ELSE() \
-  else { \
-    LOG_DEBUG("transform_normal", K(state), K(normal)); \
-  }
-
-  IF(6, S_CREATE, "create")
-  ELSIF(8, S_FUNCTION, "function")
-  ELSIF(9, S_PROCEDURE, "procedure")
-  ELSIF(7, S_PACKAGE, "package")
-  ELSIF(7, S_TRIGGER, "trigger")
-  ELSIF(4, S_TYPE, "type")
-  ELSIF(2, S_OR, "or")
-  ELSIF(7, S_REPLACE, "replace")
-  ELSIF(7, S_DEFINER, "definer")
-  ELSIF(2, S_DO, "do")
-  ELSIF(2, S_DD, "dd")
-  ELSIF(5, S_BEGIN, "begin")
-  ELSIF(7, S_DECLARE, "declare")
-  ELSIF(2, S_DECLARE, "<<")
-  ELSIF(4, S_DROP, "drop")
-  ELSIF(4, S_CALL, "call")
-  ELSIF(5, S_ALTER, "alter")
-  ELSIF(6, S_UPDATE, "update")
-  ELSIF(2, S_OF, "of")
-  ELSIF(11, S_EDITIONABLE, "editionable")
-  ELSIF(14, S_EDITIONABLE, "noneditionable")
-  ELSIF(6, S_SIGNAL, "signal")
-  ELSIF(8, S_RESIGNAL, "resignal")
-  ELSIF(5, S_FORCE, "force")
-  ELSE()
-
-  if (S_INVALID == state
-      && normal.length() >= 2 && 0 == STRNCASECMP(normal.ptr(), "<<", 2)) {
-    state = S_DECLARE;
-  }
-  if (S_INVALID == state
-      && normal.length() >= 7 && 0 == STRNCASECMP(normal.ptr(), "definer", 7)) {
-    state = S_DEFINER;
-  }
-
-#undef IF
-#undef ELSIF
-#undef ELSE
-  return state;
-}
-
-ObParser::State ObParser::transform_normal(
-  ObParser::State state, ObString &normal, bool &is_pl, bool &is_not_pl,
-  bool *is_create_func, bool *is_call_procedure)
-{
-  switch (state) {
-    case S_START: {
-      State token = transform_normal(normal);
-      switch (token) {
-        case S_DO:
-        case S_DECLARE:
-        case S_PROCEDURE:
-        case S_FUNCTION:
-        case S_PACKAGE:
-        case S_TRIGGER:
-        case S_TYPE:
-        case S_SIGNAL:
-        case S_RESIGNAL: {
-          is_pl = true;
-        } break;
-        case S_CALL: {
-          is_not_pl = false;
-          is_pl = true;
-          if (is_call_procedure != NULL) {
-            *is_call_procedure = true;
-          }
-        } break;
-        case S_CREATE:
-        case S_DD:
-        case S_BEGIN:
-        case S_DROP:
-        case S_ALTER:
-        case S_UPDATE: {
-          state = token;
-        } break;
-        case S_INVALID:
-        default: {
-          is_not_pl = true;
-        } break;
-      }
-    } break;
-    case S_CREATE: {
-      State token = transform_normal(normal);
-      switch (token) {
-        case S_PROCEDURE:
-        case S_PACKAGE:
-        case S_TRIGGER:
-        case S_TYPE:
-        case S_DEFINER: {
-          is_pl = true;
-        } break;
-        case S_OR:
-        case S_REPLACE:
-        case S_EDITIONABLE:
-        case S_FORCE: {
-          // do nothing ...
-        } break;
-        case S_FUNCTION: {
-          is_pl = true;
-          if (is_create_func != NULL) {
-            *is_create_func = true;
-          }
-        } break;
-        default: {
-          is_not_pl = true;
-        } break;
-      }
-    } break;
-    case S_DD: {
-      if (S_BEGIN == transform_normal(normal)) {
-        is_pl = true;
-      } else {
-        is_not_pl = true;
-      }
-    } break;
-    case S_BEGIN: {
-      if ((normal.length() > 0 && ';' == (normal.ptr()[0]))
-          || (normal.length() >= 4 && 0 == STRNCASECMP(normal.ptr(), "work", 4))) {
-        is_not_pl = true;
-      } else {
-        is_pl = true;
-      }
-    } break;
-    case S_DROP:
-    case S_ALTER: {
-      State token = transform_normal(normal);
-      if (S_PROCEDURE == token || S_FUNCTION == token
-          || S_PACKAGE == token || S_TRIGGER == token || S_TYPE == token || S_DEFINER == token) {
-        is_pl = true;
-      } else {
-        is_not_pl = true;
-      }
-    } break;
-    case S_UPDATE: {
-      if (S_OF == transform_normal(normal)) {
-        is_pl = true;
-      } else {
-        is_not_pl = true;
-      }
-    } break;
-    default: {
-      is_not_pl = true;
-      LOG_WARN_RET(common::OB_ERR_UNEXPECTED, "unexpected state", K(state));
-    } break;
-  }
-  return state;
+  const auto info = peg::classify_statement(sql_bytes(stmt), peg::SqlMode{});
+  const bool explained = info.kind == peg::StatementClass::Explain
+      && info.explain_offset < static_cast<size_t>(stmt.length());
+  body = explained ? stmt.ptr() + info.explain_offset : nullptr;
+  return explained;
 }
 
 bool ObParser::is_single_stmt(const ObString &stmt)
 {
-  int64_t count = 0;
-  // Remove trailing extra spaces, otherwise 'select 1 from dual;   ' this will cause an error
-  int64_t end_trim_offset = stmt.length();
-  while (end_trim_offset > 0 && ISSPACE(stmt[end_trim_offset - 1])) {
-    end_trim_offset--;
-  }
-  for (int64_t i = 0; i < end_trim_offset; i++) {
-    if (';' == stmt[i]) {
-      count++;
-    }
-  }
-  return (0 == count || (1 == count && stmt[end_trim_offset - 1] == ';'));
+  return peg::is_single_statement(sql_bytes(stmt));
 }
 
 int ObParser::split_multiple_stmt(const ObString &stmt,
@@ -531,87 +81,23 @@ int ObParser::split_multiple_stmt(const ObString &stmt,
                                   bool is_ret_first_stmt,
                                   bool is_prepare)
 {
+  UNUSED(is_prepare);
   int ret = OB_SUCCESS;
   parse_stat.reset();
-  if (is_single_stmt(stmt)) {
-    ret = queries.push_back(stmt);
-  } else {
-    int64_t length = stmt.length();
-    while (length > 0 && ISSPACE(stmt[length - 1])) --length;
-    if (length > 0 && stmt[length - 1] == '\0') --length;
-    int64_t last_semicolon = -1;
-    while (length > 0 && (ISSPACE(stmt[length - 1]) || stmt[length - 1] == ';')) {
-      if (stmt[length - 1] == ';') last_semicolon = length - 1;
-      --length;
-    }
-    length = std::max(length, last_semicolon + 1);
-    if (length == 0) {
-      ret = queries.push_back(ObString());
-    } else {
-      auto split = peg::split_sql(
-          rust::Slice<const uint8_t>(reinterpret_cast<const uint8_t *>(stmt.ptr()), length),
-          peg::SqlMode{bool(sql_mode_ & SMO_ANSI_QUOTES), bool(sql_mode_ & SMO_NO_BACKSLASH_ESCAPES),
-                       bool(sql_mode_ & SMO_PIPES_AS_CONCAT), bool(sql_mode_ & SMO_HIGH_NOT_PRECEDENCE)},
-          is_ret_first_stmt);
-      size_t offset = 0;
-      for (size_t end : split.ends) {
-        if (OB_FAIL(queries.push_back(ObString(end - offset, stmt.ptr() + offset)))) break;
-        offset = end;
-      }
-      if (OB_SUCC(ret) && split.failed) {
-        parse_stat.parse_fail_ = true;
-        parse_stat.fail_query_idx_ = queries.count() - 1;
-        parse_stat.fail_ret_ = OB_ERR_PARSE_SQL;
-      }
-    }
+  const auto split = peg::split_sql(sql_bytes(stmt), parser_mode(sql_mode_), is_ret_first_stmt);
+  size_t offset = 0;
+  for (size_t end : split.ends) {
+    if (OB_FAIL(queries.push_back(ObString(end - offset, stmt.ptr() + offset)))) break;
+    offset = end;
+  }
+  if (OB_SUCC(ret) && split.failed) {
+    parse_stat.parse_fail_ = true;
+    parse_stat.fail_query_idx_ = queries.count() - 1;
+    parse_stat.fail_ret_ = OB_ERR_PARSE_SQL;
   }
   return ret;
 }
 
-int ObParser::check_is_insert(common::ObIArray<common::ObString> &queries, bool &is_ins)
-{
-  int ret = OB_SUCCESS;
-  is_ins = false;
-  bool is_replace = false;
-  if (queries.count() < 1) {
-    ret = OB_ERR_UNEXPECTED;
-  } else if (queries.count() > 1) {
-    // query count greater than 1, multi query no optimization
-  } else {
-    ObString &sql_str = queries.at(0);
-    is_ins = (sql_str.length() > 6 && 0 == STRNCASECMP(sql_str.ptr(), "insert", 6));
-    is_replace = (sql_str.length() > 7 && 0 == STRNCASECMP(sql_str.ptr(), "replace", 7));
-    is_ins = is_ins | is_replace;
-  }
-  return ret;
-}
-
-
-int32_t ObParser::get_well_formed_errlen(const ObCharsetInfo *charset_info,
-                                         const char *err_ptr,
-                                         int32_t err_len)
-{
-  static const int32_t max_error_length = 80;
-  err_len = std::min(err_len, max_error_length);
-
-  int32_t res_len = err_len;
-  //issue/29914471
-  if (OB_NOT_NULL(charset_info)) {
-    int err = 0;
-    int32_t well_formed_errlen =
-        static_cast<int32_t>(charset_info->cset->well_formed_len(charset_info,
-                                                                 err_ptr,
-                                                                 err_ptr + err_len,
-                                                                 UINT64_MAX,
-                                                                 &err));
-    if (err != 0
-        && well_formed_errlen < err_len
-        && err_len - well_formed_errlen < charset_info->mbmaxlen) {
-      res_len = well_formed_errlen;
-    }
-  }
-  return res_len;
-}
 int ObParser::parse_sql(const ObString &stmt,
                         ParseResult &parse_result,
                         const bool no_throw_parser_error)
@@ -642,15 +128,7 @@ int ObParser::parse_(const ObString &query,
                     ParsedSql *owner)
 {
   int ret = OB_SUCCESS;
-  // Delete spaces at the end of the SQL statement
-  int64_t len = query.length();
-  while (len > 0 && ISSPACE(query[len - 1])) {
-    --len;
-  }
-  // For compatibility with mysql, after removing trailing spaces from the query sql, the last character can be removed if it is '\0', and only one '\0' can be removed.
-  if (len > 0 && '\0' == query[len - 1]) --len;
-  while (len > 0 && ISSPACE(query[len - 1])) --len;
-
+  const int64_t len = peg::normalized_sql_length(sql_bytes(query));
   ObString stmt(len, query.ptr());
   memset(&parse_result, 0, sizeof(ParseResult));
   parse_result.is_method_opt_parser_ = (METHOD_OPT_MODE == parse_mode);
@@ -673,28 +151,6 @@ int ObParser::parse_(const ObString &query,
     ret = OB_ERR_EMPTY_QUERY;
   }
 
-  if (OB_SUCC(ret) && parse_result.is_dynamic_sql_) {
-    int64_t new_length = stmt.length() * 2;
-    char *buf = (char *)parse_malloc(new_length, parse_result.malloc_pool_);
-    if (OB_UNLIKELY(NULL == buf)) {
-      ret = OB_ALLOCATE_MEMORY_FAILED;
-      LOG_ERROR("no memory for parser");
-    } else {
-      parse_result.no_param_sql_ = buf;
-    }
-  }
-  //compatible mysql, mysql allow use the "--"
-  if (OB_SUCC(ret) && stmt.case_compare("--") == 0) {
-    const char *line_str = "-- ";
-    char *buf = (char *)parse_malloc(strlen(line_str), parse_result.malloc_pool_);
-    if (OB_UNLIKELY(NULL == buf)) {
-      ret = OB_ALLOCATE_MEMORY_FAILED;
-      LOG_ERROR("no memory for parser");
-    } else {
-      MEMCPY(buf, line_str, strlen(line_str));
-      stmt.assign_ptr(buf, static_cast<ObString::obstr_size_t>(strlen(line_str)));
-    }
-  }
   if (OB_SUCC(ret) && OB_ISNULL(parse_result.charset_info_)) {
     ret = OB_ERR_UNEXPECTED;
     LOG_WARN("charset info is null", K(ret),
@@ -708,37 +164,13 @@ int ObParser::parse_(const ObString &query,
     return parse_rust_sql(stmt, parse_result, false, owner);
   }
   if (OB_SUCC(ret)) {
-    bool is_create_func = false;
-    bool is_call_procedure = false;
-    // Determine if the first 6 characters of the statement are 'select', if so, directly follow the parse_sql logic, try to eliminate the overhead of parsing the is_pl_stmt character,
-    bool is_contain_select = (stmt.length() > 6 && 0 == STRNCASECMP(stmt.ptr(), "select", 6));
-
-    // Whole-statement executable comments use the SQL parser.
-    bool is_mysql_comment = false;
-    {
-      uint64_t pos = 0;
-      while (pos < len &&
-             (stmt[pos] == ' ' || stmt[pos] == '\t' || stmt[pos] == '\r' ||
-              stmt[pos] == '\f' || stmt[pos] == '\n')) {
-        pos++;
-      }
-      if ((pos + 2 < len) && stmt[pos] == '/' && stmt[pos + 1] == '*' && stmt[pos + 2] == '!') {
-        is_mysql_comment = true;
-      }
-    }
-
-
-    if ((is_contain_select || !is_pl_stmt(stmt, &is_create_func, &is_call_procedure)
-        || (is_call_procedure && parse_result.is_fp_)) && !is_mysql_comment) {
+    const auto info = peg::classify_statement(sql_bytes(stmt), parser_mode(sql_mode_));
+    if (info.pl == peg::PlPrefix::None || info.pl == peg::PlPrefix::Call) {
       ret = parse_sql(stmt, parse_result, no_throw_parser_error);
     } else {
-      ParsedSql syntax;
-      if (OB_SUCC(ret = parse_rust_sql(stmt, parse_result, is_pl_inner_parse,
-                                      owner == nullptr ? &syntax : owner))) {
-        parse_result.no_param_sql_ = const_cast<char *>(stmt.ptr());
-        parse_result.no_param_sql_len_ = stmt.length();
-        parse_result.end_col_ = stmt.length();
-      }
+      parse_result.no_param_sql_ = const_cast<char *>(stmt.ptr());
+      parse_result.no_param_sql_len_ = stmt.length();
+      parse_result.end_col_ = stmt.length();
     }
   }
   return ret;
@@ -791,113 +223,16 @@ int ObParser::parse_routine_definition(const ObString &definition, ParsedSql &pa
   return ret;
 }
 
-// Parse trace_id from the comment at the beginning of the line
-int ObParser::pre_parse(const common::ObString &stmt,
-                        PreParseResult &res)
+int ObParser::pre_parse(const ObString &stmt, PreParseResult &res)
 {
-  int ret = OB_SUCCESS;
-  // /*trace_id=xxx*/
-  int64_t len = stmt.length();
-  if (len <= 13) {
-    //do_nothing
-  } else {
-    int32_t pos = 0;
-    const char *ptr = stmt.ptr();
-    // Remove spaces
-    while (pos < len && is_space(ptr[pos])) { pos++; };
-    if (pos+2 < len
-        && ptr[pos++] == '/'
-        && ptr[pos++] == '*') { // start with '/*'
-      char expect_char = 't';
-      bool find_trace = false;
-      while (!find_trace && pos < len) {
-        // Find the end of the comment
-        if (pos < len && ptr[pos] == '*') {
-          expect_char = 't';
-          if (++pos < len && ptr[pos] == '/') {
-            break;
-          }
-        }
-        if (pos >= len) {
-          break;
-        } else if (ptr[pos] == expect_char
-                   || (expect_char != '_'
-                       && expect_char != '='
-                       && ptr[pos] == expect_char - 32)) {
-          switch(expect_char) {
-            case 't': { expect_char = 'r'; break;}
-            case 'r': { expect_char = 'a'; break;}
-            case 'a': { expect_char = 'c'; break;}
-            case 'c': { expect_char = 'e'; break;}
-            case 'e': { expect_char = '_'; break;}
-            case '_': { expect_char = 'i'; break;}
-            case 'i': { expect_char = 'd'; break;}
-            case 'd': { expect_char = '='; break;}
-            case '=': { find_trace = true; break;}
-            default: {
-              //do nothing
-            }
-          }
-        } else {
-          expect_char = 't';
-        }
-        pos++;
-      }
-      if (find_trace) {
-        scan_trace_id(ptr, len, pos, res.trace_id_);
-      }
-    } else { //not start with '/*'
-      //do nothing
-    }
+  const auto info = peg::classify_statement(sql_bytes(stmt), peg::SqlMode{});
+  res.trace_id_.reset();
+  if (info.trace_end > info.trace_start) {
+    const size_t length = std::min(info.trace_end - info.trace_start,
+                                  static_cast<size_t>(OB_MAX_TRACE_ID_BUFFER_SIZE));
+    res.trace_id_.assign_ptr(stmt.ptr() + info.trace_start, length);
   }
-
-  return ret;
-}
-
-int ObParser::scan_trace_id(const char *ptr,
-                            int64_t len,
-                            int32_t &pos,
-                            ObString &trace_id)
-{
-  int ret = OB_SUCCESS;
-  trace_id.reset();
-  int32_t start = pos;
-  int32_t end = pos;
-  // Find the trace_id endpoint
-  while (pos < len && !is_trace_id_end(ptr[pos])) { pos++; }
-  end = pos;
-  // Find the end of the comment
-  if (start < end) {
-    while (pos < len) {
-      if (pos < len && ptr[pos] == '*') {
-        if (++pos < len && ptr[pos] == '/') {
-          int32_t trace_id_len = std::min(static_cast<int32_t>(OB_MAX_TRACE_ID_BUFFER_SIZE),
-                                          end - start);
-          trace_id.assign_ptr(ptr + start, trace_id_len);
-          break;
-        }
-      } else {
-        pos++;
-      }
-    }
-  }
-
-  return ret;
-}
-
-bool ObParser::is_space(char ch) {
-  return ch == ' '
-         || ch == '\t'
-         || ch == '\n'
-         || ch == '\r'
-         || ch == '\f';
-}
-
-bool ObParser::is_trace_id_end(char ch)
-{
-  return is_space(ch)
-         || ch == ','
-         || ch == '*';
+  return OB_SUCCESS;
 }
 
 void ObParser::free_result(ParseResult &parse_result)

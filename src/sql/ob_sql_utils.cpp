@@ -3476,49 +3476,12 @@ int ObSQLUtils::print_identifier_require_quotes(ObCollationType collation_type,
                                                 bool &require)
 {
   int ret = OB_SUCCESS;
-  bool pure_digit = true;
-  const ObCharsetInfo *info = ObCharset::get_charset(collation_type);
-  require = false;
-  if (OB_ISNULL(info)) {
+  if (OB_ISNULL(ObCharset::get_charset(collation_type))) {
     ret = OB_INVALID_ARGUMENT;
     OB_LOG(WARN, "argument is invalid", K(ret));
-  } else if (ident.length() > 0 && ident[0] == '$') {
-    require = true;
-  }
-  for (int64_t i = 0; OB_SUCC(ret) && !require && i < ident.length(); i++) {
-    char ch = ident[i];
-    uint length = ob_mbcharlen(info, ch);
-    if (length == 0) {
-      require = true;
-    } else if (length == 1 && !oceanbase::sql::MYSQL_IDENTIFIER_FALGS[static_cast<uint8_t>(ch)]) {
-      require = true;
-    } else if (length == 1 && (ch < '0' || ch > '9')) {
-      pure_digit = false;
-    }
-  }
-  if (OB_FAIL(ret)) {
-  } else if (pure_digit) {
-    require = true;
-  } else if (require) {
-    //do nothing
   } else {
-    static const char *const keywords[] = {
-        "alter", "analyze", "binary", "binlog", "cache", "call", "change",
-        "checksum", "commit", "create", "database", "delete", "do", "drop",
-        "errors", "flush", "function", "get", "grant", "index", "insert",
-        "into", "kill", "load", "lock", "logs", "master", "optimize",
-        "privileges", "procedure", "query", "read", "rename", "replace", "reset",
-        "revoke", "select", "set", "show", "slave", "start", "stop",
-        "table", "tables", "truncate", "update", "view", "warnings", "with",
-        "prepare", "execute", "deallocate", "unique", "temporary", "savepoint", "rollback",
-        "desc", "describe", "explain", "release",
-    };
-    for (const char *keyword : keywords) {
-      if (ident.case_compare(keyword) == 0) {
-        require = true;
-        break;
-      }
-    }
+    require = peg::identifier_requires_quotes(rust::Slice<const uint8_t>(
+        reinterpret_cast<const uint8_t *>(ident.ptr()), ident.length()));
   }
   return ret;
 }

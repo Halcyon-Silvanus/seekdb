@@ -153,9 +153,12 @@ int fill_parse_metadata(const common::ObString &sql, peg::ParseTree &tree, Parse
     }
   }
   if (result.is_dynamic_sql_) {
-    MEMCPY(result.no_param_sql_, sql.ptr(), sql.length());
-    result.no_param_sql_[sql.length()] = '\0';
-    result.no_param_sql_len_ = sql.length();
+    common::ObString owned;
+    const int ret = common::ob_write_string(
+        *static_cast<common::ObIAllocator *>(result.malloc_pool_), sql, owned, true);
+    if (ret != common::OB_SUCCESS) return ret;
+    result.no_param_sql_ = owned.ptr();
+    result.no_param_sql_len_ = owned.length();
   }
   return common::OB_SUCCESS;
 }

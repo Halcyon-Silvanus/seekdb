@@ -1600,9 +1600,7 @@ SQL_EXTRA_SOURCES = [
 ]
 
 SQL_PARSER_SOURCES = [
-    "src/sql/parser/fts_parse.cpp",
     "src/sql/parser/ob_fast_parser.cpp",
-    "src/sql/parser/ob_parse_simd.cpp",
     "src/sql/parser/ob_parser.cpp",
     "src/sql/parser/ob_parser_charset_utils.cpp",
     "src/sql/parser/parse_malloc.cpp",

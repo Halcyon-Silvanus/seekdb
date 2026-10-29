@@ -1332,6 +1332,145 @@ pub(crate) mod ffi {
         sql: String,
         bindings: Vec<SqlReference<'a>>,
     }
+    enum ParameterMode { Text, Prepare, Execute }
+    #[derive(Clone, Copy)]
+    struct ParameterOptions {
+        mode: ParameterMode,
+        outline: bool,
+        from_pl: bool,
+        no_unsigned_subtraction: bool,
+        projection_names: bool,
+        projection_name_limit: usize,
+        parameter_base: usize,
+    }
+
+    enum ParameterAction { Normal, Preserve, UnaryNegation, Subtraction }
+    enum ParameterError { None, Unsupported, InvalidOutline, InvalidArgument }
+    enum ParameterOrigin { Literal, UnaryNegation, Subtraction }
+    enum ParameterLoweringKind { FoldUnaryExpression, NegateLiteral, AddNegatedOperand }
+    enum ParameterScalePolicy { Check, IgnoreNonDecimalScale }
+    enum ParameterRepresentation { Ordinary, Extended }
+    enum ParameterTypeCheck { Check, SkipType, SkipExtendedType }
+    enum NumericSignMode { Source, CompactNegative, PositiveOperand }
+    struct NumericSignResult {
+        valid: bool,
+        integer: u64,
+        text_offset: usize,
+        compact_text: Vec<u8>,
+    }
+
+    struct ParameterToken<'a> {
+        kind: LiteralKind,
+        integer: u64,
+        start: usize,
+        end: usize,
+        sql_offset: usize,
+        text: &'a [u8],
+        source: &'a [u8],
+        concatenated: bool,
+        first_part_length: usize,
+        action: ParameterAction,
+    }
+    struct ParameterValue {
+        kind: LiteralKind,
+        integer: u64,
+        text: Vec<u8>,
+        charset: String,
+        date_unit: String,
+        concatenated: bool,
+        first_part_length: usize,
+    }
+    struct ParameterTokenPolicy {
+        action: ParameterAction,
+        charset: String,
+        positive: bool,
+        arithmetic: bool,
+        placeholder: i64,
+        excluded_placeholder: bool,
+    }
+    struct ParameterBindingRecord<'a> {
+        node: &'a Node,
+        raw_index: usize,
+        parameter_index: usize,
+        origin: ParameterOrigin,
+        value: ParameterValue,
+        check_type: bool,
+        scale_policy: ParameterScalePolicy,
+        boolean: bool,
+        fixed: bool,
+        append: bool,
+    }
+    struct ParameterLowering<'a> {
+        node: &'a Node,
+        operation: ParameterLoweringKind,
+        value: ParameterValue,
+    }
+    struct ParameterProjection<'a> {
+        node: &'a Node,
+        name: Vec<u8>,
+        questions: Vec<usize>,
+        parameters: Vec<usize>,
+        negative_parameters: Vec<usize>,
+        escaped_string: bool,
+        null_literal: bool,
+    }
+    struct Parameterization<'a> {
+        tokens: Vec<ParameterTokenPolicy>,
+        bindings: Vec<ParameterBindingRecord<'a>>,
+        lowerings: Vec<ParameterLowering<'a>>,
+        projections: Vec<ParameterProjection<'a>>,
+        user_variables: Vec<String>,
+        unchecked_placeholders: Vec<usize>,
+        ps_eligible: bool,
+        error: ParameterError,
+    }
+    struct ParameterSql {
+        sql: Vec<u8>,
+        folded_in_list: bool,
+        error: ParameterError,
+    }
+    struct ParameterClassification {
+        actions: Vec<ParameterAction>,
+        error: ParameterError,
+    }
+
+    enum StatementClass { Other, Select, Show, Insert, Replace, Update, Delete, Values, Explain }
+    enum PlPrefix { None, Anonymous, Routine, Function, Call }
+    struct StatementInfo {
+        kind: StatementClass,
+        pl: PlPrefix,
+        explain_offset: usize,
+        supports_values_table: bool,
+        trace_start: usize,
+        trace_end: usize,
+    }
+    struct RestoreParameter<'a> {
+        sql_offset: usize,
+        removed_before: usize,
+        source: &'a [u8],
+    }
+    struct RestoredParameter {
+        sql_offset: usize,
+        source_offset: usize,
+    }
+    struct RestoredSql {
+        sql: Vec<u8>,
+        parameters: Vec<RestoredParameter>,
+        error: ParameterError,
+    }
+
+    struct BatchCompression {
+        eligible: bool,
+        recognized_rows: bool,
+        sql: String,
+        rows: usize,
+        row_parameters: usize,
+        suffix_parameters: usize,
+        removed_length: usize,
+        source_end: usize,
+        output_end: usize,
+    }
+
     enum TableSelectMode {
         None,
         Select,
@@ -1483,6 +1622,24 @@ pub(crate) mod ffi {
     }
 
     extern "Rust" {
+        fn classify_statement(sql: &[u8], mode: SqlMode) -> StatementInfo;
+        fn normalized_sql_length(sql: &[u8]) -> usize;
+        fn is_single_statement(sql: &[u8]) -> bool;
+        fn restore_parameter_sql(sql: &[u8], parameters: &[RestoreParameter], terminate: bool) -> RestoredSql;
+        fn compress_insert(sql: &[u8], values_offset: usize) -> BatchCompression;
+        fn compress_values(sql: &[u8], values_offset: usize) -> BatchCompression;
+        fn fast_parameterization_allowed(sql: &[u8], mode: SqlMode) -> bool;
+
+        unsafe fn parameterize<'a>(tree: &'a Node, syntax_sql: &[u8], original_sql: &[u8], tokens: &[ParameterToken], options: ParameterOptions) -> Parameterization<'a>;
+        fn classify_parameter_tokens(tokens: &[ParameterToken], expected: usize, check_order: bool) -> ParameterClassification;
+        fn rewrite_parameter_sql(sql: &[u8], tokens: &[ParameterToken], fold_in: bool) -> ParameterSql;
+        fn fold_parameter_in_lists(sql: &[u8]) -> ParameterSql;
+        fn unchecked_parameter_types(offsets: &[usize], representations: &[ParameterRepresentation]) -> Vec<ParameterTypeCheck>;
+
+        fn normalize_numeric_sign(kind: LiteralKind, integer: u64, text: &[u8], mode: NumericSignMode) -> NumericSignResult;
+        fn integer_literal_is_nonnegative(value: i64, text: &[u8]) -> bool;
+        fn identifier_requires_quotes(input: &[u8]) -> bool;
+        fn decode_binary_literal(text: &str, notation: BinaryNotation) -> Vec<u8>;
         unsafe fn syntax_literals<'a>(syntax: &'a Node) -> Vec<LiteralReference<'a>>;
         fn index_column_has_direction(node: &Node) -> bool;
         fn primary_key_has_comment(node: &Node) -> bool;
@@ -2029,49 +2186,6 @@ fn transaction_options(node: &Node) -> ffi::TransactionOptions {
     options
 }
 
-fn split_sql(input: &[u8], mode: SqlMode, first_only: bool) -> ffi::StatementSplits {
-    let mut result = ffi::StatementSplits {
-        ends: vec![],
-        failed: false,
-    };
-    let sql = std::str::from_utf8(input).ok().and_then(|sql| {
-        grammar::executable_sql(sql, mode, true)
-            .ok()
-            .map(|expanded| (sql, expanded))
-    });
-    let Some((original, sql)) = sql else {
-        result.ends.push(input.len());
-        result.failed = true;
-        return result;
-    };
-    let mut offset = 0;
-    while offset < sql.len() {
-        let end = grammar::sql::statement_end(&sql[offset..], mode).or_else(|error| {
-            if matches!(sql, std::borrow::Cow::Owned(_)) {
-                let ignored = grammar::executable_sql(&original[offset..], mode, false)?;
-                grammar::sql::statement_end(&ignored, mode)
-            } else {
-                Err(error)
-            }
-        });
-        match end {
-            Ok(length) => {
-                offset += length;
-                result.ends.push(offset);
-            }
-            Err(_) => {
-                result.ends.push(sql.len());
-                result.failed = true;
-                break;
-            }
-        }
-        if first_only {
-            break;
-        }
-    }
-    result
-}
-
 fn number_parameters(
     node: &mut Node,
     count: &mut usize,
@@ -2113,7 +2227,7 @@ fn number_parameters(
     Ok(())
 }
 
-pub(crate) fn parse_sql(sql: &[u8], mode: SqlMode, parse_mode: ffi::ParseMode) -> ffi::ParseTree {
+pub fn parse_sql(sql: &[u8], mode: SqlMode, parse_mode: ffi::ParseMode) -> ffi::ParseTree {
     let mut result = ffi::ParseTree {
         root: Node::missing(),
         expanded_sql: String::new(),
@@ -2122,6 +2236,7 @@ pub(crate) fn parse_sql(sql: &[u8], mode: SqlMode, parse_mode: ffi::ParseMode) -
         error: String::new(),
         error_offset: 0,
     };
+    let sql = &sql[..normalized_sql_length(sql)];
     let sql = match std::str::from_utf8(sql) {
         Ok(sql) => sql,
         Err(error) => {
@@ -2322,8 +2437,16 @@ use crate::ddl::partition_element_values;
 
 use crate::ddl::{alter_index_name, alter_index_new_name, alter_table_options};
 use crate::inspect::syntax_literals;
+use crate::lex::{decode_binary_literal, identifier_requires_quotes};
 use crate::embedded_sql::{embedded_sql_symbols, rewrite_embedded_sql};
 
 use crate::ddl::{
     index_column_has_direction, index_hints, primary_key_comment, primary_key_has_comment,
 };
+
+use crate::parameterize::{parameterize, classify_parameter_tokens, rewrite_parameter_sql, fold_parameter_in_lists, unchecked_parameter_types};
+
+use crate::prefix::{classify_statement, normalized_sql_length, is_single_statement, split_sql, fast_parameterization_allowed};
+use crate::batch::{compress_insert, compress_values, restore_parameter_sql};
+
+use crate::lex::{normalize_numeric_sign, integer_literal_is_nonnegative};

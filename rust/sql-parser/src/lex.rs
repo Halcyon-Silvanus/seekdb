@@ -20,6 +20,136 @@ pub(crate) fn identifier(byte: u8) -> bool {
     byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'$' | 0x80..=0xff)
 }
 
+pub fn identifier_requires_quotes(input: &[u8]) -> bool {
+    const KEYWORDS: &[&[u8]] = &[
+        b"alter",
+        b"analyze",
+        b"binary",
+        b"binlog",
+        b"cache",
+        b"call",
+        b"change",
+        b"checksum",
+        b"commit",
+        b"create",
+        b"database",
+        b"delete",
+        b"do",
+        b"drop",
+        b"errors",
+        b"flush",
+        b"function",
+        b"get",
+        b"grant",
+        b"index",
+        b"insert",
+        b"into",
+        b"kill",
+        b"load",
+        b"lock",
+        b"logs",
+        b"master",
+        b"optimize",
+        b"privileges",
+        b"procedure",
+        b"query",
+        b"read",
+        b"rename",
+        b"replace",
+        b"reset",
+        b"revoke",
+        b"select",
+        b"set",
+        b"show",
+        b"slave",
+        b"start",
+        b"stop",
+        b"table",
+        b"tables",
+        b"truncate",
+        b"update",
+        b"view",
+        b"warnings",
+        b"with",
+        b"prepare",
+        b"execute",
+        b"deallocate",
+        b"unique",
+        b"temporary",
+        b"savepoint",
+        b"rollback",
+        b"desc",
+        b"describe",
+        b"explain",
+        b"release",
+    ];
+    input.first() == Some(&b'$')
+        || input.iter().all(u8::is_ascii_digit)
+        || input
+            .iter()
+            .any(|&byte| !byte.is_ascii() || !identifier(byte))
+        || KEYWORDS
+            .iter()
+            .any(|keyword| input.eq_ignore_ascii_case(keyword))
+}
+
+pub fn normalize_numeric_sign(
+    kind: crate::bridge::ffi::LiteralKind,
+    integer: u64,
+    text: &[u8],
+    mode: crate::bridge::ffi::NumericSignMode,
+) -> crate::bridge::ffi::NumericSignResult {
+    use crate::bridge::ffi::{LiteralKind, NumericSignMode, NumericSignResult};
+    let mut result = NumericSignResult {
+        valid: true,
+        integer,
+        text_offset: 0,
+        compact_text: Vec::new(),
+    };
+    match mode {
+        NumericSignMode::Source => {}
+        NumericSignMode::PositiveOperand => {
+            let sign = text
+                .iter()
+                .position(|&byte| !space(byte))
+                .unwrap_or(text.len());
+            if text.get(sign) != Some(&b'-') {
+                result.valid = false;
+            } else {
+                result.text_offset = sign + 1;
+                while text
+                    .get(result.text_offset)
+                    .is_some_and(|&byte| space(byte))
+                {
+                    result.text_offset += 1;
+                }
+                if kind != LiteralKind::Decimal && (integer as i64) < 0 {
+                    result.integer = integer.wrapping_neg();
+                }
+            }
+        }
+        NumericSignMode::CompactNegative => {
+            if text.first() == Some(&b'-') {
+                let mut offset = 1;
+                while text.get(offset).is_some_and(|&byte| space(byte)) {
+                    offset += 1;
+                }
+                if offset > 1 {
+                    result.compact_text.reserve(text.len() - offset + 1);
+                    result.compact_text.push(b'-');
+                    result.compact_text.extend_from_slice(&text[offset..]);
+                }
+            }
+        }
+        _ => unreachable!("unknown numeric sign mode"),
+    }
+    result
+}
+
+pub fn integer_literal_is_nonnegative(value: i64, text: &[u8]) -> bool {
+    value > 0 || (value == 0 && text.first() != Some(&b'-'))
+}
+
 pub(crate) fn quoted_end(input: &[u8], start: usize, backslash_escapes: bool) -> Option<usize> {
     let quote = input[start];
     let mut pos = start + 1;
@@ -74,5 +204,41 @@ pub(crate) fn decode_string_into(text: &str, no_backslash_escapes: bool, result:
         } else {
             result.push(byte);
         }
+    }
+}
+
+pub fn decode_binary_literal(
+    text: &str,
+    notation: crate::bridge::ffi::BinaryNotation,
+) -> Vec<u8> {
+    let mut result = Vec::new();
+    decode_binary_into(text, notation, &mut result);
+    result
+}
+
+pub(crate) fn decode_binary_into(
+    text: &str,
+    notation: crate::bridge::ffi::BinaryNotation,
+    result: &mut Vec<u8>,
+) {
+    use crate::bridge::ffi::BinaryNotation;
+    let bits = match notation {
+        BinaryNotation::Hex => 4,
+        BinaryNotation::Bit => 1,
+        _ => unreachable!(),
+    };
+    let start = result.len();
+    let length = (text.len() * bits).div_ceil(8);
+    result.resize(start + length, 0);
+    let bytes = &mut result[start..];
+    let padding = length * 8 - text.len() * bits;
+    for (i, byte) in text.bytes().enumerate() {
+        let value = if byte.is_ascii_digit() {
+            byte - b'0'
+        } else {
+            byte.to_ascii_lowercase() - b'a' + 10
+        };
+        let offset = padding + i * bits;
+        bytes[offset / 8] |= value << (8 - bits - offset % 8);
     }
 }

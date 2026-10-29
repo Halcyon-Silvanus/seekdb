@@ -15,7 +15,7 @@
 use crate::bridge::ffi::{Literal, LiteralKind as Kind, ScanOptions, ScanResult, ValuesPosition};
 use crate::lex::{decode_string_into, identifier, quoted_end, space};
 
-pub(crate) fn begin_scan(input: &[u8], options: ScanOptions) -> Box<Scanner<'_>> {
+pub fn begin_scan(input: &[u8], options: ScanOptions) -> Box<Scanner<'_>> {
     let mut result = ScanResult {
         sql: String::with_capacity(input.len()),
         literals: Vec::new(),
@@ -35,9 +35,7 @@ pub(crate) fn begin_scan(input: &[u8], options: ScanOptions) -> Box<Scanner<'_>>
             ""
         }
     };
-    let sql = sql.trim_end_matches(|ch: char| ch.is_ascii() && space(ch as u8));
-    let sql = sql.strip_suffix('\0').unwrap_or(sql);
-    let sql = sql.trim_end_matches(|ch: char| ch.is_ascii() && space(ch as u8));
+    let sql = &sql[..crate::prefix::normalized_sql_length(sql.as_bytes())];
     Box::new(Scanner {
         sql,
         pos: 0,
@@ -47,11 +45,11 @@ pub(crate) fn begin_scan(input: &[u8], options: ScanOptions) -> Box<Scanner<'_>>
     })
 }
 
-pub(crate) fn finish_scan(scanner: Box<Scanner<'_>>) -> ScanResult {
+pub fn finish_scan(scanner: Box<Scanner<'_>>) -> ScanResult {
     scanner.result
 }
 
-pub(crate) struct Scanner<'a> {
+pub struct Scanner<'a> {
     sql: &'a str,
     pos: usize,
     options: ScanOptions,
@@ -119,6 +117,15 @@ impl Scanner<'_> {
             self.result.sql.push(' ');
         } else {
             self.result.sql.push_str(text);
+        }
+    }
+
+    fn comment_separator(&mut self) {
+        if self.pos < self.sql.len()
+            && !space(self.byte(self.pos))
+            && self.result.sql.as_bytes().last().is_some_and(|byte| !space(*byte))
+        {
+            self.result.sql.push(' ');
         }
     }
 
@@ -253,22 +260,13 @@ impl Scanner<'_> {
         {
             return Err(start);
         }
-        let bits = if hex { 4 } else { 1 };
         let content_start = self.result.literal_text.len();
-        self.result
-            .literal_text
-            .resize(content_start + ((end - begin) * bits).div_ceil(8), 0);
-        let bytes = &mut self.result.literal_text[content_start..];
-        let padding = bytes.len() * 8 - (end - begin) * bits;
-        for (i, &byte) in self.sql.as_bytes()[begin..end].iter().enumerate() {
-            let value = if byte.is_ascii_digit() {
-                byte - b'0'
-            } else {
-                byte.to_ascii_lowercase() - b'a' + 10
-            };
-            let offset = padding + i * bits;
-            bytes[offset / 8] |= value << (8 - bits - offset % 8);
-        }
+        crate::lex::decode_binary_into(
+            &self.sql[begin..end],
+            if hex { crate::bridge::ffi::BinaryNotation::Hex }
+            else { crate::bridge::ffi::BinaryNotation::Bit },
+            &mut self.result.literal_text,
+        );
         self.pos = end + usize::from(quoted);
         self.literal(start, Kind::Binary, i64::MAX as u64, content_start, None);
         Ok(true)
@@ -400,6 +398,7 @@ impl Scanner<'_> {
                     self.pos = comment_start;
                     self.normal(start, false);
                     self.pos = end;
+                    self.comment_separator();
                     if self.options.format {
                         self.result.sql.truncate(
                             self.result
@@ -482,8 +481,8 @@ impl Scanner<'_> {
             }
         }
         if word.eq_ignore_ascii_case("values") || word.eq_ignore_ascii_case("value") {
-            if self.inserts == 1 {
-                self.result.insert_values_offset = start + 1;
+            if self.inserts == 1 && self.result.insert_values_offset == 0 {
+                self.result.insert_values_offset = self.result.sql.len() + 1;
             }
             if word.eq_ignore_ascii_case("values") {
                 self.result.values.push(ValuesPosition {
@@ -575,6 +574,8 @@ impl Scanner<'_> {
                     self.pos = self.comment_end(start)?;
                     if self.byte(start + 2) == b'!' {
                         self.normal(start, false);
+                    } else {
+                        self.comment_separator();
                     }
                 }
                 b'-' => {

@@ -1970,44 +1970,6 @@ int ObResolverUtils::resolve_string_literal(const ObString &text, ObObjType valu
   return ret;
 }
 
-namespace {
-int interpret_numeric_sign(NumericLiteral &literal, NumericSignMode mode, ObIAllocator &allocator)
-{
-  int ret = OB_SUCCESS;
-  const ObString &text = literal.text;
-  if (mode == NumericSignMode::Source) {
-  } else if (mode == NumericSignMode::PositiveOperand) {
-    int64_t offset = 0;
-    while (offset < text.length() && isspace(text.ptr()[offset])) ++offset;
-    if (offset >= text.length() || text.ptr()[offset] != '-') {
-      ret = OB_ERR_UNEXPECTED;
-    } else {
-      ++offset;
-      while (offset < text.length() && isspace(text.ptr()[offset])) ++offset;
-      literal.text.assign_ptr(text.ptr() + offset, text.length() - offset);
-      if (literal.kind != NumericKind::Decimal && static_cast<int64_t>(literal.integer) < 0) {
-        literal.integer = uint64_t(0) - literal.integer;
-      }
-    }
-  } else if (mode == NumericSignMode::CompactNegative) {
-    if (!text.empty() && text.ptr()[0] == '-') {
-      char *buffer = static_cast<char *>(allocator.alloc(text.length()));
-      if (buffer == nullptr) {
-        ret = OB_ALLOCATE_MEMORY_FAILED;
-      } else {
-        int64_t offset = 1;
-        while (offset < text.length() && isspace(text.ptr()[offset])) ++offset;
-        buffer[0] = '-';
-        const int32_t remaining = text.length() - offset;
-        if (remaining > 0) MEMCPY(buffer + 1, text.ptr() + offset, remaining);
-        literal.text.assign_ptr(buffer, remaining + 1);
-      }
-    }
-  }
-  return ret;
-}
-}
-
 int ObResolverUtils::resolve_literal(const LiteralToken &literal,
                                      const LiteralDecodeOptions &options,
                                      ObIAllocator &allocator, ObObjParam &val,
@@ -2026,9 +1988,24 @@ int ObResolverUtils::resolve_literal(const LiteralToken &literal,
           : literal.kind == peg::LiteralKind::Unsigned ? NumericKind::Unsigned
           : literal.kind == peg::LiteralKind::Decimal ? NumericKind::Decimal : NumericKind::Double,
           literal.integer, literal.text};
-      if (OB_FAIL(interpret_numeric_sign(numeric, options.numeric_sign, allocator))) {
+      const auto spelling = peg::normalize_numeric_sign(literal.kind, literal.integer,
+          rust::Slice<const uint8_t>(reinterpret_cast<const uint8_t *>(literal.text.ptr()),
+                                    literal.text.length()), options.numeric_sign);
+      if (!spelling.valid) {
+        ret = OB_ERR_UNEXPECTED;
       } else {
-        ret = resolve_numeric_literal(numeric, options.numeric, allocator, val, literal_prefix);
+        numeric.integer = spelling.integer;
+        if (!spelling.compact_text.empty()) {
+          ret = ob_write_string(allocator,
+              ObString(spelling.compact_text.size(),
+                       reinterpret_cast<const char *>(spelling.compact_text.data())), numeric.text);
+        } else if (spelling.text_offset != 0) {
+          numeric.text.assign_ptr(literal.text.ptr() + spelling.text_offset,
+                                  literal.text.length() - spelling.text_offset);
+        }
+        if (OB_SUCC(ret)) {
+          ret = resolve_numeric_literal(numeric, options.numeric, allocator, val, literal_prefix);
+        }
       }
       break;
     }
@@ -2205,18 +2182,9 @@ int ObResolverUtils::resolve_expression_literal(const peg::Node &node,
     }
   }
   if (syntax.binary_notation != peg::BinaryNotation::None) {
-    const bool bits = syntax.binary_notation == peg::BinaryNotation::Bit;
-    const int64_t size = bits ? ob_parse_bit_string_len(literal.text.length())
-                              : ob_parse_binary_len(literal.text.length());
-    char *bytes = static_cast<char *>(allocator.alloc(size + 1));
-    if (OB_ISNULL(bytes)) {
-      ret = OB_ALLOCATE_MEMORY_FAILED;
-    } else {
-      if (bits) { ob_parse_bit_string(literal.text.ptr(), literal.text.length(), bytes); }
-      else { ob_parse_binary(literal.text.ptr(), literal.text.length(), bytes); }
-      bytes[size] = '\0';
-      literal.text.assign_ptr(bytes, size);
-    }
+    const auto bytes = peg::decode_binary_literal(syntax.text, syntax.binary_notation);
+    OZ (ob_write_string(allocator,
+        ObString(bytes.size(), reinterpret_cast<const char *>(bytes.data())), literal.text, true));
   }
   ObObjParam decoded;
   ObString prefix;
@@ -6153,9 +6121,9 @@ int ObResolverUtils::resolver_param(ObPlanCacheCtx &pc_ctx,
                                                    literal->source.length()))) {
     } else if (ob_is_numeric_type(obj_param.get_type()) && must_be_positive_idx.has_member(param_idx)
                && !obj_param.is_boolean() && obj_param.is_integer_type()
-               && (obj_param.get_int() < 0
-                   || (obj_param.get_int() == 0 && !literal->text.empty() && literal->text.ptr()[0] == '-'))) {
-      // A lexical -0 must not reuse a nonnegative LIMIT plan.
+               && !peg::integer_literal_is_nonnegative(obj_param.get_int(),
+                   rust::Slice<const uint8_t>(reinterpret_cast<const uint8_t *>(literal->text.ptr()),
+                                             literal->text.length()))) {
       ret = OB_ERR_UNEXPECTED;
       pc_ctx.should_add_plan_ = false;
     }

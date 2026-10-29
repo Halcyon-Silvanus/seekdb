@@ -105,15 +105,6 @@ typedef struct ObParseResult
 extern char *str_tolower(char *buff, int64_t len);
 extern char *str_toupper(char *buff, int64_t len);
 
-/// convert x'42ab' to binary string
-void ob_parse_binary(const char *src, int64_t len, char* dest);
-int64_t ob_parse_binary_len(int64_t len);
-
-// convert b'10010110' to binary string
-// @pre dest buffer is enough
-void ob_parse_bit_string(const char* src, int64_t len, char* dest);
-int64_t ob_parse_bit_string_len(int64_t len);
-
 extern int64_t get_question_mark(ObQuestionMarkCtx *ctx, void *malloc_pool, const char *name);
 
 #ifdef __cplusplus

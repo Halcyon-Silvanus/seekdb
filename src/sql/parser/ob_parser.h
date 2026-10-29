@@ -67,8 +67,6 @@ public:
                           bool is_ret_first_stmt=false,
                           bool is_prepare = false);
 
-  int check_is_insert(common::ObIArray<common::ObString> &queries, bool &is_ins);
-
   //@param:
   //  no_throw_parser_error is used to mark not throw parser error. in the split multi stmt
   //  situation we will try find ';' delimiter to parser part of string in case of save memory,
@@ -113,91 +111,11 @@ public:
   static int pre_parse(const common::ObString &stmt,
                        PreParseResult &res);
 
-// Windows winbase.h defines S_NORMAL as 0, which conflicts with this enum
-#ifdef S_NORMAL
-#undef S_NORMAL
-#endif
-enum State {
-  S_START = 0,
-  S_COMMENT,
-  S_C_COMMENT,
-  S_NORMAL,
-  S_INVALID,
-
-  S_CREATE,
-  S_DO,
-  S_DD,
-  S_DECLARE,
-  S_BEGIN,
-  S_DROP,
-  S_CALL,
-  S_ALTER,
-  S_UPDATE,
-  S_FUNCTION,
-  S_PROCEDURE,
-  S_PACKAGE,
-  S_TRIGGER,
-  S_TYPE,
-  S_OR,
-  S_REPLACE,
-  S_DEFINER,
-  S_OF,
-  S_EDITIONABLE,
-  S_SIGNAL,
-  S_RESIGNAL,
-  S_FORCE,
-
-  S_EXPLAIN,
-  S_EXPLAIN_FORMAT,
-  S_EXPLAIN_BASIC,
-  S_EXPLAIN_EXTENDED,
-  S_EXPLAIN_EXTENDED_NOADDR,
-  S_EXPLAIN_PARTITIONS,
-  S_SELECT,
-  S_INSERT,
-  S_DELETE,
-  S_VALUES,
-  S_TABLE,
-  S_INTO,
-  S_EVENT,
-  // add new states above me
-  S_MAX
-};
-
-  static State transform_normal(common::ObString &normal);
-  static State transform_normal(
-    State state, common::ObString &normal, bool &is_pl, bool &is_not_pl,
-    bool *is_create_func, bool *is_call_procedure);
-  
   static bool is_pl_stmt(const common::ObString &stmt,
-                         bool *is_create_func = NULL,
-                         bool *is_call_procedure = NULL);
+                         bool *is_create_func = nullptr,
+                         bool *is_call_procedure = nullptr);
   static bool is_explain_stmt(const common::ObString &stmt,
-                              const char *&p_normal_start);
-  static bool is_comment(const char *&p,
-                         const char *&p_end,
-                         State &save_state,
-                         State &state,
-                         State error_state);
-private:
-  static int scan_trace_id(const char *ptr,
-                           int64_t len,
-                           int32_t &pos,
-                           common::ObString &trace_id);
-  static bool is_trace_id_end(char ch);
-  static bool is_space(char ch);
-  static int32_t get_well_formed_errlen(const struct ObCharsetInfo *charset_info,
-                                        const char *err_begin,
-                                        int32_t err_len);
-  static void match_state(const char*&p,
-                          bool &is_explain,
-                          bool &has_error,
-                          const char *lower[S_MAX],
-                          const char *upper[S_MAX],
-                          int &i,
-                          State &save_state,
-                          State &state,
-                          State next_state);
+                              const char *&body);
   // types and constants
 private:
   // disallow copy

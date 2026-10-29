@@ -20,6 +20,7 @@
 #include "lib/charset/ob_charset.h"
 #include "share/ob_compatibility_control.h"
 #include "sql/resolver/expr/numeric_literal.h"
+#include "rust/sql_parser.h"
 
 namespace oceanbase
 {
@@ -29,7 +30,7 @@ class ObTimeZoneInfo;
 }
 namespace sql
 {
-enum class NumericSignMode { Source, CompactNegative, PositiveOperand };
+using NumericSignMode = peg::NumericSignMode;
 
 struct LiteralDecodeOptions
 {
