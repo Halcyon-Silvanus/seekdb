@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use crate::{grammar, node::{Kind, Node}, prefix::{normalized_sql_length, classify_statement}, ParseMode, SqlMode};
+use crate::bridge::ffi::ParseErrorKind;
 
 pub struct Parsed {
     root: Node,
@@ -32,6 +33,7 @@ impl Parsed {
 
 #[derive(Debug)]
 pub struct ParseFailure {
+    pub kind: ParseErrorKind,
     pub message: String,
     pub offset: usize,
     pub expanded_sql: String,
@@ -48,6 +50,7 @@ impl std::error::Error for ParseFailure {}
 pub fn parse(sql: &[u8], mode: SqlMode, parse_mode: ParseMode) -> Result<Parsed, ParseFailure> {
     let sql = &sql[..normalized_sql_length(sql)];
     let sql = std::str::from_utf8(sql).map_err(|error| ParseFailure {
+        kind: ParseErrorKind::Syntax,
         message: error.to_string(),
         offset: error.valid_up_to(),
         expanded_sql: String::new(),
@@ -107,17 +110,30 @@ pub fn parse(sql: &[u8], mode: SqlMode, parse_mode: ParseMode) -> Result<Parsed,
         }
     }
     let mut root = parsed.map_err(|(message, offset)| ParseFailure {
+        kind: ParseErrorKind::Syntax,
         message, offset, expanded_sql: std::mem::take(&mut expanded_sql),
     })?;
+    if parse_mode == ParseMode::PlSql {
+        if let Some(offset) = invalid_bit_width(&root) {
+            return Err(ParseFailure {
+                kind: ParseErrorKind::BitWidth,
+                message: "BIT display width exceeds 64".into(),
+                offset,
+                expanded_sql,
+            });
+        }
+    }
     let mut parameters = 0;
     let mut parameter_names = Vec::new();
     number_parameters(&mut root, &mut parameters, &mut parameter_names).map_err(|offset| ParseFailure {
+        kind: ParseErrorKind::Syntax,
         message: "ordinal and named parameters cannot be combined".into(),
         offset,
         expanded_sql: std::mem::take(&mut expanded_sql),
     })?;
     if root.kind == Kind::LoadData && parameters != 0 {
         return Err(ParseFailure {
+            kind: ParseErrorKind::Syntax,
             message: "LOAD DATA does not accept parameter markers".into(),
             offset: root.start,
             expanded_sql,
@@ -125,6 +141,7 @@ pub fn parse(sql: &[u8], mode: SqlMode, parse_mode: ParseMode) -> Result<Parsed,
     }
     if root.kind == Kind::CreateView && parameters != 0 && parse_mode != ParseMode::PlSql {
         return Err(ParseFailure {
+            kind: ParseErrorKind::Syntax,
             message: "CREATE VIEW does not accept parameter markers".into(),
             offset: root.start,
             expanded_sql,
@@ -132,6 +149,16 @@ pub fn parse(sql: &[u8], mode: SqlMode, parse_mode: ParseMode) -> Result<Parsed,
     }
     let named_parameters = parameter_names.iter().any(|name| !name.as_bytes()[1].is_ascii_digit());
     Ok(Parsed { root, expanded_sql, parameters, parameter_names, named_parameters })
+}
+
+fn invalid_bit_width(node: &Node) -> Option<usize> {
+    if node.kind == Kind::DataType && node.text == "bit"
+        && node.children.first().is_some_and(|width| width.value > 64)
+    {
+        Some(node.start)
+    } else {
+        node.children.iter().find_map(invalid_bit_width)
+    }
 }
 
 fn number_parameters(

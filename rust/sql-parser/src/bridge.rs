@@ -927,6 +927,12 @@ pub(crate) mod ffi {
         PlExpression,
     }
 
+    #[derive(Debug)]
+    enum ParseErrorKind {
+        Syntax,
+        BitWidth,
+    }
+
     enum DefaultForm {
         Hidden,
         Literal,
@@ -1873,6 +1879,7 @@ pub(crate) mod ffi {
         fn root(self: &ParseTree) -> &Node;
         fn expanded_sql(self: &ParseTree) -> &str;
         fn error(self: &ParseTree) -> &str;
+        fn error_kind(self: &ParseTree) -> ParseErrorKind;
         fn error_offset(self: &ParseTree) -> usize;
         fn parameters(self: &ParseTree) -> usize;
         fn has_parameter_names(self: &ParseTree) -> bool;
@@ -2505,6 +2512,9 @@ impl ParseTree {
     }
     pub fn error(&self) -> &str {
         match &self.0 { Ok(_) => "", Err(error) => &error.message }
+    }
+    pub fn error_kind(&self) -> ffi::ParseErrorKind {
+        match &self.0 { Ok(_) => ffi::ParseErrorKind::Syntax, Err(error) => error.kind }
     }
     pub fn error_offset(&self) -> usize {
         match &self.0 { Ok(_) => 0, Err(error) => error.offset }

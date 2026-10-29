@@ -16,6 +16,7 @@
 #include "sql/syntax.h"
 #include "sql/ob_sql_utils.h"
 #include "lib/oblog/ob_log.h"
+#include "lib/utility/ob_print_utils.h"
 #include "lib/utility/ob_smart_call.h"
 #include <algorithm>
 
@@ -182,6 +183,11 @@ int ObParser::parse_entry(const ObString &sql, ParsedSql &owner, peg::ParseMode 
     const auto expanded_sql = parsed->expanded_sql();
     const ObString source = expanded_sql.empty() ? sql
         : ObString(expanded_sql.size(), expanded_sql.data());
+    if (parsed->error_kind() == peg::ParseErrorKind::BitWidth) {
+      ObCStringHelper statement_text;
+      LOG_USER_ERROR(OB_ERR_TOO_BIG_DISPLAYWIDTH, statement_text.convert(source), OB_MAX_BIT_LENGTH);
+      return OB_ERR_TOO_BIG_DISPLAYWIDTH;
+    }
     return report_parse_error(source, parsed->error_offset());
   }
   ParseResult &result = owner.metadata_;
