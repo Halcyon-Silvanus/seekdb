@@ -1686,8 +1686,8 @@ int ObPL::generate_pl_function(ObExecContext &ctx,
   CK (OB_NOT_NULL(routine));
 
   if (OB_SUCC(ret)) {
-    ObPLParser parser(compile_alloc, ctx.get_my_session()->get_sql_mode());
-    OZ (parser.parse(anonymouse_sql, syntax));
+    ObParser parser(compile_alloc, ctx.get_my_session()->get_sql_mode());
+    OZ (parser.parse_routine_body(anonymouse_sql, syntax));
   }
 
   // do compile

@@ -31,6 +31,7 @@
 #include "sql/ob_sql_utils.h"
 #include "sql/plan_cache/ob_plan_cache_util.h"
 #include "sql/resolver/parameterization_result.h"
+#include "sql/syntax.h"
 
 namespace oceanbase
 {
@@ -249,12 +250,7 @@ public:
   }
   void reset_question_mark_ctx()
   {
-    question_mark_ctx_.name_ = NULL;
-    question_mark_ctx_.count_ = 0;
-    question_mark_ctx_.capacity_ = 0;
-    question_mark_ctx_.by_ordinal_ = false;
-    question_mark_ctx_.by_name_ = false;
-    question_mark_ctx_.by_defined_name_ = false;
+    question_mark_ctx_ = {};
   }
   int assign(const ObFastParserResult &other)
   {

@@ -29,7 +29,7 @@
 #include "share/ob_simple_batch.h"
 #include "share/config/ob_server_config.h"
 #include "sql/ob_sql_define.h"
-#include "sql/parser/parse_node.h"
+#include "sql/syntax.h"
 #include "share/statement/ob_stmt_type.h"
 #include "sql/engine/expr/ob_expr_frame_info.h"
 #include "sql/session/ob_local_session_var.h"

@@ -18,7 +18,7 @@
 
 #include "sql/resolver/prepare/prepared_command_resolver.h"
 #include "rust/sql_parser.h"
-#include "sql/parser/literal_token.h"
+#include "sql/plan_cache/literal_token.h"
 #include "sql/plan_cache/ob_prepare_stmt_struct.h"
 #include "sql/resolver/expr/literal_decode_options.h"
 #include "sql/resolver/expr/ob_raw_expr_util.h"

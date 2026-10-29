@@ -20,7 +20,7 @@
 #include "sql/resolver/expr/ob_raw_expr_util.h"
 #include "sql/resolver/expr/numeric_literal.h"
 #include "sql/resolver/expr/literal_decode_options.h"
-#include "sql/parser/literal_token.h"
+#include "sql/plan_cache/literal_token.h"
 #include "sql/resolver/parameterization_result.h"
 #include "lib/json/ob_json_print_utils.h"
 #include "sql/pl/ob_pl_resolver.h"
@@ -1130,13 +1130,6 @@ int ObRawExprResolverImpl::process_datatype_or_questionmark(const peg::Node &nod
               const pl::ObPLSymbolTable* symbol_table = NULL;
               const pl::ObPLVar* var = NULL;
               CK (OB_NOT_NULL(symbol_table = ctx_.secondary_namespace_->get_symbol_table()));
-              // val.get_unknown() is the sequential index assigned by
-              // get_question_mark() when handle_pl_prepare re-parses route_sql_, so
-              // it is not a PL symbol-table slot. For trigger packages the symbol
-              // table holds OLD/NEW/locals, and once the sequential index runs past
-              // the variable count get_symbol() returns NULL — that is expected, not
-              // an error. The body below is a no-op unless the looked-up var is an
-              // ANONYMOUS_ARG, so we only enter it when both conditions hold.
               if (OB_SUCC(ret)
                   && OB_NOT_NULL(var = symbol_table->get_symbol(val.get_unknown()))
                   && 0 == var->get_name().case_compare(pl::ObPLResolver::ANONYMOUS_ARG)) {

@@ -19,7 +19,7 @@
 #include "share/ob_share_util.h"
 #include "share/ob_ex_rpc.h"
 #include "sql/optimizer/stat/ob_dbms_stats_executor.h"
-#include "sql/parser/ob_parser.h"
+#include "sql/syntax.h"
 #include "sql/optimizer/stat/ob_dbms_stats_utils.h"
 #include "sql/optimizer/stat/ob_opt_stat_manager.h"
 #include "sql/optimizer/stat/ob_opt_stat_monitor_manager.h"
@@ -3952,8 +3952,7 @@ int ObDbmsStats::parse_method_opt(sql::ObExecContext &ctx,
     ret = OB_ERR_UNEXPECTED;
   } else {
     ObParser parser(*allocator,
-                    ctx.get_my_session()->get_sql_mode(),
-                    ctx.get_my_session()->get_charsets4parser());
+                    ctx.get_my_session()->get_sql_mode());
     ParseMode parse_mode = METHOD_OPT_MODE;
     ParsedSql syntax;
     if (OB_FAIL(parser.parse(method_opt, syntax, parse_mode))) {

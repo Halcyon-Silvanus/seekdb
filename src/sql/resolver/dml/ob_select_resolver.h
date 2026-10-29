@@ -16,7 +16,7 @@
 
 #ifndef _OB_SELECT_RESOLVER_H
 #define _OB_SELECT_RESOLVER_H
-#include "sql/parser/ob_parser.h"
+#include "sql/syntax.h"
 #include "sql/resolver/dml/ob_select_stmt.h"
 #include "sql/resolver/dml/ob_dml_resolver.h"
 #include "sql/resolver/dml/ob_standard_group_checker.h"

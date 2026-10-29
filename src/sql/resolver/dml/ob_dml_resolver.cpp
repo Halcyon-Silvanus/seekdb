@@ -24,7 +24,7 @@
 #include "sql/pl/ob_pl_package.h"
 #include "sql/optimizer/ob_opt_est_utils.h"
 #include "sql/rewrite/ob_transform_utils.h"
-#include "sql/parser/ob_item_type_str.h"
+#include "query/engine/expr/ob_item_type_str.h"
 #include "sql/printer/ob_select_stmt_printer.h"
 #include "sql/engine/expr/ob_expr_autoinc_nextval.h"
 #include "sql/engine/expr/ob_expr_column_conv.h"
@@ -2878,8 +2878,7 @@ int ObDMLResolver::do_expand_view(TableItem &view_item, ObChildStmtResolver &vie
       ParsedSql view_result;
       ObString view_def;
 
-      ObParser parser(*params_.allocator_, session_info_->get_sql_mode(),
-                      session_info_->get_charsets4parser());
+      ObParser parser(*params_.allocator_, session_info_->get_sql_mode());
       if (OB_FAIL(ObSQLUtils::generate_view_definition_for_resolve(
                               *params_.allocator_,
                               session_info_->get_local_collation_connection(),

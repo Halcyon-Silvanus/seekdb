@@ -20,7 +20,7 @@
 #include "share/ob_define.h"
 #include "lib/container/ob_iarray.h"
 #include "share/schema/ob_schema_struct.h"
-#include "sql/parser/parsed_sql.h"
+#include "sql/syntax.h"
 #include "share/schema/ob_table_schema.h"
 
 namespace oceanbase

@@ -18,7 +18,7 @@
 
 #include "sql/engine/expr/cast_type_descriptor.h"
 #include "ob_raw_expr_util.h"
-#include "sql/parser/parsed_sql.h"
+#include "sql/syntax.h"
 #include "lib/json/ob_json_print_utils.h"
 #include "sql/engine/expr/ob_expr_to_type.h"
 #include "sql/engine/expr/ob_expr_type_to_str.h"
@@ -830,7 +830,7 @@ int ObRawExprUtils::resolve_udf_param_exprs(ObResolverParams &params,
                          static_cast<uint32_t>(udf_info.udf_param_num_ + udf_info.param_names_.count()));
           SQL_LOG(WARN, "param count mismatch", K(ret), K(i), K(default_val));
         } else if (OB_FAIL(ObRawExprUtils::parse_default_expr_from_str(
-            default_val, params.session_info_->get_charsets4parser(),
+            default_val,
             *(params.allocator_), default_owner))) {
         } else if (OB_ISNULL(default_owner.statement())
                    || OB_ISNULL(params.allocator_)
@@ -1109,22 +1109,19 @@ int ObRawExprUtils::function_alias(ObRawExprFactory &expr_factory, ObSysFunRawEx
   return ret;
 }
 
-int ObRawExprUtils::parse_default_expr_from_str(const ObString &expr_str,
-  ObCharsets4Parser expr_str_cs_type, ObIAllocator &allocator, ParsedSql &owner,
-  bool is_for_trigger)
+int ObRawExprUtils::parse_default_expr_from_str(const ObString &expr_str, ObIAllocator &allocator, ParsedSql &owner)
 {
-  ObParser parser(allocator, SMO_DEFAULT, expr_str_cs_type);
-  return parser.parse_expression(expr_str, owner, is_for_trigger);
+  ObParser parser(allocator, SMO_DEFAULT);
+  return parser.parse_expression(expr_str, owner);
 }
 
 int ObRawExprUtils::parse_expr_node_from_str(const ObString &expr_str,
-                                             ObCharsets4Parser expr_str_cs_type,
                                              ObIAllocator &allocator,
                                              ParsedSql &owner,
                                              const ObSQLMode &sql_mode)
 {
   const ObSQLMode inner_sql_mode = SMO_DEFAULT | (sql_mode & SMO_NO_BACKSLASH_ESCAPES);
-  ObParser parser(allocator, inner_sql_mode, expr_str_cs_type);
+  ObParser parser(allocator, inner_sql_mode);
   return parser.parse_expression(expr_str, owner);
 }
 
@@ -1181,10 +1178,8 @@ int ObRawExprUtils::build_generated_column_expr(const ObString &expr_str,
 {
   int ret = OB_SUCCESS;
   ParsedSql owner;
-   ObCharsets4Parser charsets4parser = session_info.get_charsets4parser();
-   charsets4parser.string_collation_ = def_cs_type;
+
   if (OB_FAIL(parse_expr_node_from_str(expr_str,
-      charsets4parser,
       expr_factory.get_allocator(), owner, def_sql_mode))) {
   } else if (OB_ISNULL(owner.statement())) {
     ret = OB_ERR_UNEXPECTED;
@@ -1294,7 +1289,7 @@ int ObRawExprUtils::build_generated_column_expr(const obcall::ObCreateIndexArg *
 {
   int ret = OB_SUCCESS;
   ParsedSql owner;
-  if (OB_FAIL(parse_expr_node_from_str(expr_str, session_info.get_charsets4parser(),
+  if (OB_FAIL(parse_expr_node_from_str(expr_str,
       expr_factory.get_allocator(), owner))) {
   } else if (OB_ISNULL(owner.statement())) {
     ret = OB_ERR_UNEXPECTED;

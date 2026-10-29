@@ -17,7 +17,7 @@
 #define USING_LOG_PREFIX SQL_RESV
 #include "sql/resolver/dml/ob_select_resolver.h"
 #include "sql/resolver/cmd/ob_variable_set_resolver.h"
-#include "sql/parser/parsed_sql.h"
+#include "sql/syntax.h"
 #include "sql/resolver/cmd/ob_variable_set_stmt.h"
 #include "sql/resolver/cmd/ob_set_names_resolver.h"
 #include "sql/resolver/dml/ob_inlist_resolver.h"

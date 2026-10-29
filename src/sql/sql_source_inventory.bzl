@@ -1568,6 +1568,8 @@ SQL_SIMD_UNITY_GROUPS = [
 ]
 
 SQL_STANDALONE_SOURCES = [
+    "src/sql/syntax.cpp",
+    "src/sql/plan_cache/fast_parse.cpp",
     "src/sql/engine/aggregate/ob_aggregate_processor.cpp",
     "src/sql/engine/expr/ob_expr_add.cpp",
     "src/sql/engine/expr/ob_expr_array_sort.cpp",
@@ -1597,14 +1599,4 @@ SQL_EXTRA_SOURCES = [
     "src/sql/engine/expr/ob_expr_str_cmp_func_compile/ob_expr_str_cmp_func_part_5.cpp",
     "src/sql/engine/expr/ob_expr_str_cmp_func_compile/ob_expr_str_cmp_func_part_6.cpp",
     "src/sql/engine/expr/ob_expr_str_cmp_func_compile/ob_expr_str_cmp_func_part_7.cpp",
-]
-
-SQL_PARSER_SOURCES = [
-    "src/sql/parser/ob_fast_parser.cpp",
-    "src/sql/parser/ob_parser.cpp",
-    "src/sql/parser/ob_parser_charset_utils.cpp",
-    "src/sql/parser/parse_malloc.cpp",
-    "src/sql/parser/parse_node.c",
-    "src/sql/parser/parser_utility.cpp",
-    "src/sql/parser/rust_sql_parser.cpp",
 ]

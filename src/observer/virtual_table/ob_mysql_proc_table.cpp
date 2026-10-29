@@ -14,8 +14,7 @@
  * limitations under the License.
  */
 
-#include "sql/parser/ob_parser.h"
-#include "sql/parser/parsed_sql.h"
+#include "sql/syntax.h"
 #include "observer/virtual_table/ob_mysql_proc_table.h"
 
 #include "sql/printer/ob_schema_printer.h"

@@ -27,7 +27,7 @@
 #include "share/schema/ob_table_schema.h"
 #include "sql/resolver/dml/ob_select_stmt.h"
 #include "sql/resolver/dml/ob_del_upd_stmt.h"
-#include "sql/parser/parse_node.h"
+#include "sql/syntax.h"
 #include "sql/session/ob_sql_session_info.h"
 #include "sql/pl/ob_pl.h"
 #include "sql/pl/ob_pl_stmt.h"
@@ -819,10 +819,6 @@ private:
                                                      const ObColumnRefRawExpr &part_column_expr,
                                                      ObRawExpr &part_value_expr);
 
-  static int calc_unistr(const common::ObString &src,
-                          const common::ObCollationType src_cs_type,
-                          const common::ObCollationType dst_cs_type,
-                          char* buf, const int64_t buf_len, int32_t &pos);
   static const common::ObString stmt_type_string[];
 
   // disallow construct

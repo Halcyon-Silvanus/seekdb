@@ -22,7 +22,7 @@
 #include "sql/engine/aggregate/ob_aggregate_processor.h"
 #include "sql/engine/expr/ob_expr_between.h"
 #include "sql/engine/expr/ob_array_expr_utils.h"
-#include "sql/parser/ob_parser.h"
+#include "sql/syntax.h"
 #include "rpc/obmysql/ob_mysql_util.h"
 
 namespace oceanbase

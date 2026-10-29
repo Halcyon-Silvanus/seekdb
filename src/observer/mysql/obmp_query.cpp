@@ -115,7 +115,7 @@ int ObMPQuery::process()
         bool force_sync_resp = false;
         need_response_error = false;
         ObParser parser(THIS_WORKER.get_sql_arena_allocator(),
-                        session.get_sql_mode(), session.get_charsets4parser());
+                        session.get_sql_mode());
         //For performance optimization, reduce the array length to lower the construction and destruction overhead of unused elements
         ObSEArray<ObString, 1> queries;
         ObMPParseStat parse_stat;

@@ -16,7 +16,7 @@
 
 #define USING_LOG_PREFIX SQL
 #include "ob_spi.h"
-#include "sql/parser/parsed_sql.h"
+#include "sql/syntax.h"
 #include "share/rc/ob_server_runtime.h"
 #include "ob_sql.h"
 #include "sql/ob_query_retry_ctrl.h"
@@ -251,9 +251,9 @@ int ObSPIResultSet::is_set_global_var(ObSQLSessionInfo &session,
   has_sys_var = false;
   ObArenaAllocator allocator(GET_PL_MOD_STRING(PL_MOD_IDX::OB_PL_SET_VAR), OB_MALLOC_NORMAL_BLOCK_SIZE);
   ParsedSql parsed;
-  ObParser parser(allocator, session.get_sql_mode(), session.get_charsets4parser());
+  ObParser parser(allocator, session.get_sql_mode());
   if (sql.empty()) {
-  } else if (OB_FAIL(parser.parse(sql, parsed, STD_MODE, false, false, true))) {
+  } else if (OB_FAIL(parser.parse(sql, parsed))) {
   } else if (parsed.statement() != nullptr && parsed.statement()->kind == peg::NodeKind::VariableSet) {
     for (const auto &assignment : peg::setting_assignments(*parsed.statement())) {
       if (OB_FAIL(ret) || has_global_variable) { break; }
@@ -1890,7 +1890,7 @@ int ObSPIService::spi_parse_prepare(common::ObIAllocator &allocator,
   if (sql.empty() || OB_ISNULL(secondary_namespace)) {
     ret = OB_INVALID_ARGUMENT;
   } else {
-    ObParser parser(allocator, session.get_sql_mode(), session.get_charsets4parser());
+    ObParser parser(allocator, session.get_sql_mode());
     ParsedSql parsed;
     ObSEArray<const peg::Node *, 8> bindings;
     if (OB_FAIL(parser.parse(sql, parsed))) {

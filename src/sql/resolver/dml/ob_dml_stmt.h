@@ -23,7 +23,7 @@
 #include "lib/allocator/ob_allocator.h"
 #include "lib/container/ob_se_array.h"
 #include "sql/resolver/ob_stmt.h"
-#include "sql/parser/parse_node.h"
+#include "sql/syntax.h"
 #include "sql/ob_sql_define.h"
 #include "sql/resolver/dml/ob_sql_hint.h"
 #include "sql/ob_sql_utils.h"

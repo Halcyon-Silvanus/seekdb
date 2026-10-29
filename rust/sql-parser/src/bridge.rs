@@ -804,6 +804,7 @@ pub(crate) mod ffi {
         expanded_sql: String,
         parameters: usize,
         parameter_names: Vec<String>,
+        named_parameters: bool,
         error: String,
         error_offset: usize,
     }
@@ -833,6 +834,7 @@ pub(crate) mod ffi {
         Trigger,
         Statistics,
         Expression,
+        RoutineDefinition,
     }
 
     enum SearchNodeKind {
@@ -2233,6 +2235,7 @@ pub fn parse_sql(sql: &[u8], mode: SqlMode, parse_mode: ffi::ParseMode) -> ffi::
         expanded_sql: String::new(),
         parameters: 0,
         parameter_names: Vec::new(),
+        named_parameters: false,
         error: String::new(),
         error_offset: 0,
     };
@@ -2245,12 +2248,21 @@ pub fn parse_sql(sql: &[u8], mode: SqlMode, parse_mode: ffi::ParseMode) -> ffi::
             return result;
         }
     };
+    let source = if parse_mode == ffi::ParseMode::RoutineDefinition {
+        let mut source = String::with_capacity("CREATE\n".len() + sql.len());
+        source.push_str("CREATE\n");
+        source.push_str(sql);
+        std::borrow::Cow::Owned(source)
+    } else {
+        std::borrow::Cow::Borrowed(sql)
+    };
+    let sql = source.as_ref();
     let parse = |text: &str| match parse_mode {
         ffi::ParseMode::Routine => grammar::sql::routine_body(text, mode),
         ffi::ParseMode::Trigger => grammar::sql::trigger(text, mode),
         ffi::ParseMode::Statistics => grammar::sql::statistics_options(text, mode),
         ffi::ParseMode::Expression => grammar::sql::expression(text, mode),
-        ffi::ParseMode::Sql => grammar::sql::query(text, mode),
+        ffi::ParseMode::Sql | ffi::ParseMode::RoutineDefinition => grammar::sql::query(text, mode),
         _ => unreachable!("unknown parser entry point"),
     };
     let parsed = grammar::executable_sql(sql, mode, true).and_then(|mut text| {
@@ -2265,13 +2277,26 @@ pub fn parse_sql(sql: &[u8], mode: SqlMode, parse_mode: ffi::ParseMode) -> ffi::
         parsed
     });
     match parsed {
+        Ok(query)
+            if parse_mode == ffi::ParseMode::RoutineDefinition
+                && !matches!(query.kind, Kind::CreateProcedure | Kind::CreateFunction) =>
+        {
+            result.error_offset = query.start;
+            result.error = "expected procedure or function definition".into();
+        }
         Ok(mut query) => {
             match number_parameters(
                 &mut query,
                 &mut result.parameters,
                 &mut result.parameter_names,
             ) {
-                Ok(()) => result.root = query,
+                Ok(()) => {
+                    result.named_parameters = result
+                        .parameter_names
+                        .iter()
+                        .any(|name| !name.as_bytes()[1].is_ascii_digit());
+                    result.root = query;
+                }
                 Err(offset) => {
                     result.error_offset = offset;
                     result.error = "ordinal and named parameters cannot be combined".into();
@@ -2285,6 +2310,11 @@ pub fn parse_sql(sql: &[u8], mode: SqlMode, parse_mode: ffi::ParseMode) -> ffi::
                 error.location.offset
             };
             result.error = error.to_string();
+        }
+    }
+    if result.expanded_sql.is_empty() {
+        if let std::borrow::Cow::Owned(source) = source {
+            result.expanded_sql = source;
         }
     }
     result

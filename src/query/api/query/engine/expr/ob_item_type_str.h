@@ -14,9 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef _OB_ITEM_TYPE_STR_H
-#define _OB_ITEM_TYPE_STR_H 1
-#include "sql/parser/ob_item_type.h"
+#pragma once
+#include "query/engine/expr/ob_item_type.h"
 
 namespace oceanbase
 {
@@ -88,5 +87,3 @@ inline const char *ob_aggr_func_str(ObItemType aggr_func)
 
 } // end namespace sql
 } // end namespace oceanbase
-
-#endif /* _OB_ITEM_TYPE_STR_H */

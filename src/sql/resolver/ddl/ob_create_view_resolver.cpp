@@ -17,7 +17,7 @@
 #define USING_LOG_PREFIX  SQL_RESV
 
 #include "sql/resolver/ddl/ob_create_view_resolver.h"
-#include "sql/parser/parsed_sql.h"
+#include "sql/syntax.h"
 #include "sql/printer/ob_select_stmt_printer.h"
 
 namespace oceanbase

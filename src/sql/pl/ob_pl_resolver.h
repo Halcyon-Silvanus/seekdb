@@ -18,10 +18,10 @@
 #define OCEANBASE_SRC_PL_OB_PL_RESOLVER_H_
 
 #include "ob_pl_stmt.h"
-#include "parser/ob_pl_parser.h"
+#include "sql/syntax.h"
 #include "sql/ob_spi.h"
 #include "sql/resolver/expr/ob_raw_expr.h"
-#include "sql/parser/ob_item_type.h"
+#include "query/engine/expr/ob_item_type.h"
 
 #ifndef LOG_IN_CHECK_MODE
 #define LOG_IN_CHECK_MODE(fmt, args...) \

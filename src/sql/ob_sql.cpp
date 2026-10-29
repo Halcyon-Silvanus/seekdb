@@ -18,7 +18,7 @@
 #include "rust/config.h"
 #include "lib/utility/utility.h"
 #include "sql/ob_sql.h"
-#include "sql/parser/parsed_sql.h"
+#include "sql/syntax.h"
 #include "lib/json/ob_json_print_utils.h"
 #include "lib/stat/ob_diagnostic_info_guard.h"
 #include "query/runtime/ob_query_runtime_environment.h"
@@ -832,7 +832,7 @@ int ObSql::do_real_prepare(const ObString &sql,
   ObIAllocator &allocator = result.get_mem_pool();
   ObSQLSessionInfo &session = result.get_session();
   ObExecContext &ectx = result.get_exec_context();
-  ObParser parser(allocator, session.get_sql_mode(), session.get_charsets4parser());
+  ObParser parser(allocator, session.get_sql_mode());
   ParseMode parse_mode = (context.is_dynamic_sql_  || !is_inner_sql) ? DYNAMIC_SQL_MODE :
                          session.is_for_trigger_package() ? TRIGGER_MODE : STD_MODE;
 
@@ -904,8 +904,7 @@ int ObSql::do_real_prepare(const ObString &sql,
                                                                   is_transform_outline,
                                                                   pc_ctx,
                                                                   parsed,
-                                                                  param_store,
-                                                                  session.get_charsets4parser()))) {
+                                                                  param_store))) {
         LOG_INFO("parameterize syntax tree failed", K(ret));
         pc_ctx.ps_need_parameterized_ = false;
         ret = OB_SUCCESS;
@@ -923,8 +922,7 @@ int ObSql::do_real_prepare(const ObString &sql,
                                                                   false,
                                                                   pc_ctx,
                                                                   parsed,
-                                                                  param_store,
-                                                                  session.get_charsets4parser()))) {
+                                                                  param_store))) {
         LOG_INFO("parameterize call procedure syntax tree failed", K(ret));
         pc_ctx.ps_need_parameterized_ = false;
         pc_ctx.fixed_param_idx_.reset();
@@ -1056,7 +1054,7 @@ int ObSql::prepare_pl_sql(const ObString &sql,
   CK (OB_NOT_NULL(pl_prepare_result.result_set_));
   if (OB_SUCC(ret)) {
     ObIAllocator &allocator = *pl_prepare_result.get_allocator();
-    ObParser parser(allocator, sess.get_sql_mode(), sess.get_charsets4parser());
+    ObParser parser(allocator, sess.get_sql_mode());
     bool is_for_trigger = false;
     if (NULL != pl_prepare_ctx.secondary_ns_) {
       is_for_trigger = ObTriggerInfo::is_trigger_package_id(pl_prepare_ctx.secondary_ns_->get_package_id());
@@ -1094,9 +1092,7 @@ int ObSql::prepare_pl_sql(const ObString &sql,
                      OB_FAIL(construct_param_store(*params,
                                                    result.get_exec_context().get_physical_plan_ctx()->get_param_store_for_update()))) {
           } else if (OB_FAIL(sess.store_query_string(sql))) {
-          } else if (OB_FAIL(parser.parse(sql, parsed, parse_mode,
-                                          false, false, true,
-                                          pl_prepare_ctx.is_parser_dynamic_sql_))) {
+          } else if (OB_FAIL(parser.parse(sql, parsed, parse_mode))) {
           } else if (ObSQLUtils::is_mysql_ps_not_support_stmt(parsed)) {
             ret = OB_ER_UNSUPPORTED_PS;
           } else if (NULL == pl_prepare_ctx.secondary_ns_ && !pl_prepare_ctx.is_dynamic_sql_) {
@@ -1891,8 +1887,7 @@ int ObSql::handle_ps_execute(const ObPsStmtId client_stmt_id,
         if ((stmt::T_CALL_PROCEDURE == stmt_type || stmt::T_ANONYMOUS_BLOCK == stmt_type) && !context.is_execute_call_stmt_) {
           context.is_execute_call_stmt_ = true;
         }
-        ObParser parser(allocator, session.get_sql_mode(),
-                        session.get_charsets4parser());
+        ObParser parser(allocator, session.get_sql_mode());
         ParsedSql parsed;
         ParseResult &parse_result = parsed.metadata();
         ObSqlTraits sql_traits;
@@ -2493,8 +2488,7 @@ int ObSql::generate_stmt_with_reconstruct_sql(ObDMLStmt* &stmt,
     ObStmt *basic_stmt = NULL;
     ParsedSql parsed;
     ObParser parser(pc_ctx->allocator_,
-                    session->get_sql_mode(),
-                    session->get_charsets4parser());
+                    session->get_sql_mode());
     stmt->get_query_ctx()->global_dependency_tables_.reuse();
     if (OB_FAIL(parser.parse(sql, parsed))) {
     } else if (OB_FAIL(generate_stmt(parsed,
@@ -3040,7 +3034,7 @@ int ObSql::get_outline_data(ObSqlCtx &context,
   }
 
   if (OB_SUCC(ret) && !outline_content.empty()) {
-    ObParser parser(pc_ctx.allocator_, session->get_sql_mode(), session->get_charsets4parser());
+    ObParser parser(pc_ctx.allocator_, session->get_sql_mode());
     ObSqlString sql_helper;
     ObString temp_outline_sql;
     if (OB_FAIL(sql_helper.assign_fmt("select %.*s 1 from dual", outline_content.length(),
@@ -3172,11 +3166,8 @@ int ObSql::parser_and_check(const ObString &outlined_stmt,
   } else {
     pctx->reset_datum_param_store();
     pctx->get_param_store_for_update().reuse();
-    ObParser parser(allocator, session->get_sql_mode(), session->get_charsets4parser());
-    if (OB_FAIL(parser.parse(outlined_stmt, parsed,
-                             STD_MODE,
-                             pc_ctx.sql_ctx_.handle_batched_multi_stmt(),
-                             false, NULL != session->get_pl_context()))) {
+    ObParser parser(allocator, session->get_sql_mode());
+    if (OB_FAIL(parser.parse(outlined_stmt, parsed))) {
     } else if ((PC_PS_MODE == pc_ctx.mode_ || PC_PL_MODE == pc_ctx.mode_)
       && OB_FAIL(construct_param_store_from_parameterized_params(
                     pc_ctx, pctx->get_param_store_for_update()))) {
@@ -3247,8 +3238,7 @@ int ObSql::parser_and_check(const ObString &outlined_stmt,
                                                                   false,
                                                                   pc_ctx,
                                                                   parsed,
-                                                                  pctx->get_param_store_for_update(),
-                                                                  session->get_charsets4parser()))) {
+                                                                  pctx->get_param_store_for_update()))) {
         bool need_retry_param = true;
         int tmp_ret = OB_SUCCESS;
         tmp_ret = OB_E(EventTable::EN_SQL_PARAM_FP_NP_NOT_SAME_ERROR) OB_SUCCESS;

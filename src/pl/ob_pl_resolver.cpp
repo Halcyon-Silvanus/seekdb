@@ -21,7 +21,6 @@
 #include "share/rc/ob_server_runtime.h"
 #include "pl/ob_pl_router.h"
 #include "pl/ob_pl_exception_handling.h"
-#include "sql/parser/parse_malloc.h"
 #include "sql/resolver/ddl/ob_ddl_resolver.h"
 #include "sql/resolver/dml/ob_select_resolver.h"
 #include "sql/resolver/expr/ob_raw_expr_wrap_enum_set.h"
@@ -41,9 +40,14 @@ namespace pl
 {
 
 namespace {
-ObStmtLoc statement_location(const ObString &source, const peg::Node &node)
+struct StatementLocation {
+  int first_column_ = 0;
+  int first_line_ = 0;
+};
+
+StatementLocation statement_location(const ObString &source, const peg::Node &node)
 {
-  ObStmtLoc location{};
+  StatementLocation location{};
   for (uint64_t i = 0; i < node.start; ++i) {
     if (source.ptr()[i] == '\n') {
       ++location.first_line_;
@@ -171,8 +175,7 @@ int ObPLResolver::init_default_expr(ObPLFunctionAST &func_ast,
     ObString default_value = param.get_default_value();
     OZ (ObSQLUtils::convert_sql_text_from_schema_for_resolve(
           resolve_ctx_.allocator_, resolve_ctx_.session_info_.get_dtc_params(), default_value));
-    OZ (ObRawExprUtils::parse_default_expr_from_str(default_value,
-      resolve_ctx_.session_info_.get_charsets4parser(), resolve_ctx_.allocator_, syntax, false));
+    OZ (ObRawExprUtils::parse_default_expr_from_str(default_value, resolve_ctx_.allocator_, syntax));
     const auto *saved_syntax = resolve_ctx_.params_.syntax_;
     const ObString saved_source = source_;
     source_ = syntax.source();
@@ -933,8 +936,7 @@ int ObPLResolver::fill_record_type(
     const ObDatabaseSchema *db_schema = NULL;   \
     ObSqlString select_sql;                     \
     ParsedSql parse_result;                   \
-    ObParser parser(alloc, ctx.session_info_.get_sql_mode(),                  \
-                    ctx.session_info_.get_charsets4parser());                 \
+    ObParser parser(alloc, ctx.session_info_.get_sql_mode());                 \
     ObSchemaChecker schema_checker;                                           \
     ObResolverParams resolver_ctx;                                            \
     const peg::Node *select_stmt_node = NULL;                                       \

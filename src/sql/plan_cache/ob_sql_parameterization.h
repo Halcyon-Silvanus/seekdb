@@ -24,8 +24,8 @@
 #include "lib/container/ob_se_array.h"
 #include "lib/utility/ob_print_utils.h"
 #include "common/object/ob_object.h"
-#include "sql/parser/ob_parser.h"
-#include "sql/parser/ob_fast_parser.h"
+#include "sql/syntax.h"
+#include "sql/plan_cache/fast_parse.h"
 #include "sql/session/ob_sql_session_info.h"
 #include "sql/plan_cache/ob_id_manager_allocator.h"
 #include "sql/plan_cache/ob_plan_cache_util.h"
@@ -171,8 +171,7 @@ public:
                                       bool is_transform_outline,
                                       ObPlanCacheCtx &pc_ctx,
                                       const ParsedSql &parsed,
-                                      ParamStore &params,
-                                      ObCharsets4Parser charsets4parser);
+                                      ParamStore &params);
   static int gen_special_param_info(SqlInfo &sql_info, ObPlanCacheCtx &pc_ctx);
   static int gen_ps_not_param_var(const ObIArray<int64_t> &offsets,
                                   ParamStore &params,

@@ -59,5 +59,4 @@ PL_UNITY_GROUPS = [
 ]
 
 PL_STANDALONE_CXX_SOURCES = [
-    "src/pl/parser/ob_pl_parser.cpp",
 ]

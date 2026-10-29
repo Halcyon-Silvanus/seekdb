@@ -17,7 +17,7 @@
 #ifndef _OB_RAW_EXPR_RESOLVER_H
 #define _OB_RAW_EXPR_RESOLVER_H
 #include "lib/oblog/ob_log.h"
-#include "sql/parser/parse_node.h"
+#include "sql/syntax.h"
 #include "sql/resolver/expr/ob_raw_expr.h"
 #include "sql/resolver/ob_stmt_resolver.h"
 

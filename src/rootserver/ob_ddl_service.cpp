@@ -33,7 +33,7 @@
 #include "sql/resolver/ddl/ob_index_builder_util.h"
 #include "sql/resolver/ddl/ob_fts_index_builder_util.h"
 #include "sql/resolver/expr/ob_raw_expr_util.h"
-#include "sql/parser/parsed_sql.h"
+#include "sql/syntax.h"
 #include "sql/session/ob_local_session_var.h"
 #include "sql/engine/cmd/ob_partition_executor_utils.h"
 #include "share/ob_global_stat_proxy.h"

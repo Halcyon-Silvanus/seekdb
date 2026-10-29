@@ -18,7 +18,7 @@
 
 #include "rust/config.h"
 #include "rust/sql_parser.h"
-#include "sql/parser/rust_sql_parser.h"
+#include "sql/syntax.h"
 #include "share/config/ob_config_helper.h"
 #include "sql/resolver/cmd/ob_load_data_stmt.h"
 
@@ -27,14 +27,11 @@
 #include "sql/resolver/ob_resolver_utils.h"
 #include "sql/resolver/expr/numeric_literal.h"
 #include "sql/resolver/expr/literal_decode_options.h"
-#include "sql/parser/literal_token.h"
+#include "sql/plan_cache/literal_token.h"
 #include "sql/code_generator/ob_column_index_provider.h"
 #include "query/resolver/ob_partition_type_policy.h"
 #include "sql/resolver/cmd/ob_load_data_stmt.h"
 #include "lib/utility/utility.h"
-#include "sql/parser/parse_malloc.h"
-#include "sql/parser/ob_parser.h"
-#include "sql/parser/parsed_sql.h"
 #include "sql/resolver/expr/ob_raw_expr_resolver_impl.h"
 #include "sql/resolver/expr/ob_raw_expr_part_func_checker.h"
 #include "sql/resolver/expr/ob_raw_expr_part_expr_checker.h"
@@ -3379,7 +3376,7 @@ int ObResolverUtils::resolve_generated_column_expr(ObResolverParams &params,
   if (OB_ISNULL(params.allocator_) || OB_ISNULL(params.session_info_)) {
     ret = OB_INVALID_ARGUMENT;
   } else if (OB_FAIL(ObRawExprUtils::parse_expr_node_from_str(
-                expr_str, params.session_info_->get_charsets4parser(),
+                expr_str,
                 *params.allocator_, syntax))) {
   } else if (OB_FAIL(resolve_generated_column_expr(params, *syntax.statement(), syntax.source(), tbl_schema,
                                                    generated_column, expr,
@@ -3417,7 +3414,7 @@ int ObResolverUtils::resolve_generated_column_expr(ObResolverParams &params,
   if (OB_ISNULL(params.allocator_) || OB_ISNULL(params.session_info_)) {
     ret = OB_INVALID_ARGUMENT;
   } else if (OB_FAIL(ObRawExprUtils::parse_expr_node_from_str(
-                      expr_str, params.session_info_->get_charsets4parser(),
+                      expr_str,
                       *params.allocator_, syntax))) {
   } else if (OB_FAIL(resolve_generated_column_expr(params,
                                                    *syntax.statement(), syntax.source(),
@@ -3660,7 +3657,7 @@ int ObResolverUtils::resolve_default_expr_v2_column_expr(ObResolverParams &param
   if (OB_ISNULL(params.allocator_) || OB_ISNULL(params.session_info_)) {
     ret = OB_INVALID_ARGUMENT;
   } else if (OB_FAIL(ObRawExprUtils::parse_expr_node_from_str(
-              expr_str, params.session_info_->get_charsets4parser(),
+              expr_str,
               *params.allocator_, syntax))) {
   } else if (OB_FAIL(resolve_default_expr_v2_column_expr(params, *syntax.statement(), syntax.source(), default_expr_v2_column, expr))) {
   }
@@ -6302,111 +6299,6 @@ int64_t ObResolverUtils::get_mysql_max_partition_num()
   max_partition_num = config::max_partition_num();
 
   return max_partition_num;
-}
-
-int ObResolverUtils::calc_unistr(const common::ObString &src,
-                const common::ObCollationType src_cs_type,
-                const common::ObCollationType dst_cs_type,
-                char* buf, const int64_t buf_len, int32_t &pos)
-{
-  int ret = OB_SUCCESS;
-  struct Functor {
-    Functor(char* buf, const int64_t buf_len, int32_t &pos, int64_t total_str_len, const common::ObCollationType dst_cs_type)
-      : buf(buf), buf_len(buf_len), pos(pos), total_str_len(total_str_len), dst_cs_type(dst_cs_type) {}
-    // for unicode inner scan loop
-    // The following quadruple constitutes the loop invariant during transformation, incomming_char_len outer loop parameter, unicode_inner_len inner loop parameter
-    // (incomming_char_len, total_str_len, (unicode_inner_len, unicode_encoding_value), (buf, buf_len, pos))
-    int incoming_char_len = 0;
-
-    int found_backslash = false;
-    int unicode_inner_len = 0;
-    int64_t unicode_encoding_value = 0;
-
-    char* buf;
-    const int64_t buf_len;
-    int32_t &pos;
-
-    const int64_t total_str_len;
-    const common::ObCollationType dst_cs_type;
-    bool is_ucs2_format = false;
-
-    int operator() (const ObString &str, ob_wc_t wchar) {
-      int ret = OB_SUCCESS;
-      incoming_char_len += str.length();
-      if (!found_backslash) {
-        if ('\\' != wchar) {
-          int32_t written_bytes = 0;
-          if (OB_FAIL(ObCharset::wc_mb(dst_cs_type, wchar,
-                                      buf + pos, buf_len - pos, written_bytes))) {
-          } else {
-            pos += written_bytes;
-          }
-        } else {
-          found_backslash = true;
-          is_ucs2_format = true;
-          unicode_inner_len = 0;
-        }
-      } else {
-        if (unicode_inner_len == 0 && '\\' == wchar) {
-          //found "\\"
-          int32_t written_bytes = 0;
-          if (OB_FAIL(ObCharset::wc_mb(dst_cs_type, wchar,
-                                      buf + pos, buf_len - pos, written_bytes))) {
-          } else {
-            pos += written_bytes;
-          }
-          is_ucs2_format = false;
-          found_backslash = false;
-          unicode_inner_len = 0;
-        } else if (unicode_inner_len < 4){
-          int64_t value = 0;
-          if ('0' <= wchar && wchar <= '9') {
-            value = wchar - '0';
-          } else if ('A' <= wchar && wchar <= 'F') {
-            value = wchar - 'A' + 10;
-          } else if ('a' <= wchar && wchar <= 'f') {
-            value = wchar - 'a' + 10;
-          } else {
-            ret = OB_ERR_MUST_BE_FOLLOWED_BY_FOUR_HEXADECIMAL_CHARACTERS_OR_ANOTHER;
-          }
-          if (OB_SUCC(ret)) {
-            unicode_encoding_value *= 16;
-            unicode_encoding_value += value;
-            ++unicode_inner_len;
-          }
-        }
-        if (OB_SUCC(ret)) {
-          if (is_ucs2_format && unicode_inner_len == 4) {
-            if (OB_UNLIKELY(pos + 2 > buf_len)) {
-              ret = OB_SIZE_OVERFLOW;
-            } else {
-              buf[pos++] = (unicode_encoding_value >> 8) & 0xFF;
-              buf[pos++] = unicode_encoding_value & 0xFF;
-              unicode_inner_len = 0;
-              unicode_encoding_value = 0;
-              found_backslash = false;
-              is_ucs2_format = false;
-            }
-          }
-        }
-      }
-
-      if (OB_SUCC(ret)) {
-        // there may be no chance for total_str_len + 1
-        if (incoming_char_len == total_str_len) {
-          if (found_backslash) {
-            ret = OB_ERR_MUST_BE_FOLLOWED_BY_FOUR_HEXADECIMAL_CHARACTERS_OR_ANOTHER;
-          }
-        }
-      }
-      return ret;
-    }
-  };
-
-  Functor temp_handler(buf, buf_len, pos, src.length(), dst_cs_type);
-  ObCharsetType src_charset_type = ObCharset::charset_type_by_coll(src_cs_type);
-  OZ(ObFastStringScanner::foreach_char(src, src_charset_type, temp_handler));
-  return ret;
 }
 
 int ObResolverUtils::append_escaped_identifier(ObSqlString &sql, const ObString &name)

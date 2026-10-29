@@ -25,7 +25,7 @@
 #include "sql/resolver/tcl/transaction_resolver.h"
 #include "sql/resolver/prepare/prepared_command_resolver.h"
 #include "sql/resolver/dcl/access_control_resolver.h"
-#include "sql/parser/parsed_sql.h"
+#include "sql/syntax.h"
 #include "sql/resolver/ddl/ob_create_table_resolver.h"
 #include "sql/resolver/ddl/ob_rename_table_resolver.h"
 #include "sql/resolver/ddl/ob_truncate_table_resolver.h"

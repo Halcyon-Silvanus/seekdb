@@ -15,7 +15,7 @@
  */
 
 #define USING_LOG_PREFIX SHARE_SCHEMA
-#include "sql/parser/ob_parser.h"
+#include "sql/syntax.h"
 #include "sql/printer/ob_schema_printer.h"
 #include "share/ob_autoincrement_service.h"
 #include "sql/resolver/expr/ob_raw_expr_util.h"

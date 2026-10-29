@@ -19,7 +19,7 @@
 
 #include "sql/resolver/expr/ob_raw_expr.h"
 #include "common/row/ob_row_desc.h"
-#include "sql/parser/parse_node.h"
+#include "sql/syntax.h"
 #include "lib/hash/ob_placement_hashmap.h"
 #include "share/schema/ob_column_schema.h"
 #include "sql/session/ob_system_variable.h"
@@ -230,12 +230,9 @@ class ObRawExprUtils
 {
 public:
   static int parse_default_expr_from_str(const common::ObString &expr_str,
-                                         ObCharsets4Parser expr_str_cs_type,
                                          common::ObIAllocator &allocator,
-                                         ParsedSql &owner,
-                                         bool is_for_trigger = false);
+                                         ParsedSql &owner);
   static int parse_expr_node_from_str(const common::ObString &expr_str,
-                                      ObCharsets4Parser expr_str_cs_type,
                                       common::ObIAllocator &allocator,
                                       ParsedSql &owner,
                                       const ObSQLMode &sql_mode = 0);

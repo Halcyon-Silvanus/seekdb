@@ -15,13 +15,44 @@
 #pragma once
 
 #include <optional>
+#include "common/sql_mode/ob_sql_mode.h"
+#include "lib/allocator/ob_allocator.h"
+#include "lib/container/ob_iarray.h"
+#include "lib/string/ob_string.h"
 #include "rust/sql_parser.h"
-#include "sql/parser/parse_node.h"
 #include "share/statement/ob_stmt_type.h"
 
 namespace oceanbase::sql {
+
+enum ParseMode {
+  STD_MODE,
+  FP_MODE,
+  FP_PARAMERIZE_AND_FILTER_HINT_MODE,
+  FP_NO_PARAMERIZE_AND_FILTER_HINT_MODE,
+  TRIGGER_MODE,
+  DYNAMIC_SQL_MODE,
+  METHOD_OPT_MODE,
+};
+
+struct ObQuestionMarkCtx {
+  int count_ = 0;
+  bool by_ordinal_ = false;
+  bool by_name_ = false;
+};
+
+struct ParseResult {
+  const char *input_sql_ = nullptr;
+  int input_sql_len_ = 0;
+  ObQuestionMarkCtx question_mark_ctx_;
+  bool contain_sensitive_data_ = false;
+  bool is_dynamic_sql_ = false;
+  char *no_param_sql_ = nullptr;
+  int no_param_sql_len_ = 0;
+};
+
 struct ObSqlTraits;
 int statement_type(const peg::Node &statement, stmt::StmtType &type);
+int report_parse_error(const common::ObString &sql, size_t offset);
 
 class ParsedSql {
 public:
@@ -52,9 +83,43 @@ public:
   void reset() { syntax_.reset(); original_source_.reset(); metadata_ = {}; }
 
 private:
-  friend int parse_rust_sql(const common::ObString &, ParseResult &, bool, ParsedSql *);
+  friend class ObParser;
   ParseResult metadata_{};
   common::ObString original_source_;
   std::optional<peg::ParseTree> syntax_;
 };
+
+class ObMPParseStat {
+public:
+  void reset() { *this = {}; }
+  bool parse_fail_ = false;
+  int fail_ret_ = common::OB_SUCCESS;
+  int64_t fail_query_idx_ = -1;
+};
+
+struct PreParseResult {
+  common::ObString trace_id_;
+};
+
+class ObParser {
+public:
+  ObParser(common::ObIAllocator &allocator, ObSQLMode mode)
+      : allocator_(allocator), sql_mode_(mode) {}
+  int parse(const common::ObString &query, ParsedSql &parsed, ParseMode mode = STD_MODE);
+  int parse_expression(const common::ObString &text, ParsedSql &parsed);
+  int parse_routine_body(const common::ObString &text, ParsedSql &parsed);
+  int parse_routine_definition(const common::ObString &definition, ParsedSql &parsed);
+  int split_multiple_stmt(const common::ObString &stmt,
+                          common::ObIArray<common::ObString> &queries,
+                          ObMPParseStat &parse_stat, bool first_only = false);
+  static int pre_parse(const common::ObString &stmt, PreParseResult &result);
+  static bool is_explain_stmt(const common::ObString &stmt, const char *&body);
+
+private:
+  int parse_entry(const common::ObString &sql, ParsedSql &parsed, peg::ParseMode mode,
+                  bool dynamic_sql = false);
+  common::ObIAllocator &allocator_;
+  ObSQLMode sql_mode_;
+};
+
 }

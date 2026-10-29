@@ -551,6 +551,7 @@ impl<'a> Collector<'a> {
             Kind::Table | Kind::JoinedTable | Kind::JsonTable | Kind::TableCollection => {
                 self.table(node, scope)?
             }
+            Kind::Values => self.list(values_rows(node), scope)?,
             _ if is_call_expression(node) => self.call(node, scope)?,
             _ => return Err(ParameterError::Unsupported),
         }

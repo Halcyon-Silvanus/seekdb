@@ -16,8 +16,7 @@
 
 #define USING_LOG_PREFIX PL
 #include "ob_dbms_space.h"
-#include "sql/parser/ob_parser.h"
-#include "sql/parser/parsed_sql.h"
+#include "sql/syntax.h"
 #include "sql/resolver/ddl/ob_create_index_resolver.h"
 #include "sql/optimizer/stat/ob_opt_stat_manager.h"
 #include "sql/optimizer/stat/ob_dbms_stats_utils.h"

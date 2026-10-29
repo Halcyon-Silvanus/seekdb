@@ -18,7 +18,7 @@
 #include "ob_prepare_stmt_struct.h"
 #include "sql/plan_cache/ob_ps_sql_utils.h"
 #include "sql/plan_cache/ob_ps_cache.h"
-#include "sql/parser/literal_token.h"
+#include "sql/plan_cache/literal_token.h"
 
 namespace oceanbase
 {

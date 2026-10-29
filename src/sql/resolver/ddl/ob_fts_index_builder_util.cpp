@@ -19,7 +19,7 @@
 #include "ob_index_builder_util.h"
 #include "sql/resolver/ddl/ob_ddl_resolver.h"
 #include "sql/resolver/expr/ob_raw_expr_util.h"
-#include "sql/parser/parsed_sql.h"
+#include "sql/syntax.h"
 #include "data_plane/fts/dict/ob_gen_dic_loader.h"
 #include "data_plane/fts/dict/ob_dic_lock_service.h"
 #include "share/ob_server_struct.h"
@@ -2580,8 +2580,7 @@ int ObMulValueIndexBuilderUtil::build_and_generate_multivalue_column(
 {
   int ret = OB_SUCCESS;
   sql::ParsedSql syntax;
-  if (OB_FAIL(ObRawExprUtils::parse_expr_node_from_str(sort_item.column_name_,
-      session_info.get_charsets4parser(), expr_factory.get_allocator(), syntax))) {
+  if (OB_FAIL(ObRawExprUtils::parse_expr_node_from_str(sort_item.column_name_, expr_factory.get_allocator(), syntax))) {
   } else if (OB_ISNULL(syntax.statement())) {
     ret = OB_ERR_UNEXPECTED;
   } else {

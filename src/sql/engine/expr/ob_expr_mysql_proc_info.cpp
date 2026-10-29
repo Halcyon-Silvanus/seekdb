@@ -16,8 +16,7 @@
 
 #define USING_LOG_PREFIX SQL_ENG
 
-#include "sql/parser/ob_parser.h"
-#include "sql/parser/parsed_sql.h"
+#include "sql/syntax.h"
 #include "sql/engine/expr/ob_expr_mysql_proc_info.h"
 #include "sql/engine/expr/ob_expr_util.h"
 #include "sql/engine/expr/ob_expr_lob_utils.h"

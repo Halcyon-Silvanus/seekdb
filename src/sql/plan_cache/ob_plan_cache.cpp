@@ -380,8 +380,7 @@ int ObPlanCache::get_normalized_pattern_digest(const ObPlanCacheCtx &pc_ctx, uin
   if (pc_ctx.mode_ == PC_PS_MODE || pc_ctx.mode_ == PC_PL_MODE || pc_ctx.fp_result_.pc_key_.name_.empty()) {
     ObFastParserResult fp_result;
     ObSQLMode sql_mode = pc_ctx.sql_ctx_.session_info_->get_sql_mode();
-    ObCharsets4Parser charsets4parser = pc_ctx.sql_ctx_.session_info_->get_charsets4parser();
-    FPContext fp_ctx(charsets4parser);
+    FPContext fp_ctx;
     fp_ctx.enable_batched_multi_stmt_ = pc_ctx.sql_ctx_.handle_batched_multi_stmt();
     fp_ctx.sql_mode_ = sql_mode;
     if (OB_FAIL(ObSqlParameterization::fast_parser(pc_ctx.allocator_,
@@ -573,7 +572,6 @@ int ObPlanCache::construct_fast_parser_result(common::ObIAllocator &allocator,
     ret = OB_ERR_UNEXPECTED;
   } else {
     ObSQLMode sql_mode = pc_ctx.sql_ctx_.session_info_->get_sql_mode();
-    ObCharsets4Parser charsets4parser = pc_ctx.sql_ctx_.session_info_->get_charsets4parser();
     // if exact mode is on, not needs to do fast parser
     bool enable_exact_mode = pc_ctx.sql_ctx_.session_info_->get_enable_exact_mode();
     fp_result.cache_params_ =
@@ -584,7 +582,7 @@ int ObPlanCache::construct_fast_parser_result(common::ObIAllocator &allocator,
     } else if (enable_exact_mode) {
       (void)fp_result.pc_key_.name_.assign_ptr(raw_sql.ptr(), raw_sql.length());
     } else {
-      FPContext fp_ctx(charsets4parser);
+      FPContext fp_ctx;
       fp_ctx.enable_batched_multi_stmt_ = pc_ctx.sql_ctx_.handle_batched_multi_stmt();
       fp_ctx.sql_mode_ = sql_mode;
       bool can_do_batch_insert = false;

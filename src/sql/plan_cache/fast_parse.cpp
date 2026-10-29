@@ -15,7 +15,7 @@
  */
 
 #define USING_LOG_PREFIX SQL_PARSER
-#include "ob_fast_parser.h"
+#include "sql/plan_cache/fast_parse.h"
 #include "rust/sql_parser.h"
 #include "share/ob_define.h"
 #include "lib/worker.h"
@@ -87,16 +87,6 @@ int scan(const ObString &stmt, const FPContext &context, ObIAllocator &allocator
     placeholders.by_ordinal_ = scanned.ordinal_parameters > 0;
     placeholders.by_name_ = !scanned.parameter_names.empty();
     placeholders.count_ = scanned.ordinal_parameters + scanned.parameter_names.size();
-    placeholders.capacity_ = scanned.parameter_names.size();
-    if (!scanned.parameter_names.empty()) {
-      placeholders.name_ = static_cast<char **>(allocator.alloc(sizeof(char *) * placeholders.capacity_));
-      if (placeholders.name_ == nullptr) return OB_ALLOCATE_MEMORY_FAILED;
-      for (int i = 0; i < placeholders.capacity_; ++i) {
-        const auto &name = scanned.parameter_names[i];
-        placeholders.name_[i] = copy(name.data(), name.size());
-        if (placeholders.name_[i] == nullptr) return OB_ALLOCATE_MEMORY_FAILED;
-      }
-    }
     for (const auto &position : scanned.values) {
       if (OB_FAIL(result.values_tokens_.push_back(ObValuesTokenPos(position.sql_offset, position.literal_index)))) break;
     }

@@ -17,7 +17,7 @@
 #define USING_LOG_PREFIX SQL_PC
 #include "rust/config.h"
 #include <vector>
-#include "sql/parser/parsed_sql.h"
+#include "sql/syntax.h"
 #include "ob_sql_parameterization.h"
 #include "sql/resolver/ob_resolver_utils.h"
 #include "sql/resolver/expr/numeric_literal.h"
@@ -206,7 +206,7 @@ int ObSqlParameterization::transform_syntax_tree(ObIAllocator &allocator,
   if (parsed.statement() == nullptr) return OB_ERR_UNEXPECTED;
   ObFastParserResult scan;
   if (raw_params == nullptr) {
-    FPContext context(session.get_charsets4parser());
+    FPContext context;
     context.sql_mode_ = session.get_sql_mode();
     OZ (fast_parser(allocator, context, parsed.original_source(), scan));
     raw_params = &scan.raw_params_;
@@ -440,7 +440,7 @@ int ObSqlParameterization::raw_fast_parameterize_sql(ObIAllocator &allocator,
 {
   int ret = OB_SUCCESS;
   const auto length = peg::normalized_sql_length(bytes(sql));
-  FPContext context(session.get_charsets4parser());
+  FPContext context;
   context.sql_mode_ = session.get_sql_mode();
   context.parameterize_ = parse_mode == FP_MODE || parse_mode == FP_PARAMERIZE_AND_FILTER_HINT_MODE;
   context.ignore_hint_ = parse_mode == FP_PARAMERIZE_AND_FILTER_HINT_MODE
@@ -508,8 +508,7 @@ int ObSqlParameterization::parameterize_syntax_tree(common::ObIAllocator &alloca
                                                     bool is_transform_outline,
                                                     ObPlanCacheCtx &pc_ctx,
                                                     const ParsedSql &parsed,
-                                                    ParamStore &params,
-                                                    ObCharsets4Parser charsets4parser)
+                                                    ParamStore &params)
 {
   int ret = OB_SUCCESS;
   if (pc_ctx.select_item_param_infos_.created()) {
@@ -521,7 +520,7 @@ int ObSqlParameterization::parameterize_syntax_tree(common::ObIAllocator &alloca
   ObSQLSessionInfo *session = NULL;
   ObSEArray<ObPCParam *, OB_PC_SPECIAL_PARAM_COUNT> special_params;
   ObSEArray<ObString, 4> user_var_names;
-  FPContext fp_ctx(charsets4parser);
+  FPContext fp_ctx;
 
   int tmp_ret = OB_SUCCESS;
   tmp_ret = OB_E(EventTable::EN_SQL_PARAM_FP_NP_NOT_SAME_ERROR) OB_SUCCESS;

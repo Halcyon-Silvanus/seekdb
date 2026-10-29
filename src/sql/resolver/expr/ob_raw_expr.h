@@ -32,7 +32,7 @@
 #include "sql/resolver/expr/ob_expr_info_flag.h"
 #include "sql/session/ob_system_variable.h"
 #include "lib/worker.h"
-#include "sql/parser/parse_node.h"
+#include "sql/syntax.h"
 #include "sql/resolver/ob_resolver_define.h"
 #include "sql/engine/expr/ob_expr_operator.h"
 #include "sql/engine/expr/ob_expr_operator_factory.h"

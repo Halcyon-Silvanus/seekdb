@@ -17,7 +17,7 @@
 #define USING_LOG_PREFIX SERVER
 #include "observer/virtual_table/ob_table_columns.h"
 #include "observer/ob_server_runtime_access.h"
-#include "sql/parser/parsed_sql.h"
+#include "sql/syntax.h"
 #include "sql/resolver/ddl/ob_create_view_resolver.h"
 using namespace oceanbase::common;
 using namespace oceanbase::share;
@@ -1034,7 +1034,7 @@ int ObTableColumns::resolve_view_definition(
     {
       ObString view_definition;
       ParsedSql view_syntax;
-      ObParser view_parser(*allocator, session->get_sql_mode(), session->get_charsets4parser());
+      ObParser view_parser(*allocator, session->get_sql_mode());
       if (OB_FAIL(ObSQLUtils::generate_view_definition_for_resolve(
                     *allocator,
                     session->get_local_collation_connection(),
@@ -1064,8 +1064,7 @@ int ObTableColumns::resolve_view_definition(
                                       table_name.ptr()))) {
     } else {
       ParsedSql syntax;
-      ObParser parser(*allocator, session->get_sql_mode(),
-                      session->get_charsets4parser());
+      ObParser parser(*allocator, session->get_sql_mode());
       if (OB_FAIL(parser.parse(select_sql.string(), syntax))) {
       } else {
         ObSchemaChecker schema_checker;

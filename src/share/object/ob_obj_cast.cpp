@@ -101,9 +101,7 @@ static int read_real_lob_data(ObObjCastParams &params,
 
 static const int64_t MAX_DOUBLE_STRICT_PRINT_SIZE = 512;
 
-// ObObjType values intentionally match the parser's literal type tags.  Keep
-// the historical user-error text here without introducing a Share -> Query
-// dependency on sql/parser/type_name.c.
+// Keep error names local to avoid a Share -> Query dependency.
 static const char *legacy_cast_error_type_name(const ObObjType type)
 {
   static const char *TYPE_NAMES[] = {

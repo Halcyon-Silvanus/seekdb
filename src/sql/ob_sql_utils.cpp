@@ -18,7 +18,8 @@
 #include "lib/stat/ob_diagnostic_info_guard.h"
 #include "ob_sql_utils.h"
 #include "sql/engine/ob_physical_plan.h"
-#include "sql/parser/parsed_sql.h"
+#include "sql/syntax.h"
+#include "sql/plan_cache/fast_parse.h"
 #include "sql/executor/ob_maintain_dependency_info_task.h"
 #include "share/rc/ob_server_runtime.h"
 #include "sql/ob_sql.h"
@@ -1269,7 +1270,7 @@ int ObSQLUtils::get_outline_key(ObIAllocator &allocator,
     // Quick parameterization SQL with ?
     ObString no_param_sql;
     ParsedSql parsed;
-    ObParser parser(allocator, session->get_sql_mode(), session->get_charsets4parser());
+    ObParser parser(allocator, session->get_sql_mode());
     ObSEArray<ObPCParam *, OB_PC_SPECIAL_PARAM_COUNT> special_params;
     ObString param_sql;
     ParamStore params( (ObWrapperAllocator(allocator)) );
@@ -1358,12 +1359,15 @@ int ObSQLUtils::filter_hint_in_query_sql(ObIAllocator &allocator,
                                          ObString &param_sql)
 {
   int ret = OB_SUCCESS;
-  ObParser parser(allocator, session.get_sql_mode(), session.get_charsets4parser());
-  ParseResult parse_result;
-  if (OB_FAIL(parser.parse(sql, parse_result, FP_NO_PARAMERIZE_AND_FILTER_HINT_MODE))) {
+  FPContext context;
+  context.sql_mode_ = session.get_sql_mode();
+  context.parameterize_ = false;
+  context.ignore_hint_ = true;
+  ObFastParserResult result;
+  if (OB_FAIL(ObFastParser::parse(sql, context, allocator, result))) {
+    if (ret == OB_ERR_PARSER_SYNTAX) ret = OB_ERR_PARSE_SQL;
   } else {
-    param_sql.assign(parse_result.no_param_sql_, parse_result.no_param_sql_len_);
-    parser.free_result(parse_result);
+    param_sql = result.pc_key_.name_;
   }
   return ret;
 }
@@ -3638,10 +3642,6 @@ int ObSQLNameService::resolve_table_name(
     if (OB_SUCC(ret)) {
       const bool preserve_lettercase =
           common::OB_LOWERCASE_AND_INSENSITIVE != case_mode;
-      if (common::OB_LOWERCASE_AND_INSENSITIVE == case_mode) {
-        ::str_tolower(database_name.ptr(), database_name.length());
-        ::str_tolower(table_name.ptr(), table_name.length());
-      }
       if (!database_name.empty()) {
         ret = check_and_convert_database_name(
             cs_type, preserve_lettercase, database_name);

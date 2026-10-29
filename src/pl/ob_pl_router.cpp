@@ -188,10 +188,10 @@ int ObPLRouter::simple_resolve(ObPLFunctionAST &func_ast)
   sql::ParsedSql syntax;
   if (OB_SUCC(ret)) {
     ObString body = routine_info_.get_routine_body(); // get body string
-    ObPLParser parser(inner_allocator_, session_info_.get_sql_mode());
+    ObParser parser(inner_allocator_, session_info_.get_sql_mode());
     if (OB_FAIL(ObSQLUtils::convert_sql_text_from_schema_for_resolve(
                   inner_allocator_, session_info_.get_dtc_params(), body))) {
-    } else if (OB_FAIL(parser.parse(body, syntax))) {
+    } else if (OB_FAIL(parser.parse_routine_body(body, syntax))) {
     }
   }
 

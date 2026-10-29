@@ -17,11 +17,11 @@
 #ifndef OCEANBASE_SQL_PLAN_CACHE_OB_VALUES_TABLE_COMPRESSION_
 #define OCEANBASE_SQL_PLAN_CACHE_OB_VALUES_TABLE_COMPRESSION_
 
-#include "sql/parser/ob_parser.h"
+#include "sql/syntax.h"
 #include "lib/string/ob_string.h"
 #include "share/statement/ob_stmt_type.h"
 #include "sql/plan_cache/ob_plan_cache_struct.h"
-#include "sql/parser/ob_fast_parser.h"
+#include "sql/plan_cache/fast_parse.h"
 
 namespace oceanbase
 {

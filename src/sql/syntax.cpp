@@ -13,19 +13,14 @@
 // limitations under the License.
 
 #define USING_LOG_PREFIX SQL_PARSER
-#include "rust/sql_parser.h"
-#include "sql/parser/rust_sql_parser.h"
-#include "sql/parser/parsed_sql.h"
+#include "sql/syntax.h"
 #include "sql/ob_sql_utils.h"
-#include "sql/parser/parse_node.h"
-#include "sql/parser/parse_malloc.h"
-#include "lib/string/ob_string.h"
-#include "share/ob_errno.h"
 #include "lib/oblog/ob_log.h"
+#include "lib/utility/ob_smart_call.h"
 #include <algorithm>
 
 namespace oceanbase::sql {
-using common::OB_ERR_PARSE_SQL;
+using namespace common;
 namespace {
 using Kind = peg::NodeKind;
 
@@ -137,30 +132,15 @@ std::optional<NativeStatementTraits> native_statement_traits(Kind kind)
   }
 }
 
-int fill_parse_metadata(const common::ObString &sql, peg::ParseTree &tree, ParseResult &result)
+rust::Slice<const uint8_t> sql_bytes(const ObString &sql)
 {
-  result.contain_sensitive_data_ = tree.root.kind == Kind::SetConfig
-      || tree.root.kind == Kind::CreateUser || tree.root.kind == Kind::SetPassword || tree.root.kind == Kind::Grant;
-  if (tree.parameter_names.empty()) {
-    result.question_mark_ctx_.count_ = tree.parameters;
-    result.question_mark_ctx_.by_ordinal_ = tree.parameters != 0;
-  } else {
-    for (auto &name : tree.parameter_names) {
-      if (get_question_mark(&result.question_mark_ctx_, result.malloc_pool_, name.c_str()) < 0) {
-        return common::OB_ALLOCATE_MEMORY_FAILED;
-      }
-      result.question_mark_ctx_.by_name_ |= name.data()[1] < '0' || name.data()[1] > '9';
-    }
-  }
-  if (result.is_dynamic_sql_) {
-    common::ObString owned;
-    const int ret = common::ob_write_string(
-        *static_cast<common::ObIAllocator *>(result.malloc_pool_), sql, owned, true);
-    if (ret != common::OB_SUCCESS) return ret;
-    result.no_param_sql_ = owned.ptr();
-    result.no_param_sql_len_ = owned.length();
-  }
-  return common::OB_SUCCESS;
+  return {reinterpret_cast<const uint8_t *>(sql.ptr()), static_cast<size_t>(sql.length())};
+}
+
+peg::SqlMode parser_mode(ObSQLMode mode)
+{
+  return {bool(mode & SMO_ANSI_QUOTES), bool(mode & SMO_NO_BACKSLASH_ESCAPES),
+          bool(mode & SMO_PIPES_AS_CONCAT), bool(mode & SMO_HIGH_NOT_PRECEDENCE)};
 }
 }
 
@@ -178,32 +158,103 @@ int report_parse_error(const common::ObString &sql, size_t offset)
   return common::OB_ERR_PARSE_SQL;
 }
 
-int parse_rust_sql(const common::ObString &sql, ParseResult &result, bool routine_body, ParsedSql *owner)
+int ObParser::parse_entry(const ObString &sql, ParsedSql &owner, peg::ParseMode mode,
+                          bool dynamic_sql)
 {
-  static thread_local char error[MAX_ERROR_MSG];
-  error[0] = '\0';
-  result.error_msg_ = error;
+  owner.reset();
+  auto parsed = peg::parse_sql(sql_bytes(sql), parser_mode(sql_mode_), mode);
+  if (!parsed.error.empty()) {
+    const ObString source = parsed.expanded_sql.empty() ? sql
+        : ObString(parsed.expanded_sql.size(), parsed.expanded_sql.data());
+    return report_parse_error(source, parsed.error_offset);
+  }
+  ParseResult &result = owner.metadata_;
   result.input_sql_ = sql.ptr();
   result.input_sql_len_ = sql.length();
-  if (owner != nullptr) owner->original_source_ = sql;
-  auto parsed = peg::parse_sql(rust::Slice<const uint8_t>(
-      reinterpret_cast<const uint8_t *>(sql.ptr()), sql.length()),
-      peg::SqlMode{bool(result.sql_mode_ & SMO_ANSI_QUOTES), bool(result.sql_mode_ & SMO_NO_BACKSLASH_ESCAPES),
-                   bool(result.sql_mode_ & SMO_PIPES_AS_CONCAT), bool(result.sql_mode_ & SMO_HIGH_NOT_PRECEDENCE)},
-      routine_body ? peg::ParseMode::Routine : result.is_expression_ ? peg::ParseMode::Expression
-      : result.is_for_trigger_ ? peg::ParseMode::Trigger
-      : result.is_method_opt_parser_ ? peg::ParseMode::Statistics : peg::ParseMode::Sql);
-  if (!parsed.error.empty()) {
-    snprintf(error, sizeof(error), "rust-peg: %s", parsed.error.c_str());
-    result.start_col_ = parsed.error_offset + 1;
-    result.end_col_ = parsed.error_offset + 1;
-    return report_parse_error(sql, parsed.error_offset);
+  result.is_dynamic_sql_ = dynamic_sql;
+  result.contain_sensitive_data_ = parsed.root.kind == Kind::SetConfig
+      || parsed.root.kind == Kind::CreateUser || parsed.root.kind == Kind::SetPassword
+      || parsed.root.kind == Kind::Grant;
+  result.question_mark_ctx_.count_ = parsed.parameters;
+  result.question_mark_ctx_.by_ordinal_ = parsed.parameter_names.empty() && parsed.parameters != 0;
+  result.question_mark_ctx_.by_name_ = parsed.named_parameters;
+  if (dynamic_sql) {
+    ObString owned;
+    const int ret = ob_write_string(allocator_, sql, owned, true);
+    if (ret != OB_SUCCESS) return ret;
+    result.no_param_sql_ = owned.ptr();
+    result.no_param_sql_len_ = owned.length();
   }
-  int ret = fill_parse_metadata(sql, parsed, result);
-  if (ret != common::OB_SUCCESS) return ret;
-  if (owner == nullptr) return common::OB_ERR_UNEXPECTED;
-  owner->syntax_.emplace(std::move(parsed));
-  return common::OB_SUCCESS;
+  owner.original_source_ = sql;
+  owner.syntax_.emplace(std::move(parsed));
+  return OB_SUCCESS;
+}
+
+int ObParser::parse(const ObString &query, ParsedSql &parsed, ParseMode mode)
+{
+  const int64_t length = peg::normalized_sql_length(sql_bytes(query));
+  if (length == 0) {
+    parsed.reset();
+    return OB_ERR_EMPTY_QUERY;
+  }
+  const auto entry = mode == TRIGGER_MODE ? peg::ParseMode::Trigger
+      : mode == METHOD_OPT_MODE ? peg::ParseMode::Statistics : peg::ParseMode::Sql;
+  return SMART_CALL(parse_entry(ObString(length, query.ptr()), parsed, entry, mode == DYNAMIC_SQL_MODE));
+}
+
+int ObParser::parse_expression(const ObString &text, ParsedSql &parsed)
+{
+  return parse_entry(text, parsed, peg::ParseMode::Expression);
+}
+
+int ObParser::parse_routine_body(const ObString &text, ParsedSql &parsed)
+{
+  return parse_entry(text, parsed, peg::ParseMode::Routine);
+}
+
+int ObParser::parse_routine_definition(const ObString &definition, ParsedSql &parsed)
+{
+  return SMART_CALL(parse_entry(definition, parsed, peg::ParseMode::RoutineDefinition));
+}
+
+bool ObParser::is_explain_stmt(const ObString &stmt, const char *&body)
+{
+  const auto info = peg::classify_statement(sql_bytes(stmt), peg::SqlMode{});
+  const bool explained = info.kind == peg::StatementClass::Explain
+      && info.explain_offset < static_cast<size_t>(stmt.length());
+  body = explained ? stmt.ptr() + info.explain_offset : nullptr;
+  return explained;
+}
+
+int ObParser::split_multiple_stmt(const ObString &stmt, ObIArray<ObString> &queries,
+                                  ObMPParseStat &parse_stat, bool first_only)
+{
+  int ret = OB_SUCCESS;
+  parse_stat.reset();
+  const auto split = peg::split_sql(sql_bytes(stmt), parser_mode(sql_mode_), first_only);
+  size_t offset = 0;
+  for (size_t end : split.ends) {
+    if (OB_FAIL(queries.push_back(ObString(end - offset, stmt.ptr() + offset)))) break;
+    offset = end;
+  }
+  if (OB_SUCC(ret) && split.failed) {
+    parse_stat.parse_fail_ = true;
+    parse_stat.fail_query_idx_ = queries.count() - 1;
+    parse_stat.fail_ret_ = OB_ERR_PARSE_SQL;
+  }
+  return ret;
+}
+
+int ObParser::pre_parse(const ObString &stmt, PreParseResult &res)
+{
+  const auto info = peg::classify_statement(sql_bytes(stmt), peg::SqlMode{});
+  res.trace_id_.reset();
+  if (info.trace_end > info.trace_start) {
+    const size_t length = std::min(info.trace_end - info.trace_start,
+                                  static_cast<size_t>(OB_MAX_TRACE_ID_BUFFER_SIZE));
+    res.trace_id_.assign_ptr(stmt.ptr() + info.trace_start, length);
+  }
+  return OB_SUCCESS;
 }
 
 int ParsedSql::preserve_source(common::ObIAllocator &allocator)

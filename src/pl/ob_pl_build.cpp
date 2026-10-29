@@ -463,9 +463,9 @@ int ObPLBuilder::compile(
   if (OB_SUCC(ret)) {
     ObString body = routine.get_routine_body();
     ObDataTypeCastParams dtc_params = session_info_.get_dtc_params();
-    ObPLParser parser(allocator_, session_info_.get_sql_mode());
+    ObParser parser(allocator_, session_info_.get_sql_mode());
     OZ (ObSQLUtils::convert_sql_text_from_schema_for_resolve(allocator_, dtc_params, body), K(body));
-    OZ (parser.parse(body, syntax), K(body));
+    OZ (parser.parse_routine_body(body, syntax), K(body));
   }
 
   int64_t parse_end = ObTimeUtility::current_time();
@@ -666,9 +666,9 @@ int ObPLBuilder::analyze_package(const ObString &source,
                                   bool is_for_trigger)
 {
   int ret = OB_SUCCESS;
-  ObPLParser parser(allocator_, session_info_.get_sql_mode());
+  ObParser parser(allocator_, session_info_.get_sql_mode());
   sql::ParsedSql syntax;
-  OZ (parser.parse(source, syntax));
+  OZ (parser.parse_routine_body(source, syntax));
   OZ (analyze_package(syntax, parent_ns, package_ast, is_for_trigger));
   return ret;
 }

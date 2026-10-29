@@ -14,8 +14,7 @@
  * limitations under the License.
  */
 
-#ifndef OCEANBASE_SQL_OB_ITEM_TYPE_H_
-#define OCEANBASE_SQL_OB_ITEM_TYPE_H_
+#pragma once
 
 // @note !!!Contact with Zhuweng before you modify this file!!!
 
@@ -194,8 +193,7 @@ typedef enum ObItemType
   T_OBJ_ACCESS_REF = 167,
   T_OP_CONNECT_BY_ROOT = 168,
 
-  /* regexp_substr registration has been replaced by T_FUN_SYS_REGEXP_SUBSTR.
-  T_OP_REGEXP_SUBSTR = 169,*/
+  /* regexp_substr operator id 169 is reserved after replacement by T_FUN_SYS_REGEXP_SUBSTR. */
   T_OP_GET_PACKAGE_VAR = 170,
   T_OP_SHADOW_UK_PROJECT = 171,
 
@@ -492,7 +490,7 @@ typedef enum ObItemType
   ///< @note add new mysql only function type before this line
   T_MYSQL_ONLY_SYS_MAX_OP = 800,
 
-  // legacy PL/system function range
+  // Legacy compatibility function id range.
   T_FUN_SYS_CONNECT_BY_PATH = 1401,
   T_FUN_SYS_SYSTIMESTAMP = 1402,
   /* item type ids 1403-1405 are reserved after removing Oracle TO_DATE/TO_CHAR/TO_NUMBER shells. */
@@ -667,7 +665,7 @@ typedef enum ObItemType
   T_FUN_JSON_OBJECTAGG = 1631,
 // please modify need_calc_json_as_text if other json functions are added
   T_FUN_SYS_INNER_AGGR_CODE = 1632,
-  // T_FUN_SYS_TIMESTAMP_TO_SCN and T_FUN_SYS_SCN_TO_TIMESTAMP are shared timestamp helpers.
+  // Timestamp/SCN conversion functions.
   T_FUN_SYS_TIMESTAMP_TO_SCN = 1633,
   T_FUN_SYS_SCN_TO_TIMESTAMP = 1634,
 
@@ -817,7 +815,7 @@ typedef enum ObItemType
   T_FUN_SYS_VECTOR_L2_SIMILARITY = 1790,
   T_FUN_SYS_VECTOR_IP_SIMILARITY = 1791,
   T_FUN_SYS_VECTOR_COS_SIMILARITY = 1792,
-  ///< @note add new legacy PL/system function type before this line
+  ///< @note add new legacy compatibility function type before this line
 
   T_FUN_SYS_TABLET_AUTOINC_NEXTVAL = 1801, // add only for heap table
   T_FUN_SYS_GENERATOR = 1802,
@@ -1386,6 +1384,7 @@ typedef enum ObItemType
   T_DEFAULT_NULL = 3782,
   T_LS = 3783,
   T_CREATE_TIMESTAMP = 3790,
+  T_RESERVED_3791 = 3791,
   T_MERGE_CONTROL = 3792,
   T_CACHE_NAME = 3794,
   T_FILE_ID = 3795,
@@ -1687,6 +1686,7 @@ typedef enum ObItemType
   T_BEGIN_OUTLINE_DATA = 4153,
   T_END_OUTLINE_DATA = 4154,
   T_OUTLINE_HINT = 4155,
+  // 4156: optimizer features version hint abandoned, id reserved
   T_OPT_PARAM_HINT = 4157,
 
   T_CREATE_ROLE = 4158,
@@ -1947,8 +1947,8 @@ typedef enum ObItemType
   T_DEFAULT_ROLE = 4437,
   T_REVERSE = 4438,
   T_AUTO = 4439,
-  T_AUTO_PARTITION = 4440,
 
+  // 4441-4449: SQL throttling abandoned, ids reserved
   T_GROUPING_SETS_LIST = 4452,
   T_CUBE_LIST = 4453,
   T_MODIFY_READ_TRANSPORT = 4454,
@@ -2142,7 +2142,6 @@ typedef enum ObItemType
 
   T_UNION_MERGE_HINT = 4740,
   T_UNION_MERGE_LIST = 4741,
-
   T_TRANSFORM_DISTINCT_AGG = 4743,
   T_NO_TRANSFORM_DISTINCT_AGG = 4744,
 
@@ -2152,8 +2151,6 @@ typedef enum ObItemType
   T_TG_SYS_EVENT = 4754,
   T_TG_DB_EVENT_LIST = 4755,
   T_FILE_EXTENSION = 4756,
-  T_LS_ATTR_LIST = 4757,
-  T_ALTER_LS = 4758,
   T_TRANSPOSE_TABLE = 4760,
   T_FUN_UNPIVOT = 4761,
 
@@ -2273,18 +2270,9 @@ typedef enum ObItemType
   T_FORK_DATABASE = 4917,
   T_DIFF_TABLE = 4918,
   T_MERGE_TABLE = 4919,
+  T_FLUSH_PRIVILEGES = 4920,
   T_MAX //Attention: add a new type before T_MAX
 } ObItemType;
-
-typedef enum ObCacheType
-{
-  CACHE_TYPE_INVALID = -1, //Attention: add a new type after CACHE_TYPE_INVALID
-  CACHE_TYPE_PLAN,
-  CACHE_TYPE_PL_OBJ,
-  CACHE_TYPE_PS_OBJ,
-  CACHE_TYPE_LIB_CACHE,
-  CACHE_TYPE_MAX //Attention: add a new type before CACHE_TYPE_MAX
-} ObCacheType;
 
 typedef enum ObOutlineType
 {
@@ -2322,7 +2310,7 @@ typedef enum ObOutlineType
     || ((op) == T_FUN_SYS_ST_CROSSES) \
     || ((op) == T_FUN_SYS_ST_OVERLAPS)) \
 
-// Only selected list expressions can accept bool(tinyint) param.
+// Only selected operators and list expressions can accept bool(tinyint) params.
 #define ALLOW_BOOL_INPUT(op) \
   ((IS_BOOL_OP((op))) \
     || ((op) == T_FUN_COLUMN_CONV) \
@@ -2480,4 +2468,3 @@ inline int databuff_print_key_obj(char *buf, const int64_t buf_len, int64_t &pos
 }  // namespace common
 } // end namespace oceanbase
 #endif //__cplusplus
-#endif //OCEANBASE_SQL_OB_ITEM_TYPE_H_

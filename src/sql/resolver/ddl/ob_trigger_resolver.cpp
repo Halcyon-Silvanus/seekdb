@@ -287,7 +287,7 @@ int ObTriggerResolver::resolve_trigger_body(const peg::Node &parse_node,
       session_info_->get_dtc_params()));
   if (OB_SUCC(ret)) {
     ObString procedure_source;
-    pl::ObPLParser parser(*allocator_, session_info_->get_sql_mode());
+    ObParser parser(*allocator_, session_info_->get_sql_mode());
     ParsedSql syntax;
     OZ (ObTriggerSourceBuilder::build_procedure_source(
         trigger_info,
@@ -297,7 +297,7 @@ int ObTriggerResolver::resolve_trigger_body(const peg::Node &parse_node,
         tg_body,
         session_info_->get_dtc_params(),
         procedure_source));
-    OZ (parser.parse(procedure_source, syntax));
+    OZ (parser.parse_routine_body(procedure_source, syntax));
     if (OB_SUCC(ret)) {
       params_.tg_timing_event_ = static_cast<int64_t>(trigger_info.get_timing_event());
       HEAP_VAR(ObCreateRoutineResolver, resolver, params_) {
@@ -682,7 +682,7 @@ int ObTriggerSourceBuilder::generate_package_source(const uint64_t tg_package_id
   CK (OB_NOT_NULL(trigger_info));
   if (OB_SUCC(ret)) {
     ObParser parser(alloc, trigger_info->get_sql_mode());
-    OZ (parser.parse(trigger_info->get_trigger_body(), syntax, TRIGGER_MODE, false, false, true));
+    OZ (parser.parse(trigger_info->get_trigger_body(), syntax, TRIGGER_MODE));
     CK (OB_NOT_NULL(syntax.statement()));
     const ObSimpleTableSchemaV2 *table_schema = nullptr;
     const ObDatabaseSchema *base_db_schema = nullptr;
@@ -713,7 +713,7 @@ int ObTriggerSourceBuilder::replace_table_name_in_body(ObTriggerInfo &trigger_in
   int ret = OB_SUCCESS;
   ObParser parser(alloc, trigger_info.get_sql_mode());
   ParsedSql syntax;
-  OZ (parser.parse(trigger_info.get_trigger_body(), syntax, TRIGGER_MODE, false, false, true));
+  OZ (parser.parse(trigger_info.get_trigger_body(), syntax, TRIGGER_MODE));
   CK (OB_NOT_NULL(syntax.statement()));
   if (OB_SUCC(ret)) {
     const auto names = peg::name_parts(peg::trigger_table(peg::trigger_definition(*syntax.statement())));

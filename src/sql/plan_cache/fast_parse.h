@@ -14,13 +14,11 @@
  * limitations under the License.
  */
 
-#ifndef OCEANBASE_SQL_PARSER_FAST_PARSER_
-#define OCEANBASE_SQL_PARSER_FAST_PARSER_
+#pragma once
 
 #include "lib/allocator/ob_allocator.h"
 #include "lib/string/ob_string.h"
-#include "lib/charset/ob_charset.h"
-#include "sql/parser/ob_parser_utils.h"
+#include "common/sql_mode/ob_sql_mode.h"
 #include "sql/plan_cache/ob_plan_cache_struct.h"
 
 namespace oceanbase
@@ -29,25 +27,11 @@ namespace sql
 {
 struct FPContext
 {
-public:
-	bool enable_batched_multi_stmt_;
-	ObCharsets4Parser charsets4parser_;
-	ObSQLMode sql_mode_;
-  bool is_format_;
+  bool enable_batched_multi_stmt_ = false;
+  ObSQLMode sql_mode_ = 0;
+  bool is_format_ = false;
   bool parameterize_ = true;
   bool ignore_hint_ = false;
-
-	FPContext()
-		: enable_batched_multi_stmt_(false),
-			sql_mode_(0),
-      is_format_(false)
-	{}
-	FPContext(ObCharsets4Parser charsets4parser)
-		: enable_batched_multi_stmt_(false),
-			charsets4parser_(charsets4parser),
-			sql_mode_(0),
-      is_format_(false)
-	{}
 };
 
 struct ObFastParser final
@@ -72,5 +56,3 @@ public:
 
 } // namespace sql
 } // namespace oceanbase
-
-#endif
