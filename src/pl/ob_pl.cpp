@@ -1692,7 +1692,7 @@ int ObPL::generate_pl_function(ObExecContext &ctx,
 
   // do compile
   if (OB_SUCC(ret)) {
-    ObPLBuilder builder(compile_alloc,
+    ObPLBuilder builder(routine->get_allocator(),
                           *(ctx.get_my_session()),
                           *ctx.get_plan_cache(),
                           ctx.get_pl_sql_runtime(),
