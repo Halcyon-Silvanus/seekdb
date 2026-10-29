@@ -2430,6 +2430,8 @@ pub(crate) mod ffi {
         fn frame_end(frame: &Node) -> &Node;
         fn frame_bound(bound: &Node) -> FrameBound;
         fn frame_bound_offset(bound: &Node) -> &Node;
+        fn frame_bound_has_unit(bound: &Node) -> bool;
+        fn frame_bound_unit(bound: &Node) -> &Node;
         fn lambda_parameters(lambda: &Node) -> &[Node];
         fn lambda_body(lambda: &Node) -> &Node;
         fn collection_lambda(call: &Node) -> &Node;
@@ -2595,7 +2597,8 @@ use crate::expression::{
     call_name, call_qualifiers, case_arms, case_condition, case_else, case_has_else,
     case_has_operand, case_operand, case_result, cast_argument, cast_ignore, cast_target,
     collation_argument, collation_name, collation_specification, collection_lambda, exists_query,
-    expression_literal, frame_bound, frame_bound_offset, frame_end, frame_has_end, frame_start,
+    expression_literal, frame_bound, frame_bound_has_unit, frame_bound_offset, frame_bound_unit,
+    frame_end, frame_has_end, frame_start,
     frame_unit, fulltext_columns, fulltext_mode, fulltext_search, integer_literal_value,
     is_call_expression, is_literal, is_test, json_column_kind, json_column_name, json_column_type,
     json_document, json_empty_clause, json_empty_default, json_error_clause, json_error_default,

@@ -859,7 +859,7 @@ peg::parser! {
                 nulls:null_treatment()? {
                 let mut result=Node::callable(Kind::NthValue,vec![value,nth]);result.children.extend(from);result.children.extend(nulls);result
             }
-        rule window_bound() -> Node
+        rule window_bound(level: usize) -> Node
             = kw("current") kw("row") { Node::new(Kind::WindowBound,vec![]).value(1) }
             / value:(start:position!() kw("unbounded") {
                     Node::new(Kind::WindowInterval,vec![Node::new(Kind::Ident,vec![]).text("unbounded".into())]).text("unbounded".into()).value(1).at(start,start+9)
@@ -867,12 +867,16 @@ peg::parser! {
                 / value:(number() / parameter()) {
                     let (start,end)=(value.start,value.end);
                     Node::new(Kind::WindowInterval,vec![value]).value(1).at(start,end)
+                }
+                / start:position!() kw("interval") value:expr(level+1) unit:date_unit() {
+                    let end=unit.end;
+                    Node::new(Kind::WindowInterval,vec![value,unit]).at(start,end)
                 }) direction:(kw("preceding") { 1 } / kw("following") { 2 }) {
                     Node::new(Kind::WindowBound,vec![value,Node::new(Kind::HiddenInt,vec![]).value(direction)]).value(2)
                 }
-        rule window_frame() -> Node = kind:(kw("rows") { 1 } / kw("range") { 2 })
-            bounds:(kw("between") first:window_bound() kw("and") last:window_bound() { (1,vec![first,last]) }
-                / first:window_bound() { (2,vec![first]) }) {
+        rule window_frame(level: usize) -> Node = kind:(kw("rows") { 1 } / kw("range") { 2 })
+            bounds:(kw("between") first:window_bound(level) kw("and") last:window_bound(level) { (1,vec![first,last]) }
+                / first:window_bound(level) { (2,vec![first]) }) {
                 let mut children=vec![Node::new(Kind::HiddenInt,vec![]).value(kind)];
                 children.extend(bounds.1);
                 Node::new(Kind::WindowFrame,children).value(bounds.0)
@@ -881,7 +885,7 @@ peg::parser! {
         rule window_spec(level: usize) -> Node = start:position!() "(" _ name:window_name()?
             partition:(kw("partition") kw("by") values:expr_list(level) { values })?
             order:(kw("order") kw("by") values:(order_item(level) ++ ("," _)) { values })?
-            frame:window_frame()? ")" end:position!() _ {
+            frame:window_frame(level)? ")" end:position!() _ {
                 let mut spec=vec![];
                 if let Some(partition)=partition { spec.push(Node::new(Kind::ExprList,partition)); }
                 if let Some(order)=order { spec.push(Node::new(Kind::Order,order)); }

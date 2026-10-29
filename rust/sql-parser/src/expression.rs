@@ -594,6 +594,12 @@ pub(crate) fn frame_bound(bound: &Node) -> FrameBound {
 pub(crate) fn frame_bound_offset(bound: &Node) -> &Node {
     &bound.children[0].children[0]
 }
+pub(crate) fn frame_bound_has_unit(bound: &Node) -> bool {
+    bound.children[0].children.len() == 2
+}
+pub(crate) fn frame_bound_unit(bound: &Node) -> &Node {
+    &bound.children[0].children[1]
+}
 pub(crate) fn lambda_parameters(lambda: &Node) -> &[Node] {
     &lambda.children[0].children
 }

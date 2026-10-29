@@ -3339,6 +3339,11 @@ int ObRawExprResolverImpl::process_frame_node(const peg::Node &node, ObFrame &fr
   frame.is_between_ = peg::frame_has_end(node);
   OZ(process_bound_node(peg::frame_start(node), true, frame.get_upper()));
   if (frame.is_between_) OZ(process_bound_node(peg::frame_end(node), false, frame.get_lower()));
+  if (OB_SUCC(ret) && frame.win_type_ == WINDOW_ROWS
+      && ((frame.get_upper().type_ == BOUND_INTERVAL && !frame.get_upper().is_nmb_literal_)
+          || (frame.get_lower().type_ == BOUND_INTERVAL && !frame.get_lower().is_nmb_literal_))) {
+    ret = OB_ERR_WINDOW_ROWS_INTERVAL_USE;
+  }
   return ret;
 }
 
@@ -3354,9 +3359,13 @@ int ObRawExprResolverImpl::process_bound_node(const peg::Node &node, const bool 
     bound.is_preceding_ = is_upper;
   } else if (kind == peg::FrameBound::Preceding || kind == peg::FrameBound::Following) {
     bound.type_ = BOUND_INTERVAL;
-    bound.is_nmb_literal_ = true;
+    bound.is_nmb_literal_ = !peg::frame_bound_has_unit(node);
     OZ(SMART_CALL(recursive_resolve(peg::frame_bound_offset(node), bound.interval_expr_)));
     OZ(bound.interval_expr_->extract_info());
+    if (!bound.is_nmb_literal_) {
+      OZ(SMART_CALL(recursive_resolve(peg::frame_bound_unit(node), bound.date_unit_expr_)));
+      OZ(bound.date_unit_expr_->extract_info());
+    }
   }
   return ret;
 }
