@@ -143,6 +143,8 @@ pub(crate) mod ffi {
         NoParallel,
         EnableParallelDml,
         DisableParallelDml,
+        EnableParallelDasDml,
+        DisableParallelDasDml,
         QueryTimeout,
         TraceLog,
         Tracing,

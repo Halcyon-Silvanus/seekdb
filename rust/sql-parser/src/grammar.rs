@@ -991,6 +991,7 @@ peg::parser! {
                 qb:("(" _ qb:hint_qb()? ")" _ { qb })? { Node::new(kind,vec![Node::optional(qb.flatten())]) }
             / kw("dbms_stats") { Node::new(Kind::DbmsStats,vec![]) }
             / kind:(kw("enable_parallel_dml") { Kind::EnableParallelDml } / kw("disable_parallel_dml") { Kind::DisableParallelDml }
+                / kw("enable_parallel_das_dml") { Kind::EnableParallelDasDml } / kw("disable_parallel_das_dml") { Kind::DisableParallelDasDml }
                 / kw("gather_optimizer_statistics") { Kind::GatherStatistics } / kw("no_gather_optimizer_statistics") { Kind::NoGatherStatistics }
                 / kw("trace_log") { Kind::TraceLog }
                 / kw("cursor_sharing_exact") { Kind::CursorSharingExact }

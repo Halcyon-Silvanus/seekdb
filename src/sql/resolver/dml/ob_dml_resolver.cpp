@@ -7148,6 +7148,12 @@ int ObDMLResolver::resolve_global_hint(const peg::Node &hint_node,
     case Kind::DisableParallelDml:
       global_hint.merge_parallel_dml_hint(ObPDMLOption::DISABLE);
       break;
+    case Kind::EnableParallelDasDml:
+      global_hint.merge_parallel_das_dml_hint(ObParallelDASOption::ENABLE);
+      break;
+    case Kind::DisableParallelDasDml:
+      global_hint.merge_parallel_das_dml_hint(ObParallelDASOption::DISABLE);
+      break;
     case Kind::NoParallel:
       global_hint.merge_parallel_hint(ObGlobalHint::DEFAULT_PARALLEL);
       break;
