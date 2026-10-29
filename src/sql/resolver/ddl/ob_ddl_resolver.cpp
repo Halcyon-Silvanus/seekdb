@@ -718,6 +718,79 @@ int ObDDLResolver::add_storing_column(const ObString &column_name,
   return ret;
 }
 
+int ObDDLResolver::resolve_json_storage(const peg::Node &node)
+{
+  int ret = OB_SUCCESS;
+  const auto storage = peg::json_storage_definition(node);
+  const auto text = storage.column.text();
+  const ObString name(text.size(), text.data());
+  ObColumnSchemaV2 *column = nullptr;
+  if (stmt::T_CREATE_TABLE == stmt_->get_stmt_type()) {
+    auto *create = static_cast<ObCreateTableStmt *>(stmt_);
+    column = create->get_create_table_arg().schema_.get_column_schema(name);
+  } else if (stmt::T_ALTER_TABLE == stmt_->get_stmt_type()) {
+    auto &schema = static_cast<ObAlterTableStmt *>(stmt_)->get_alter_table_schema();
+    for (auto iter = schema.column_begin(); OB_SUCC(ret) && iter != schema.column_end() && nullptr == column; ++iter) {
+      if (0 == (**iter).get_column_name_str().case_compare(name)) {
+        auto &alter_column = static_cast<AlterColumnSchema &>(**iter);
+        if (alter_column.alter_type_ != OB_DDL_ADD_COLUMN) {
+          ret = OB_NOT_SUPPORTED;
+        } else {
+          column = &alter_column;
+        }
+      }
+    }
+  } else {
+    ret = OB_NOT_SUPPORTED;
+  }
+  if (OB_SUCC(ret)) {
+    if (nullptr == column || !column->is_json()) {
+      ret = OB_INVALID_ARGUMENT;
+    } else {
+      for (const auto &chunk : storage.chunks) {
+        OZ(resolve_storage_chunk(*column, chunk));
+      }
+    }
+  }
+  return ret;
+}
+
+int ObDDLResolver::resolve_storage_chunk(ObColumnSchemaV2 &column, const peg::Node &node)
+{
+  int ret = OB_SUCCESS;
+  const auto value = peg::expression_literal(peg::storage_chunk_value(node));
+  uint64_t kilobytes = value.integer;
+  const uint64_t maximum = OB_MAX_LOB_CHUNK_SIZE / 1024;
+  if (!column.is_json()) {
+    ret = OB_NOT_SUPPORTED;
+    LOG_USER_ERROR(OB_NOT_SUPPORTED, "chunk size column attribute only supported for json, others");
+  } else if (value.kind == peg::LiteralKind::String && value.text.empty()) {
+    ret = OB_INVALID_ARGUMENT;
+  } else if (value.kind == peg::LiteralKind::String) {
+    const ObString text(value.text.size(), value.text.data());
+    kilobytes = 0;
+    int64_t end = 0;
+    for (; end < text.length() && text[end] >= '0' && text[end] <= '9'; ++end) {
+      if (kilobytes <= maximum) {
+        kilobytes = kilobytes * 10 + (text[end] - '0');
+      }
+    }
+    const ObString unit(text.length() - end, text.ptr() + end);
+    if (!unit.empty() && 0 != unit.case_compare("k") && 0 != unit.case_compare("kb")) {
+      ret = OB_INVALID_ARGUMENT;
+    }
+  }
+  if (OB_SUCC(ret)) {
+    if (kilobytes < OB_MIN_LOB_CHUNK_SIZE / 1024 || kilobytes > maximum) {
+      ret = OB_INVALID_ARGUMENT;
+      LOG_USER_ERROR(OB_INVALID_ARGUMENT, "invalid CHUNK LOB storage option value");
+    } else {
+      column.set_lob_chunk_size(kilobytes * 1024);
+    }
+  }
+  return ret;
+}
+
 int ObDDLResolver::resolve_table_option(const peg::Node &option, const bool is_index_option)
 {
   int ret = OB_SUCCESS;
@@ -727,6 +800,29 @@ int ObDDLResolver::resolve_table_option(const peg::Node &option, const bool is_i
   } else if (OB_FAIL(schema_checker_->get_database_id(database_name_, database_id))) {
   } else {
     switch (option.kind()) {
+      case peg::NodeKind::JsonStorage:
+        OZ(resolve_json_storage(option));
+        break;
+      case peg::NodeKind::SemistructEncodingType: {
+        if (is_index_option) {
+          ret = OB_NOT_SUPPORTED;
+        } else {
+          const auto text = peg::table_option_text(option);
+          const ObString type(text.size(), text.data());
+          if (type.empty()) {
+            semistruct_encoding_type_.mode_ = ObSemiStructEncodingType::Mode::NONE;
+          } else if (0 == type.case_compare("encoding")) {
+            semistruct_encoding_type_.mode_ = ObSemiStructEncodingType::Mode::ENCODING;
+          } else {
+            ret = OB_INVALID_ARGUMENT;
+            LOG_USER_ERROR(OB_INVALID_ARGUMENT, "semistruct encoding type, should be none or encoding");
+          }
+          if (OB_SUCC(ret) && stmt::T_ALTER_TABLE == stmt_->get_stmt_type()) {
+            OZ(alter_table_bitset_.add_member(ObAlterTableArg::SEMISTRUCT_ENCODING_TYPE));
+          }
+        }
+        break;
+      }
       case peg::NodeKind::ProgressiveMergeNum: {
         if (is_index_option) {
           ret = OB_NOT_SUPPORTED;
@@ -1562,6 +1658,9 @@ int ObDDLResolver::resolve_normal_column_attribute(ObColumnSchemaV2 &column,
         }
         break;
       }
+      case peg::NodeKind::StorageChunk:
+        OZ(resolve_storage_chunk(column, attribute));
+        break;
       case peg::NodeKind::ColumnSkipIndex: {
         const auto syntax = peg::column_skip_index(attribute);
         // Nonempty attributes validate earlier SUM state before replacing it.

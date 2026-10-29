@@ -59,7 +59,7 @@ pub(crate) fn view_definition(node: &Node) -> ViewDefinition<'_> {
 
 use crate::bridge::ffi::{
     ColumnDefinition, ColumnGeneration, ColumnPosition, ColumnSkipIndexSyntax, DropBehavior,
-    ForeignKeyDefinition,
+    ForeignKeyDefinition, JsonStorageDefinition,
     IndexDefinition, IndexKind, IndexMethod, PartitionDefinition, PartitionElement, PartitionKind,
     PartitionValues, ReferenceAction, ReferenceEvent, ReferentialAction, TableDefinition,
     TableOrganization, TableRowFormat, TableSelectMode,
@@ -610,6 +610,12 @@ pub(crate) fn referential_action(node: &Node) -> ReferentialAction {
         },
     }
 }
+pub(crate) fn json_storage_definition(node: &Node) -> JsonStorageDefinition<'_> {
+    JsonStorageDefinition { column: &node.children[0], chunks: &node.children[1..] }
+}
+pub(crate) fn storage_chunk_value(node: &Node) -> &Node {
+    &node.children[0]
+}
 pub(crate) fn table_option_text(node: &Node) -> &str {
     if node.kind == Kind::Collation {
         &node.text
@@ -714,9 +720,16 @@ pub(crate) fn alter_table_actions(node: &Node) -> &[Node] {
 }
 pub(crate) fn alter_column_definitions(node: &Node) -> &[Node] {
     match node.kind {
-        Kind::ColumnAdd | Kind::ColumnModify => &node.children,
+        Kind::ColumnAdd => &node.children[..node.children.len() - alter_column_storage(node).len()],
+        Kind::ColumnModify => &node.children,
         Kind::ColumnChange => &node.children[1..],
         _ => unreachable!(),
+    }
+}
+pub(crate) fn alter_column_storage(node: &Node) -> &[Node] {
+    match node.children.last() {
+        Some(storage) if storage.kind == Kind::JsonStorage => std::slice::from_ref(storage),
+        _ => &[],
     }
 }
 pub(crate) fn alter_column_name(node: &Node) -> &Node {

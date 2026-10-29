@@ -170,6 +170,9 @@ pub(crate) mod ffi {
         BlockSize,
         TabletSize,
         LobInrowThreshold,
+        StorageChunk,
+        JsonStorage,
+        SemistructEncodingType,
         PctFree,
         Index,
         IndexColumns,
@@ -1742,6 +1745,10 @@ pub(crate) mod ffi {
         Compressed,
         Condensed,
     }
+    struct JsonStorageDefinition<'a> {
+        column: &'a Node,
+        chunks: &'a [Node],
+    }
     struct TableDefinition<'a> {
         relation: &'a Node,
         elements: &'a [Node],
@@ -1981,6 +1988,8 @@ pub(crate) mod ffi {
         fn foreign_key_name(node: &Node) -> &Node;
         fn foreign_key_index_name(node: &Node) -> &Node;
         fn referential_action(node: &Node) -> ReferentialAction;
+        unsafe fn json_storage_definition<'a>(node: &'a Node) -> JsonStorageDefinition<'a>;
+        fn storage_chunk_value(node: &Node) -> &Node;
         fn table_option_text(node: &Node) -> &str;
         fn table_option_number(node: &Node) -> u64;
         fn table_option_engine_name(node: &Node) -> &Node;
@@ -2008,6 +2017,7 @@ pub(crate) mod ffi {
         fn alter_table_relation(node: &Node) -> &Node;
         fn alter_table_actions(node: &Node) -> &[Node];
         fn alter_column_definitions(node: &Node) -> &[Node];
+        fn alter_column_storage(node: &Node) -> &[Node];
         fn alter_column_name(node: &Node) -> &Node;
         fn alter_column_new_name(node: &Node) -> &Node;
         fn alter_column_has_default(node: &Node) -> bool;
@@ -2565,7 +2575,7 @@ use crate::inspect::embedded_sql_references;
 
 use crate::ddl::{
     alter_charset_collation, alter_charset_has_collation, alter_charset_name, alter_column_default,
-    alter_column_definitions, alter_column_drop_behavior, alter_column_has_default,
+    alter_column_definitions, alter_column_storage, alter_column_drop_behavior, alter_column_has_default,
     alter_column_name, alter_column_new_name, alter_constraint_name, alter_partition_additions,
     alter_partition_definition, alter_partition_exchange_name, alter_partition_exchange_table,
     alter_partition_names, alter_table_actions, alter_table_relation, alter_table_renamed_relation,
@@ -2583,7 +2593,7 @@ use crate::ddl::{
     rename_destination, rename_source, table_definition, table_definition_partition,
     table_definition_query, table_like_if_not_exists, table_like_relation, table_like_source,
     table_like_temporary, table_option_charset, table_option_engine_name, table_option_names,
-    table_option_number,
+    table_option_number, json_storage_definition, storage_chunk_value,
     table_option_organization, table_option_properties, table_option_row_format, table_option_text,
     truncate_relation,
 };

@@ -1299,6 +1299,7 @@ peg::parser! {
             / check_constraint()
         rule column_attribute() -> Node
             = generated_column_attribute()
+            / storage_chunk()
             / kw("auto_increment") { Node::new(Kind::AutoIncrement, vec![]) }
             / kw("default") value:expr(0) { Node::new(Kind::ColumnDefault, vec![value]) }
             / kw("on") kw("update") value:atom(0) {?
@@ -1372,6 +1373,14 @@ peg::parser! {
                 else { Err("positive signed integer parallel degree") }
             }
             / kw("noparallel") { Node::new(Kind::Parallel,vec![Node::new(Kind::Int,vec![]).value(1)]) }
+        rule storage_chunk() -> Node = kw("chunk") value:(string() / value:type_size() {?
+                if matches!(value.kind,Kind::Int|Kind::Uint) { Ok(value) } else { Err("integer") }
+            }) { Node::new(Kind::StorageChunk,vec![value]) }
+        rule json_storage() -> Node = kw("json") "(" _ column:ident() ")" _ kw("store") kw("as")
+            "(" _ chunks:storage_chunk()+ ")" _ {
+                let mut children=vec![Node::name(column)];children.extend(chunks);
+                Node::new(Kind::JsonStorage,children)
+            }
         rule table_option() -> Node
             = kw("organization") ("=" _)? kind:(kw("index") { Kind::OrganizationIndex } / kw("heap") { Kind::OrganizationHeap }) { Node::new(Kind::Organization,vec![Node::new(kind,vec![])]) }
             / kw("default")? charset_keyword() ("=" _)? value:charset_name() { Node::new(Kind::TableCharset,vec![value]) }
@@ -1382,7 +1391,9 @@ peg::parser! {
                 if matches!(value.kind,Kind::Int|Kind::Uint) { Ok(Node::new(Kind::ProgressiveMergeNum,vec![value])) }
                 else { Err("integer") }
             }
+            / json_storage()
             / kind:(kw("compression") { Kind::Compression } / kw("comment") { Kind::ColumnComment }
+                / kw("semistruct_encoding_type") { Kind::SemistructEncodingType }
                 / kw("table_mode") { Kind::TableMode }) ("=" _)? value:string() { Node::new(kind,vec![value]) }
             / kind:(kw("auto_increment") { Kind::TableAutoIncrement } / kw("block_size") { Kind::BlockSize }
                 / kw("tablet_size") { Kind::TabletSize } / kw("pctfree") { Kind::PctFree }
@@ -1494,8 +1505,9 @@ peg::parser! {
             Ok(Node::new(Kind::RenameTableAction,vec![Node::relation(from)?,Node::relation(to)?]))
         }
         rule alter_column() -> Node
-            = kw("add") kw("column")? values:("(" _ values:(column_definition() ++ ("," _)) ")" _ { values }
-                / value:column_definition() { vec![value] }) { Node::new(Kind::ColumnAdd,values) }
+            = kw("add") kw("column")? values:("(" _ values:(column_definition() ++ ("," _)) ")" _ storage:json_storage()? {
+                    let mut values=values;values.extend(storage);values
+                } / value:column_definition() { vec![value] }) { Node::new(Kind::ColumnAdd,values) }
             / kw("drop") kw("column")? name:column() behavior:(kw("cascade") { 2 } / kw("restrict") { 1 })? { Node::new(Kind::ColumnDrop,vec![name]).value(behavior.unwrap_or(0)) }
             / kw("modify") kw("column")? value:column_definition() { Node::new(Kind::ColumnModify,vec![value]) }
             / kw("change") kw("column")? name:column() value:column_definition() { Node::new(Kind::ColumnChange,vec![name,value]) }

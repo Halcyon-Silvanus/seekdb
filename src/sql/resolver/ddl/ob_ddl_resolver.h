@@ -463,6 +463,8 @@ protected:
   int resolve_table_option(
       const peg::Node &option,
       const bool is_index_option);
+  int resolve_json_storage(const peg::Node &node);
+  int resolve_storage_chunk(share::schema::ObColumnSchemaV2 &column, const peg::Node &node);
   int resolve_column_definition_ref(
       share::schema::ObColumnSchemaV2 &column,
       const peg::Node &node,

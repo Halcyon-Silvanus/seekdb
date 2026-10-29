@@ -704,7 +704,12 @@ int ObAlterTableResolver::resolve_column_options(const peg::Node &node,
     ret = OB_ERR_UNEXPECTED;
   } else {
     switch (node.kind()) {
-      case peg::NodeKind::ColumnAdd: OZ(resolve_add_column(node, add_column_names_set)); break;
+      case peg::NodeKind::ColumnAdd:
+        OZ(resolve_add_column(node, add_column_names_set));
+        for (const auto &storage : peg::alter_column_storage(node)) {
+          OZ(resolve_json_storage(storage));
+        }
+        break;
       case peg::NodeKind::ColumnAlter: OZ(resolve_alter_column(node)); break;
       case peg::NodeKind::ColumnChange: OZ(resolve_change_column(node)); break;
       case peg::NodeKind::ColumnRename: OZ(resolve_rename_column(node)); break;
