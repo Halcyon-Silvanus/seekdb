@@ -1574,9 +1574,14 @@ peg::parser! {
             / parallel_option()
             / read_access()
             / kw("engine") ("=" _)? value:collation_name() { Node::new(Kind::Engine,vec![value]) }
-            / kw("progressive_merge_num") ("=" _)? value:type_size() {?
-                if matches!(value.kind,Kind::Int|Kind::Uint) { Ok(Node::new(Kind::ProgressiveMergeNum,vec![value])) }
+            / kind:(kw("progressive_merge_num") { Kind::ProgressiveMergeNum }
+                / kw("auto_increment_cache_size") { Kind::AutoIncrementCacheSize }) ("=" _)? value:type_size() {?
+                if matches!(value.kind,Kind::Int|Kind::Uint) { Ok(Node::new(kind,vec![value])) }
                 else { Err("integer") }
+            }
+            / kw("delay_key_write") ("=" _)? kw("all") { Node::missing() }
+            / (kw("checksum") / kw("avg_row_length") / kw("delay_key_write")) ("=" _)? value:type_size() {?
+                if value.kind==Kind::Int { Ok(Node::missing()) } else { Err("nonnegative integer table option") }
             }
             / json_storage()
             / kind:(kw("compression") { Kind::Compression } / kw("comment") { Kind::ColumnComment }
@@ -1765,7 +1770,9 @@ peg::parser! {
                 Node::new(Kind::ConvertTableCharset,vec![charset,Node::optional(collation)])
             }
             / kw("rename") kw("to")? name:name() {? Ok(Node::new(Kind::TableRename,vec![Node::relation(name)?])) }
-            / kw("set")? options:table_option()+ { Node::new(Kind::TableOptions,options) }
+            / kw("set")? options:table_option()+ {
+                Node::new(Kind::TableOptions,options.into_iter().filter(|option| option.kind!=Kind::Missing).collect())
+            }
             / kw("algorithm") ("=" _)? (kw("default") / kw("inplace") / kw("copy") / kw("instant")) { Node::missing() }
             / kw("lock") ("=" _)? (kw("default") / kw("none") / kw("shared") / kw("exclusive")) { Node::missing() }
         rule view_definition() -> Node = view_mode:(keyword("create") hint_slot() replace:(kw("or") kw("replace"))? { (false,replace.is_some()) }
@@ -1848,7 +1855,8 @@ peg::parser! {
                 query:(modifier:(kw("ignore") { Kind::Ignore } / kw("replace") { Kind::Replace })? kw("as")? query:select(0) { (modifier,query) })? {?
                 if elements.is_none() && query.is_none() { return Err("table columns or SELECT"); }
                 Ok(ddl::CreateTable {
-                    relation:Node::relation(name)?, elements:elements.unwrap_or_default(), options, partition,
+                    relation:Node::relation(name)?, elements:elements.unwrap_or_default(),
+                    options:options.into_iter().filter(|option| option.kind!=Kind::Missing).collect(), partition,
                     query:query.map(|(modifier,query)| ddl::TableQuery { query, modifier, hints:hints.unwrap_or_default() }),
                     temporary:temporary.is_some(), if_not_exists:absent.is_some(),
                 }.into_node())

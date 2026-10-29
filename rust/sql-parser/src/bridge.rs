@@ -171,6 +171,7 @@ pub(crate) mod ffi {
         ProgressiveMergeNum,
         StoreFormat,
         TableAutoIncrement,
+        AutoIncrementCacheSize,
         BlockSize,
         TabletSize,
         LobInrowThreshold,

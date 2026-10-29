@@ -1136,6 +1136,27 @@ int ObDDLResolver::resolve_table_option(const peg::Node &option, const bool is_i
         }
         break;
       }
+      case peg::NodeKind::AutoIncrementCacheSize: {
+        const uint64_t cache_size = peg::table_option_number(option);
+        if (cache_size > 100000000) {
+          ret = OB_INVALID_ARGUMENT;
+          LOG_USER_ERROR(OB_INVALID_ARGUMENT, "table auto_increment_cache_size");
+        } else {
+          auto_increment_cache_size_ = cache_size;
+        }
+        if (OB_SUCC(ret) && stmt_->get_stmt_type() == stmt::T_ALTER_TABLE) {
+          const ObTableSchema *schema = nullptr;
+          OZ(get_table_schema_for_check(schema));
+          if (OB_SUCC(ret)) {
+            if (OB_ISNULL(schema)) {
+              ret = OB_ERR_UNEXPECTED;
+            } else if (auto_increment_cache_size_ != schema->get_auto_increment_cache_size()) {
+              OZ(alter_table_bitset_.add_member(ObAlterTableArg::INCREMENT_CACHE_SIZE));
+            }
+          }
+        }
+        break;
+      }
       case peg::NodeKind::TableRename: {
         if (is_index_option) {
           ret = OB_NOT_SUPPORTED;
