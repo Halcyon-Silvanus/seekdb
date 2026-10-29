@@ -393,13 +393,10 @@ public:
                                       const ObSQLSessionInfo &session,
                                       const common::ObString &sql,
                                       common::ObString &param_sql);
-  static int filter_head_space(ObString &sql);
-  static char find_first_empty_char(const ObString &sql);
   static int construct_outline_sql(common::ObIAllocator &allocator,
                                    const ObSQLSessionInfo &session,
                                    const common::ObString &outline_content,
                                    const common::ObString &orig_sql,
-                                   bool is_need_filter_hint,
                                    common::ObString &outline_sql);
 
   static int reconstruct_sql(ObIAllocator &allocator, const ObStmt *stmt, ObString &sql,
@@ -407,9 +404,6 @@ public:
                              ObObjPrintParams print_params = ObObjPrintParams(),
                              const ParamStore *param_store = NULL,
                              const ObSQLSessionInfo *session = NULL);
-  static int reconstruct_ps_sql(ObSqlString &reconstruct_sql, const ObString &ps_sql,
-                                const ObIArray<const common::ObObjParam *> &const_tokens);
-  static int append_obj_param(ObSqlString &reconstruct_sql, const common::ObObjParam & obj_param);
   static int print_sql(char *buf,
                        int64_t buf_len,
                        int64_t &pos,
@@ -685,13 +679,6 @@ public:
                            const sql::ObSQLSessionInfo &session,
                            common::ObIAllocator &allocator,
                            common::ObString &limit_sql);
-  static int replace_question_mark(const common::ObString &not_param_sql,
-                                   const share::schema::ObMaxConcurrentParam &concurrent_param,
-                                   int64_t start_pos,
-                                   int64_t cur_pos,
-                                   int64_t &question_mark_offset,
-                                   common::ObSqlString &string_helper);
-
   static int get_outline_sql(const share::schema::ObOutlineInfo &outline_info, common::ObIAllocator &allocator, const ObSQLSessionInfo &session, common::ObString &outline_sql);
 }; // end of ObSQLUtils
 

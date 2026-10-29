@@ -2051,9 +2051,6 @@ int ObSPIService::calc_dynamic_sqlstr(
       OZ (result.get_string(tmp_sql));
     }
 
-    if (OB_SUCC(ret) && tmp_sql.length() > 1 && ';' == tmp_sql[tmp_sql.length() - 1]) {
-      tmp_sql.assign_ptr(tmp_sql.ptr(), tmp_sql.length() - 1);
-    }
     OZ (ctx->exec_ctx_->get_my_session()->get_character_set_client(client_cs_type));
     OZ (ObCharset::charset_convert(temp_allocator, tmp_sql,
                                    result.get_collation_type(),

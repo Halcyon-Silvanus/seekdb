@@ -12,9 +12,53 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::bridge::ffi::{PlPrefix, StatementClass, StatementInfo, StatementSplits};
+use crate::bridge::ffi::{PlPrefix, StatementClass, StatementInfo, StatementSplits, TransactionCommand};
 use crate::lex::{identifier, quoted_end, space};
 use crate::{grammar, SqlMode};
+
+pub fn transaction_command(sql: &[u8]) -> TransactionCommand {
+    if sql.eq_ignore_ascii_case(b"begin") {
+        TransactionCommand::Begin
+    } else if sql.eq_ignore_ascii_case(b"commit") {
+        TransactionCommand::Commit
+    } else if sql.eq_ignore_ascii_case(b"rollback") {
+        TransactionCommand::Rollback
+    } else {
+        TransactionCommand::None
+    }
+}
+
+pub fn insert_outline_hint(sql: &[u8], hint: &[u8], mode: SqlMode) -> Vec<u8> {
+    let Ok(sql) = std::str::from_utf8(sql) else {
+        return Vec::new();
+    };
+    let Ok(sql) = grammar::executable_sql(sql, mode, true) else {
+        return Vec::new();
+    };
+    let sql = sql.as_bytes();
+    let mut tokens = Tokens::new(sql, mode);
+    let Ok(Some(mut first)) = tokens.next() else {
+        return Vec::new();
+    };
+    let start = first.start;
+    while first.is(b"(") {
+        let Ok(Some(next)) = tokens.next() else {
+            return Vec::new();
+        };
+        first = next;
+    }
+    let mut result = Vec::with_capacity(sql.len() + hint.len() + 1);
+    result.extend_from_slice(&sql[start..first.end]);
+    result.push(b' ');
+    result.extend_from_slice(hint);
+    let rest = if sql.get(first.end).is_some_and(|byte| space(*byte)) {
+        first.end + 1
+    } else {
+        first.end
+    };
+    result.extend_from_slice(&sql[rest..]);
+    result
+}
 
 #[derive(Clone, Copy)]
 pub(crate) struct Token<'a> {

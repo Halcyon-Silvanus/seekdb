@@ -1376,57 +1376,25 @@ int ObSQLUtils::construct_outline_sql(ObIAllocator &allocator,
                                       const ObSQLSessionInfo &session,
                                       const ObString &outline_content,
                                       const ObString &orig_sql,
-                                      bool is_need_filter_hint,
                                       ObString &outline_sql)
 {
   int ret = OB_SUCCESS;
-  UNUSED(is_need_filter_hint);
   ObString filter_sql;
-  ObSqlString sql_helper;
-  // This interface will remove both comments and hints
   if (OB_FAIL(filter_hint_in_query_sql(allocator, session, orig_sql, filter_sql))) {
-  } else if (OB_FAIL(filter_head_space(filter_sql))) {
-  }
-  if (OB_SUCC(ret)) {
-    char empty_split = find_first_empty_char(filter_sql);
-    ObString first_token = filter_sql.split_on(empty_split);
-    if (OB_FAIL(sql_helper.assign_fmt("%.*s %.*s%.*s", first_token.length(), first_token.ptr(),
-                                      outline_content.length(), outline_content.ptr(),
-                                      filter_sql.length(), filter_sql.ptr()))) {
-    } else if (OB_FAIL(ob_write_string(allocator, sql_helper.string(), outline_sql))) {
-    } else {/*do nothing*/}
-  }
-  return ret;
-}
-// Remove characters at the beginning of sql that are ' ', '\r', '\n', '\t', '\f'
-int ObSQLUtils::filter_head_space(ObString &sql)
-{
-  int ret = OB_SUCCESS;
-  int64_t head_space_len = 0;
-  bool is_space = true;
-  for (int64_t i = 0; is_space && i < sql.length(); i++) {
-    char ch = sql[i];
-    if (' ' == ch || '\r' == ch || '\n' == ch || '\t' == ch || '\f' == ch) {
-      ++head_space_len;
-    } else {
-      is_space = false;
+  } else {
+    const auto mode = session.get_sql_mode();
+    const auto rewritten = peg::insert_outline_hint(
+        rust::Slice<const uint8_t>(reinterpret_cast<const uint8_t *>(filter_sql.ptr()), filter_sql.length()),
+        rust::Slice<const uint8_t>(reinterpret_cast<const uint8_t *>(outline_content.ptr()), outline_content.length()),
+        peg::SqlMode{bool(mode & SMO_ANSI_QUOTES), bool(mode & SMO_NO_BACKSLASH_ESCAPES),
+                     bool(mode & SMO_PIPES_AS_CONCAT), bool(mode & SMO_HIGH_NOT_PRECEDENCE)});
+    if (rewritten.empty()) {
+      ret = OB_ERR_PARSE_SQL;
+    } else if (OB_FAIL(ob_write_string(allocator,
+        ObString(rewritten.size(), reinterpret_cast<const char *>(rewritten.data())), outline_sql))) {
     }
   }
-  sql.assign(sql.ptr() + head_space_len, sql.length() - head_space_len);
   return ret;
-}
-
-char ObSQLUtils::find_first_empty_char(const ObString &sql)
-{
-  char empty_char = ' '; // default split
-  for (int64_t i = 0; i < sql.length(); ++i) {
-    char ch = sql[i];
-    if (' ' == ch || '\r' == ch || '\n' == ch || '\t' == ch || '\f' == ch) {
-      empty_char = ch;
-      break;
-    }
-  }
-  return empty_char;
 }
 
 int ObSQLUtils::reconstruct_sql(ObIAllocator &allocator, const ObStmt *stmt, ObString &sql,
@@ -3515,59 +3483,6 @@ bool ObSQLUtils::check_json_expr(const ObRawExpr &expr)
   return res;
 }
 
-int ObSQLUtils::reconstruct_ps_sql(ObSqlString & reconstruct_sql, const ObString &ps_sql,
-                                   const ObIArray<const common::ObObjParam *> &const_tokens)
-{
-  int ret = OB_SUCCESS;
-  ObString tmp_ps_sql = ps_sql;
-  int64_t target_ori_sql_pos = 0;
-  for (int64_t const_token_index = 0; OB_SUCC(ret) && const_token_index < const_tokens.count();
-       const_token_index++) {
-    if (OB_FAIL(reconstruct_sql.append(tmp_ps_sql.split_on('?')))) {
-    } else if (OB_FAIL(append_obj_param(reconstruct_sql, *const_tokens.at(const_token_index)))) {
-    }
-  }
-  if (OB_SUCC(ret) && OB_FAIL(reconstruct_sql.append(tmp_ps_sql))) {
-  }
-  return ret;
-}
-
-int ObSQLUtils::append_obj_param(ObSqlString & reconstruct_sql, const common::ObObjParam & obj_param) {
-  int ret = OB_SUCCESS;
-  int64_t len = 0;
-  do {
-    //logic copy from src/sql/printer/ob_raw_expr_printer.cpp: ObRawExprPrinter::print(ObConstRawExpr *expr)
-    len = reconstruct_sql.length();
-    if (obj_param.is_datetime()) {
-      int32_t tmp_date = 0;
-      if (OB_FAIL(databuff_printf(reconstruct_sql.ptr(), reconstruct_sql.capacity(), len, "%s '", LITERAL_PREFIX_DATE))) {
-      } else if (FALSE_IT(reconstruct_sql.set_length(len))) {
-      } else if (OB_FAIL(
-                   ObTimeConverter::datetime_to_date(obj_param.get_datetime(), NULL, tmp_date))) {
-      } else if (OB_FAIL(ObTimeConverter::date_to_str(tmp_date, reconstruct_sql.ptr(), reconstruct_sql.capacity(), len))) {
-      } else if (FALSE_IT(reconstruct_sql.set_length(len))) {
-      } else if (OB_FAIL(databuff_printf(reconstruct_sql.ptr(), reconstruct_sql.capacity(), len, "'"))) {
-      } else if (FALSE_IT(reconstruct_sql.set_length(len))) {
-      }
-    } else {
-      if (FALSE_IT(reconstruct_sql.set_length(len))) {
-      } else if (OB_FAIL(obj_param.print_sql_literal(reconstruct_sql.ptr(), reconstruct_sql.capacity(), len))) {
-      } else if (FALSE_IT(reconstruct_sql.set_length(len))) {
-      }
-    }
-
-    if (ret == OB_SIZE_OVERFLOW) {
-      const int64_t need_len = reconstruct_sql.length() + 100;
-      if (OB_FAIL(reconstruct_sql.reserve(need_len))) {
-      } else {
-        ret = OB_SIZE_OVERFLOW;
-      }
-    }
-  } while (ret == OB_SIZE_OVERFLOW);
-
-  return ret;
-}
-
 namespace oceanbase
 {
 namespace sql
@@ -3577,12 +3492,10 @@ int ObSQLUtils::get_outline_sql(const share::schema::ObOutlineInfo &outline_info
                                    ObString &outline_sql)
 {
   int ret = OB_SUCCESS;
-  bool is_need_filter_hint = true;
   if (OB_FAIL(ObSQLUtils::construct_outline_sql(allocator,
                                                 session,
                                                 outline_info.get_outline_content_str(),
                                                 outline_info.get_sql_text_str(),
-                                                is_need_filter_hint,
                                                 outline_sql))) {
   }
   return ret;

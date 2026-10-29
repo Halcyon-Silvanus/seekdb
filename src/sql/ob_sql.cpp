@@ -1944,14 +1944,10 @@ OB_INLINE int ObSql::handle_text_query(const ObString &stmt, ObSqlCtx &context, 
                                          allocator,
                                          context,
                                          ectx);
-    if (trimed_stmt.length() == 6) {
-      // Whether it is a COMMIT statement
-      is_begin_commit_stmt = (0 == STRNCASECMP(trimed_stmt.ptr(), "commit", 6)
-                              && !context.is_batch_params_execute());
-    } else if (trimed_stmt.length() == 5) {
-      is_begin_commit_stmt = (0 == STRNCASECMP(trimed_stmt.ptr(), "begin", 5)
-                              && !context.is_batch_params_execute());
-    }
+    const auto command = peg::transaction_command(rust::Slice<const uint8_t>(
+        reinterpret_cast<const uint8_t *>(trimed_stmt.ptr()), trimed_stmt.length()));
+    is_begin_commit_stmt = !context.is_batch_params_execute()
+        && (command == peg::TransactionCommand::Begin || command == peg::TransactionCommand::Commit);
     if (is_begin_commit_stmt) {
       // Record current statement is begin/commit statement, used for performance optimization
       pc_ctx->set_begin_commit_stmt();
