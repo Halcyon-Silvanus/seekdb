@@ -28,6 +28,16 @@ pub(crate) fn execution_arguments(node: &Node) -> &[Node] {
     &node.children
 }
 
+pub(crate) fn lock_tables(node: &Node) -> &[Node] {
+    &node.children
+}
+pub(crate) fn table_lock(node: &Node) -> crate::bridge::ffi::TableLock<'_> {
+    crate::bridge::ffi::TableLock {
+        table: &node.children[0],
+        write: node.value != 0,
+    }
+}
+
 pub(crate) fn transaction_options(node: &Node) -> TransactionOptions {
     let mut options = TransactionOptions {
         consistent_snapshot: false,

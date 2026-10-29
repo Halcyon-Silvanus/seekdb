@@ -1757,6 +1757,17 @@ peg::parser! {
             / kw("set") kw("role") selection:role_selection(true) { Node::new(Kind::SetRole,vec![selection]) }
             / kw("set") kw("default") kw("role") selection:role_selection(false) kw("to") users:accounts() { Node::new(Kind::SetDefaultRole,vec![users,selection]) }
             / kw("alter") kw("user") user:user_spec(false) kw("default") kw("role") selection:role_selection(false) { Node::new(Kind::AlterUserDefaultRole,vec![Node::new(Kind::Users,vec![user]),selection]) }
+        rule lock_tables() -> Node
+            = kw("lock") (kw("table") / kw("tables")) tables:(table_lock() ++ ("," _)) {
+                Node::new(Kind::LockTables,tables)
+            }
+            / kw("unlock") (kw("table") / kw("tables")) { Node::new(Kind::UnlockTables,vec![]) }
+        rule table_lock() -> Node = name:("." _ name:ident() { vec![name] } / name())
+            alias:(kw("as") name:ident() { name })?
+            write:(kw("read") kw("local")? { false } / kw("low_priority")? kw("write") { true }) {?
+                Ok(Node::new(Kind::TableLock,vec![Node::table(Node::relation(name)?,alias)?])
+                    .value(u64::from(write)))
+            }
         rule kill() -> Node = kw("kill") query:(kw("query") { true } / kw("connection") { false })? target:expr(0) {
             Node::new(Kind::Kill,vec![Node::new(Kind::Bool,vec![]).value(u64::from(query.unwrap_or(false))),target])
         }
@@ -2044,7 +2055,7 @@ peg::parser! {
                 children.push(value);
                 Node::new(Kind::Explain,children)
         }
-        rule sql_statement() -> Node = select(0) / insert() / update() / delete() / transaction() / ddl() / account_statement() / role_statement() / setting() / explain() / show() / alter_system() / prepared_statement() / diagnostics() / analyze() / kill() / purge()
+        rule sql_statement() -> Node = select(0) / insert() / update() / delete() / transaction() / ddl() / account_statement() / role_statement() / setting() / explain() / show() / alter_system() / prepared_statement() / diagnostics() / analyze() / lock_tables() / kill() / purge()
         rule statement() -> Node = _ value:(package_statement() / routine_statement() / pl_call() / sql_statement()) { value }
         #[no_eof]
         pub rule statement_end() -> usize = (statement() / _) (";" / ![_]) end:position!() { end }

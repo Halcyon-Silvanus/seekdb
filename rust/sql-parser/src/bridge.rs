@@ -331,6 +331,9 @@ pub(crate) mod ffi {
         ReadOnly,
         ReadWrite,
         SetTransaction,
+        LockTables,
+        UnlockTables,
+        TableLock,
         TransactionCharacteristics,
         Commit,
         Rollback,
@@ -1322,6 +1325,11 @@ pub(crate) mod ffi {
         valid_hint: bool,
     }
 
+    struct TableLock<'a> {
+        table: &'a Node,
+        write: bool,
+    }
+
     enum TransactionIsolation {
         Default,
         ReadUncommitted,
@@ -2021,6 +2029,8 @@ pub(crate) mod ffi {
         fn error(self: &SearchTree) -> &str;
         fn parse_search_query(input: &[u8]) -> Box<SearchTree>;
         fn inspect_expression(sql: &[u8], mode: SqlMode) -> ExpressionInfo;
+        fn lock_tables(node: &Node) -> &[Node];
+        unsafe fn table_lock<'a>(node: &'a Node) -> TableLock<'a>;
         fn transaction_options(node: &Node) -> TransactionOptions;
         fn prepared_source(node: &Node) -> &Node;
         fn execution_arguments(node: &Node) -> &[Node];
@@ -2391,7 +2401,7 @@ use crate::command::{
     cache_flush_has_namespace, cache_flush_kind, cache_flush_namespace, configuration_assignments,
     configuration_comment, configuration_name, configuration_value, empty_query_has_comment,
     freeze_is_major, kv_cache_has_name, kv_cache_name, tracepoint_options, tracepoint_value,
-    transaction_setting,
+    lock_tables, table_lock, transaction_setting,
 };
 use crate::inspect::embedded_sql_references;
 

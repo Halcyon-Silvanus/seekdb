@@ -41,6 +41,7 @@
 #include "sql/resolver/ddl/ob_drop_database_resolver.h"
 #include "sql/resolver/ddl/ob_create_view_resolver.h"
 #include "sql/resolver/ddl/outline_resolver.h"
+#include "sql/resolver/ddl/lock_table_resolver.h"
 #include "sql/resolver/ddl/ob_explain_resolver.h"
 #include "sql/resolver/ddl/ob_drop_routine_resolver.h"
 #include "sql/resolver/ddl/ob_trigger_resolver.h"
@@ -184,6 +185,11 @@ int ObResolver::resolve(const peg::Node &statement, ObStmt *&stmt)
       case peg::NodeKind::SetCharset:
         params_.resolver_scope_stmt_type_ = T_SET_NAMES;
         ret = stmt_resolver_func<ObSetNamesResolver>(params_, statement, stmt);
+        break;
+      case peg::NodeKind::LockTables:
+      case peg::NodeKind::UnlockTables:
+        params_.resolver_scope_stmt_type_ = T_LOCK_TABLE;
+        ret = stmt_resolver_func<LockTableResolver>(params_, statement, stmt);
         break;
       case peg::NodeKind::Kill:
         params_.resolver_scope_stmt_type_ = T_KILL;

@@ -45,6 +45,8 @@ std::optional<NativeStatementTraits> native_statement_traits(Kind kind)
     case Kind::Begin: return NativeStatementTraits{stmt::T_START_TRANS, true, false};
     case Kind::Commit: return NativeStatementTraits{stmt::T_END_TRANS, true, false};
     case Kind::Rollback: return NativeStatementTraits{stmt::T_END_TRANS, true, false};
+    case Kind::LockTables:
+    case Kind::UnlockTables: return NativeStatementTraits{stmt::T_LOCK_TABLE, false, false};
     case Kind::Savepoint: return NativeStatementTraits{stmt::T_CREATE_SAVEPOINT, false, false};
     case Kind::ReleaseSavepoint: return NativeStatementTraits{stmt::T_RELEASE_SAVEPOINT, false, false};
     case Kind::RollbackSavepoint: return NativeStatementTraits{stmt::T_ROLLBACK_SAVEPOINT, false, false};

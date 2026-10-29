@@ -1353,6 +1353,7 @@ SQL_UNITY_GROUPS = [
             "src/sql/resolver/ddl/ob_fork_table_stmt.cpp",
             "src/sql/resolver/ddl/ob_fork_database_resolver.cpp",
             "src/sql/resolver/ddl/ob_fork_database_stmt.cpp",
+            "src/sql/resolver/ddl/lock_table_resolver.cpp",
             "src/sql/resolver/ddl/ob_lock_table_stmt.cpp",
             "src/sql/resolver/ddl/ob_optimize_resolver.cpp",
             "src/sql/resolver/ddl/ob_optimize_stmt.cpp",
