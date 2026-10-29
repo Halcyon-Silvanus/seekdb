@@ -2224,9 +2224,10 @@ peg::parser! {
         rule pl_setting(level: usize) -> Node = kw("set") assignments:((
             variable:(user_variable() / system_variable()
                 / start:position!() first:ident() "." _ second:ident() end:position!() {? Node::column(vec![first,second],false,start,end) }
-                / name:assignment_name(false) { Node::name(name) }) (":=" / "=") _ value:pl_expression(level) {
+                / name:assignment_name(false) { Node::name(name) }) (":=" / "=") _ value:expr(level) {?
+                let value=Node::routine_setting_value(&variable,value)?;
                 let scope=if variable.kind==Kind::SystemVariable && variable.value!=0 { variable.value } else { 2 };
-                Node::new(Kind::VariableValue,vec![variable,value]).value(scope)
+                Ok(Node::new(Kind::VariableValue,vec![variable,value]).value(scope))
             }
         ) ++ ("," _)) { Node::new(Kind::VariableSet,assignments) }
         rule call_argument() -> Node = start:position!() first:expr(0) second:("=>" _ value:expr(0) { value })? end:position!() {?

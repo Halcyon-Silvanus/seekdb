@@ -182,18 +182,43 @@ impl Node {
         Ok(query.at(start, end))
     }
 
+    fn setting_identifier(&self) -> Option<&str> {
+        let mut value = self;
+        while value.kind == Kind::Parenthesized {
+            value = crate::expression::parenthesized_expression(value);
+        }
+        if value.kind == Kind::Column && !value.is_wildcard() {
+            if let [name] = crate::query::name_parts(value) {
+                return Some(&name.text);
+            }
+        }
+        None
+    }
+
     pub(crate) fn setting_value(variable: &Self, mut value: Self) -> Self {
-        if variable.kind != Kind::UserVariable
-            && value.kind == Kind::Column
-            && crate::query::name_parts(&value).len() == 1
-            && !value.is_wildcard()
-        {
-            let name = value.children.pop().unwrap();
-            value = Self::new(Kind::String, vec![])
-                .text(name.text)
-                .at(value.start, value.end);
+        if variable.kind != Kind::UserVariable {
+            if let Some(name) = value.setting_identifier() {
+                value = Self::new(Kind::String, vec![])
+                    .text(name.into())
+                    .at(value.start, value.end);
+            }
         }
         value
+    }
+
+    pub(crate) fn routine_setting_value(variable: &Self, value: Self) -> Result<Self, &'static str> {
+        let off = value.setting_identifier().is_some_and(|name| name.eq_ignore_ascii_case("off"));
+        let mut value = if variable.kind == Kind::SystemVariable
+            || (variable.kind != Kind::UserVariable && off)
+        {
+            Self::setting_value(variable, value)
+        } else {
+            value
+        };
+        if off && value.kind == Kind::String {
+            value.text = "OFF".into();
+        }
+        value.pl_expression()
     }
 
     pub(crate) fn optional(node: Option<Self>) -> Self {
