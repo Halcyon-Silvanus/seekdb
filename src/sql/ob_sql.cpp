@@ -1517,12 +1517,10 @@ int ObSql::construct_ps_param_store(const ParamStore &params,
   } else if (OB_FAIL(param_store.reserve(param_count))) {
   }
   for (int i = 0; OB_SUCC(ret) && i < param_count; ++i) {
-    if (is_exist_in_fixed_param_idx(i, fixed_params_idx)) {
-      if (fixed_param_idx >= fixed_params.count()) {
-        ret = OB_ERR_UNEXPECTED;
-        LOG_WARN("Invalid index", K(fixed_param_idx), K(fixed_params));
-      } else if (OB_FAIL(add_param_to_param_store(fixed_params.at(fixed_param_idx),
-                                                  param_store))) {
+    if (fixed_param_idx < fixed_params_idx.count()
+        && i == fixed_params_idx.at(fixed_param_idx)) {
+      if (OB_FAIL(add_param_to_param_store(fixed_params.at(fixed_param_idx),
+                                          param_store))) {
       } else {
         LOG_TRACE("ps param is", K(fixed_params.at(fixed_param_idx)), K(i));
       }
