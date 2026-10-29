@@ -897,6 +897,7 @@ peg::parser! {
                 / kw("gather_optimizer_statistics") { Kind::GatherStatistics } / kw("no_gather_optimizer_statistics") { Kind::NoGatherStatistics }
                 / kw("trace_log") { Kind::TraceLog }
                 / kw("no_parallel") { Kind::NoParallel }) { Node::new(kind,vec![]) }
+            / kw("tracing") "(" _ ids:((("+" _)? value:hint_integer() { value }) ++ (("," _)?)) ")" _ { Node::new(Kind::Tracing,ids) }
             / kw("dml_parallel") "(" _ value:type_size() ")" _ { Node::new(Kind::DmlParallel,vec![value]) }
             / kw("query_timeout") "(" _ value:type_size() ")" _ { Node::new(Kind::QueryTimeout,vec![value]) }
             / kw("log_level") "(" _ value:(&"'" value:load_string() { value } / name:hint_name() { Node::name(name) }) ")" _ {

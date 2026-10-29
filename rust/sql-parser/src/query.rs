@@ -691,6 +691,9 @@ pub(crate) fn hint_parallel_policy(hint: &Node) -> ParallelPolicy {
 pub(crate) fn hint_parallel_degree(hint: &Node) -> &Node {
     hint.children.last().unwrap()
 }
+pub(crate) fn hint_operator_ids(hint: &Node) -> &[Node] {
+    &hint.children
+}
 pub(crate) fn hint_timeout(hint: &Node) -> &Node {
     &hint.children[0]
 }

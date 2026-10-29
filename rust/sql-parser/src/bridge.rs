@@ -145,6 +145,7 @@ pub(crate) mod ffi {
         DisableParallelDml,
         QueryTimeout,
         TraceLog,
+        Tracing,
         TopK,
         DynamicSampling,
         TableDynamicSampling,
@@ -2409,6 +2410,7 @@ pub(crate) mod ffi {
         fn hint_parallel_policy(hint: &Node) -> ParallelPolicy;
         fn hint_parallel_degree(hint: &Node) -> &Node;
         fn hint_timeout(hint: &Node) -> &Node;
+        fn hint_operator_ids(hint: &Node) -> &[Node];
         fn hint_log_level(hint: &Node) -> &str;
         fn hint_load_batch_size(hint: &Node) -> u64;
         fn hint_load_buffer_size(hint: &Node) -> &str;
@@ -2483,6 +2485,7 @@ fn parse_sql(sql: &[u8], mode: SqlMode, parse_mode: ffi::ParseMode) -> Box<Parse
 }
 
 use crate::query::{
+    hint_operator_ids,
     assignment_target, assignment_value, collection_table_expression, unnest_arguments, cte_columns, cte_name,
     cte_query, delete_targets, explain_display, explain_format, explain_has_into_table,
     explain_has_statement_id, explain_into_table, explain_statement, explain_statement_id,

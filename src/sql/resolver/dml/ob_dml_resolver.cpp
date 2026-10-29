@@ -7078,6 +7078,20 @@ int ObDMLResolver::resolve_global_hint(const peg::Node &hint_node,
     case Kind::QueryTimeout:
       global_hint.merge_query_timeout_hint(peg::integer_literal_value(peg::hint_timeout(hint_node)));
       break;
+    case Kind::Tracing: {
+      ObSEArray<ObAllocOpHint, 8> operators;
+      for (const auto &id : peg::hint_operator_ids(hint_node)) {
+        if (OB_SUCC(ret)) {
+          ObAllocOpHint hint;
+          hint.id_ = peg::integer_literal_value(id);
+          hint.flags_ = ObAllocOpHint::OB_MONITOR_TRACING;
+          hint.alloc_level_ = ObAllocOpHint::OB_ENUMERATE;
+          OZ(operators.push_back(hint));
+        }
+      }
+      OZ(global_hint.merge_alloc_op_hints(operators));
+      break;
+    }
     case Kind::TraceLog:
       global_hint.force_trace_log_ = true;
       break;
