@@ -765,10 +765,8 @@ fn apply<'a>(
         let subtraction = occurrence.scope.subtraction.filter(|(_, operand)| {
             std::ptr::eq(*operand, occurrence.literal) && token.start < operand.start
         });
-        let preserve_subtraction = subtraction.is_some_and(|(parent, operand)| {
-            !std::ptr::eq(binary_right(parent), operand)
-                || operand.kind == Kind::Uint
-                || options.no_unsigned_subtraction
+        let preserve_subtraction = subtraction.is_some_and(|(_, operand)| {
+            operand.kind == Kind::Uint || options.no_unsigned_subtraction
         });
         let unsigned_negation = occurrence.origin == ParameterOrigin::UnaryNegation
             && occurrence.expression.kind == Kind::Unary
