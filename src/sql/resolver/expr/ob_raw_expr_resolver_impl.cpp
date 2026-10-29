@@ -74,6 +74,7 @@ ObItemType callable_expression_type(peg::NodeKind kind)
     case peg::NodeKind::Min: return T_FUN_MIN;
     case peg::NodeKind::Max: return T_FUN_MAX;
     case peg::NodeKind::Avg: return T_FUN_AVG;
+    case peg::NodeKind::Grouping: return T_FUN_GROUPING;
     case peg::NodeKind::JsonArrayAgg: return T_FUN_JSON_ARRAYAGG;
     case peg::NodeKind::JsonObjectAgg: return T_FUN_JSON_OBJECTAGG;
     case peg::NodeKind::Stddev: return T_FUN_STDDEV;
@@ -500,6 +501,7 @@ int ObRawExprResolverImpl::do_recursive_resolve(const peg::Node &node,
       case peg::NodeKind::Min:
       case peg::NodeKind::Max:
       case peg::NodeKind::Avg:
+      case peg::NodeKind::Grouping:
       case peg::NodeKind::JsonArrayAgg:
       case peg::NodeKind::JsonObjectAgg:
       case peg::NodeKind::Stddev:
@@ -593,6 +595,7 @@ int ObRawExprResolverImpl::do_recursive_resolve(const peg::Node &node,
         OZ (process_internal_sys_function_node(node, expr, callable_expression_type(node.kind())));
         break;
       case peg::NodeKind::PlNamedArgument: OZ(process_call_param_node(node, expr)); break;
+      case peg::NodeKind::DefaultValue: OZ(process_fun_sys_node(node, expr, is_root_expr)); break;
       case peg::NodeKind::Function:
       case peg::NodeKind::StringConcat:
         ret = peg::call_qualifiers(node).empty() ? process_fun_sys_node(node, expr, is_root_expr)
@@ -2847,16 +2850,23 @@ int ObRawExprResolverImpl::process_fun_sys_node(const peg::Node &node,
   OX(function->set_func_name(owned_name));
   const auto arguments = peg::call_arguments(node);
   const int64_t column_count = ctx_.columns_->count();
-  OZ(function->init_param_exprs(arguments.size()));
+  const int64_t hidden_arguments = node.kind() == peg::NodeKind::DefaultValue ? 4 : 0;
+  const int64_t argument_count = arguments.size() + hidden_arguments;
+  OZ(function->init_param_exprs(argument_count));
   for (const auto &argument : arguments) {
     ObRawExpr *value = nullptr;
     OZ(SMART_CALL(recursive_resolve(argument, value)));
     OZ(function->add_param_expr(value));
   }
+  for (int64_t i = 0; OB_SUCC(ret) && i < hidden_arguments; ++i) {
+    ObRawExpr *placeholder = nullptr;
+    OZ(ObRawExprUtils::build_null_expr(ctx_.expr_factory_, placeholder));
+    OZ(function->add_param_expr(placeholder));
+  }
   if (OB_FAIL(ret) && function != nullptr) {
     const int original_ret = ret;
     ret = ObRawExprUtils::function_alias(ctx_.expr_factory_, function);
-    if (OB_SUCC(ret)) ret = function->check_param_num(arguments.size());
+    if (OB_SUCC(ret)) ret = function->check_param_num(argument_count);
     if (OB_SUCC(ret)) ret = original_ret;
   }
   if (!arguments.empty()) OZ(process_sys_func_params(*function, column_count));

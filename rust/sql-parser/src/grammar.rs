@@ -280,6 +280,9 @@ peg::parser! {
                     Node::new(Kind::Case, vec![Node::optional(operand),Node::new(Kind::WhenList,branches),
                         default.unwrap_or_else(|| Node::new(Kind::DefaultNull,vec![]))]).expression(start,end+3)
                 }
+            / depth(level) start:position!() kw("default") "(" _ value:column() ")" end:position!() _ {?
+                Node::named_call(Kind::DefaultValue,Node::new(Kind::Ident,vec![]).text("default".into()),vec![value]).expression(start,end)
+            }
             / system_variable()
             / depth(level) value:user_variable() assigned:(":=" _ value:expr(level+1) { value })? {?
                 let (start,end)=(value.start,assigned.as_ref().map_or(value.end,|value| value.end));
@@ -307,12 +310,13 @@ peg::parser! {
                 Node::new(Kind::WindowFunction,vec![function,window]).expression(start,end)
             }
             / start:position!() "*" end:position!() _ {? Node::new(Kind::Star, vec![]).expression(start, end) }
-            / depth(level) start:position!() kw("group_concat") "(" _
+            / depth(level) start:position!() listagg:(kw("group_concat") { false } / kw("listagg") { true }) "(" _
                 modifier:((kw("distinct") / kw("unique")) { Node::new(Kind::Distinct,vec![]) })?
                 arguments:expr_list(level+1) order:(kw("order") kw("by") values:(order_item(level+1) ++ ("," _)) { values })?
                 separator:(kw("separator") value:string() { Node::new(Kind::Separator,vec![value]) })? ")" close:position!() _
                 window:(kw("over") value:window(level+1) { value })? {?
                     let end=window.as_ref().map_or(close,|value| value.end);
+                    if listagg && window.is_none() { return Err("OVER clause for LISTAGG"); }
                     let mut value=Node::callable(Kind::GroupConcat,arguments);
                     value.children.extend(modifier);
                     if let Some(order)=order { value.children.push(Node::new(Kind::Order,order)); }
@@ -328,7 +332,7 @@ peg::parser! {
             }
             / depth(level) start:position!() !(['x'|'X'] "'" hex_digit()* "'") parts:expression_name() tail:("." _ "*" end:position!() _ { (None, end) }
                 / enabled(parts.len()!=1 || parts[0].quoted || !["row","match","point","json_query","json_value","trim","position","weight_string","char","character","array","map","array_agg",
-                    "array_map","array_filter","array_first","array_sortby","vector_distance","vector_similarity"].iter().any(|name| parts[0].text.eq_ignore_ascii_case(name)))
+                    "array_map","array_filter","array_first","array_sortby","vector_distance","vector_similarity","group_concat","listagg"].iter().any(|name| parts[0].text.eq_ignore_ascii_case(name)))
                     "(" _ modifier:((kw("distinct") / kw("unique")) { Kind::Distinct } / kw("all") { Kind::All })? args:expr_list(level+1)? ")" close:position!() _
                     window:(kw("over") value:window(level+1) { value })?
                     { let end=window.as_ref().map_or(close,|value| value.end); (Some((modifier, args.unwrap_or_default(),window)), end) })?
@@ -971,7 +975,7 @@ peg::parser! {
                 Select { projection:vec![projection],from:vec![Node::new(Kind::Table,vec![values])],..Select::default() }
             }
         rule column() -> Node = start:position!() names:name() {? let end = names.last().unwrap().end; Node::column(names, false, start, end) }
-        rule expr_or_default() -> Node = kw("default") { Node::new(Kind::Default, vec![]) } / expr(0)
+        rule expr_or_default() -> Node = kw("default") !"(" { Node::new(Kind::Default, vec![]) } / expr(0)
         rule assignment() -> Node = column:column() "=" _ value:expr_or_default() { Node::new(Kind::Assignment, vec![column, value]) }
         rule assignments() -> Vec<Node> = values:(assignment() ++ ("," _)) { values }
         rule row() -> Node = "(" _ values:(expr_or_default() ** ("," _)) ")" _ {

@@ -627,6 +627,7 @@ impl Node {
             "min" => Kind::Min,
             "max" => Kind::Max,
             "avg" => Kind::Avg,
+            "grouping" => Kind::Grouping,
             "json_arrayagg" => Kind::JsonArrayAgg,
             "json_objectagg" => Kind::JsonObjectAgg,
             "std" | "stddev" => Kind::Stddev,
@@ -677,7 +678,7 @@ impl Node {
         );
         let no_arguments = matches!(kind, Kind::CurrentDate | Kind::UtcDate | Kind::CurrentUser);
         if (kind == Kind::If && arguments.len() != 3)
-            || (kind == Kind::IsNull && arguments.len() != 1)
+            || (matches!(kind, Kind::IsNull | Kind::Grouping) && arguments.len() != 1)
             || (no_arguments && !arguments.is_empty())
         {
             return Err("invalid function argument count");
