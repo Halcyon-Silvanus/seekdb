@@ -869,6 +869,10 @@ peg::parser! {
         rule lock() -> Node
             = kw("for") kw("update") wait:lock_wait()? { wait.unwrap_or_else(|| Node::new(Kind::LockWait,vec![]).value(u64::MAX)) }
             / kw("lock") kw("in") kw("share") kw("mode") { Node::new(Kind::LockWait,vec![]).value(u64::MAX) }
+        rule hint_string() -> Node
+            = start:position!() text:$("'" ("''" / "\\" [_] / !"'" [_])* "'") end:position!() _ {
+                Node::new(Kind::String,vec![]).text(decode(text,false)).at(start,end)
+            }
         rule hint_name() -> Name
             = start:position!() text:$("\"" ("\"\"" / !"\"" [_])+ "\"") end:position!() _ {
                 Name { text:text[1..text.len()-1].replace("\"\"","\""),quoted:true,start,end }
@@ -1071,7 +1075,19 @@ peg::parser! {
                     Node::new(kind,vec![Node::optional(qb)]).value(sort)
                 }
             / kw("qb_name") "(" _ name:hint_qb_name() ")" _ { Node::new(Kind::QbName,vec![name]) }
-            / kw("opt_param") "(" _ name:string() ("," _)? value:(string() / number()) ")" _ { Node::new(Kind::OptParam,vec![name,value]) }
+            / kw("opt_param") "(" _ name:hint_string() ("," _)? value:(
+                hint_string()
+                / start:position!() sign:("-" _ { true } / "+" _ { false })? value:type_size() {?
+                    let negative=sign.unwrap_or(false);
+                    let maximum=if negative { 1u64 << 63 } else { i64::MAX as u64 };
+                    if !matches!(value.kind,Kind::Int|Kind::Uint) || value.value>maximum { Err("signed integer hint argument") }
+                    else {
+                        let mut value=value;value.kind=Kind::Int;value.start=start;
+                        if negative { value.value=value.value.wrapping_neg(); }
+                        Ok(value)
+                    }
+                }
+            ) ")" _ { Node::new(Kind::OptParam,vec![name,value]) }
         rule hints() -> Vec<Node> = "/*+" _ options:((value:hint_option() { value }
                 / (&['\''|'"'|'`'] opaque_comment_token() / cont()+
                     / !['\''|'"'|'`'] !"*/" [_]) _ { Node::missing() }) ** (("," _)?)) "*/" _ {
