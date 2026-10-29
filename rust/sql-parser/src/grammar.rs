@@ -205,7 +205,7 @@ peg::parser! {
         rule dotted_ident() -> Name = ident() / name_keyword()
         rule compact_ident() -> Name = start:position!() text:$(cont()+) end:position!()
             { Name { text: text.to_owned(), quoted: false, start, end } }
-        rule compact_name() -> Vec<Name> = first:compact_ident() "." rest:(compact_ident() ++ ".") _ {?
+        rule compact_name() -> Vec<Name> = &(cont()+ ".") first:compact_ident() "." rest:(compact_ident() ++ ".") _ {?
             if first.text.bytes().all(|byte| byte.is_ascii_digit()) { return Err("identifier"); }
             let mut parts=vec![first];parts.extend(rest);Ok(parts)
         }
@@ -216,7 +216,7 @@ peg::parser! {
             }
         rule expression_name() -> Vec<Name>
             = name()
-            / first:name_keyword() "." _ last:name_keyword() { vec![first,last] }
+            / &(reserved_word() _ ".") first:name_keyword() "." _ last:name_keyword() { vec![first,last] }
             / start:position!() name:(kw("database") { "database" } / kw("schema") { "schema" }
                 / kw("replace") { "replace" } / kw("insert") { "insert" } / kw("values") { "values" }
                 / kw("left") { "left" } / kw("right") { "right" } / kw("mod") { "mod" }) &"("
