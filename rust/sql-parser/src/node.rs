@@ -249,7 +249,7 @@ impl Node {
     pub(crate) fn data_type(
         name: &str,
         parameters: Vec<Self>,
-        unsigned: bool,
+        unsigned: Option<bool>,
         zerofill: bool,
         start: usize,
         end: usize,
@@ -287,13 +287,13 @@ impl Node {
                     | "longblob"
                     | "string"
             ) && !parameters.is_empty())
-            || (!numeric && (unsigned || zerofill))
+            || (!numeric && (unsigned.is_some() || zerofill))
         {
             return Err("invalid data type parameters");
         }
         Ok(Self::new(Kind::DataType, parameters)
             .text(name.into())
-            .value(u64::from(unsigned) | (u64::from(zerofill) << 1))
+            .value(u64::from(unsigned.unwrap_or(false)) | (u64::from(zerofill) << 1))
             .at(start, end))
     }
 

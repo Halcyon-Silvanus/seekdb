@@ -1229,11 +1229,14 @@ peg::parser! {
             = (kw("tinyint") / kw("int1")) { "tinyint" } / (kw("smallint") / kw("int2")) { "smallint" }
             / (kw("mediumint") / kw("int3") / kw("middleint")) { "mediumint" }
             / (kw("int") / kw("integer") / kw("int4")) { "int" } / (kw("bigint") / kw("int8")) { "bigint" }
-            / kw("float") { "float" } / (kw("double") kw("precision")?) { "double" }
+            / (kw("float") / kw("float4")) { "float" } / ((kw("double") / kw("float8")) kw("precision")?) { "double" }
             / kw("real") kw("precision")? { if mode.real_as_float { "float" } else { "double" } }
             / (kw("decimal") / kw("dec") / kw("numeric") / kw("number") / kw("fixed")) { "decimal" }
             / kw("boolean") { "boolean" } / kw("bool") { "bool" }
-            / (kw("varchar") / kw("varcharacter")) { "varchar" } / (kw("char") / kw("character")) { "char" }
+            / (kw("varchar") / kw("varcharacter") / (kw("char") / kw("character")) kw("varying")) { "varchar" }
+            / (kw("char") / kw("character")) { "char" }
+            / kw("long") kw("varbinary") { "mediumblob" }
+            / kw("long") (kw("varchar") / kw("varcharacter"))? { "mediumtext" }
             / kw("text") { "text" } / kw("blob") { "blob" }
             / kw("tinytext") { "tinytext" } / kw("tinyblob") { "tinyblob" }
             / kw("mediumtext") { "mediumtext" } / kw("mediumblob") { "mediumblob" } / kw("string") { "string" }
@@ -1244,7 +1247,15 @@ peg::parser! {
             / kw("bit") { "bit" }
         rule type_size() -> Node = start:position!() text:$(['0'..='9']+) !cont() end:position!() _ {? Node::number(text, start, end) }
         rule charset_keyword() = kw("charset") / (kw("character") / kw("char")) kw("set")
-        rule cast_type() -> Node = start:position!() name:(kw("signed") (kw("int") / kw("integer"))? { "signed" }
+        rule cast_type() -> Node
+            = start:position!() (kw("nchar") / kw("national") (kw("char") / kw("character")))
+                parameters:("(" _ value:type_size() ")" _ { vec![value] })? end:position!() {?
+                let mut value=Node::data_type("char",parameters.unwrap_or_default(),None,false,start,end)?;
+                value.kind=Kind::CastType;
+                value.children.push(Node::new(Kind::Charset,vec![]).text("utf8mb4".into()));
+                Ok(value)
+            }
+            / start:position!() name:(kw("signed") (kw("int") / kw("integer"))? { "signed" }
                 / kw("unsigned") (kw("int") / kw("integer"))? { "unsigned" } / kw("binary") { "binary" }
                 / (kw("char") / kw("character")) { "char" }
                 / (kw("decimal") / kw("dec") / kw("numeric") / kw("number") / kw("fixed")) { "decimal" }
@@ -1260,6 +1271,23 @@ peg::parser! {
                 else { parameters.extend(charset);Ok(Node::new(Kind::CastType,parameters).text(name.into()).at(start,end)) }
             }
             / !kw("geometry") value:geometry_type() { Node { kind:Kind::CastType,..value } }
+        rule serial_type() -> Node = start:position!() kw("serial") end:position!() {?
+            Node::data_type("bigint",vec![],Some(true),false,start,end)
+        }
+        rule national_type(routine: bool) -> Node = start:position!() name:(
+                (kw("nvarchar") / kw("nchar") (kw("varchar") / kw("varcharacter"))
+                    / kw("national") ((kw("char") / kw("character")) kw("varying") / kw("varchar") / kw("varcharacter"))) { "varchar" }
+                / (kw("nchar") / kw("national") (kw("char") / kw("character"))) { "char" })
+            parameters:("(" _ value:type_size() ")" _ { vec![value] })?
+            binary:kw("binary")? collation:(enabled(routine) kw("collate") value:collation_name() { Node { kind:Kind::Collation,..value } })? end:position!() {?
+                let parameters=parameters.unwrap_or_else(|| if routine { vec![Node::new(Kind::Int,vec![]).value(1)] } else { vec![] });
+                let mut value=Node::data_type(name,parameters,None,false,start,end)?;
+                value.children.push(Node::new(Kind::Charset,vec![]).text("utf8mb4".into()));
+                if binary.is_some() { value.children.push(Node::new(Kind::BinaryAttribute,vec![]).value(1)); }
+                value.children.extend(collation);
+                Ok(value)
+            }
+        rule routine_data_type() -> Node = serial_type() / national_type(true) / data_type()
         rule data_type() -> Node = collection_type(0)
         rule collection_type(level: usize) -> Node = depth(level) start:position!() value:(
                 kw("array") "(" _ value:collection_type(level+1) ")" end:position!() _ {
@@ -1283,11 +1311,12 @@ peg::parser! {
                     Node::new(kind,vec![Node::optional(charset),Node::missing(),Node::optional(binary),Node::new(Kind::StringList,values)]).at(start,end)
                 }
             / geometry_type()
+            / national_type(false)
             / start:position!() name:type_name()
             parameters:("(" _ values:(type_size() ++ ("," _)) ")" _ { values })?
-            unsigned:kw("unsigned")? zerofill:kw("zerofill")? binary:kw("binary")?
+            unsigned:(kw("unsigned") { true } / kw("signed") { false })? zerofill:kw("zerofill")? binary:kw("binary")?
             charset:(charset_keyword() value:collation_name() { Node { kind:Kind::Charset,..value } })? end:position!() {?
-                let mut value=Node::data_type(name, parameters.unwrap_or_default(), unsigned.is_some(), zerofill.is_some(), start, end)?;
+                let mut value=Node::data_type(name, parameters.unwrap_or_default(), unsigned, zerofill.is_some(), start, end)?;
                 if binary.is_some() || charset.is_some() {
                     if !matches!(name,"char"|"varchar"|"tinytext"|"text"|"mediumtext"|"longtext"|"string") { return Err("character type"); }
                 }
@@ -1356,7 +1385,13 @@ peg::parser! {
             state:(kw("not") kw("enforced") { Kind::NotEnforced } / kw("enforced") { Kind::Enforced })? {
                 Node::new(Kind::CheckConstraint,vec![Node::optional(name),value.at(start,end),Node::new(state.unwrap_or(Kind::Enforced),vec![])]).value(1)
             }
-        rule column_definition() -> Node = name:column() data_type:data_type() tail:(
+        rule column_definition() -> Node
+            = name:column() data_type:serial_type() attributes:column_attribute()* position:column_position()? {
+                let mut attributes=attributes;
+                attributes.extend([Node::new(Kind::NotNull,vec![]),Node::new(Kind::AutoIncrement,vec![]),Node::new(Kind::UniqueKey,vec![])]);
+                ddl::Column { name, data_type, tail:ddl::ColumnTail { attributes, position, ..Default::default() } }.into_node()
+            }
+            / name:column() data_type:data_type() tail:(
                 collation:(kw("collate") value:collation_name() { Node { kind:Kind::Collation,..value } })?
                 generated:(kw("generated") kw("always"))?
                 kw("as") "(" _ start:position!() value:expr(0) end:position!() ")" _
@@ -2003,7 +2038,7 @@ peg::parser! {
                 start:position!() text:$(word()) end:position!() _
                 { Name { text: text.to_owned(), quoted: false, start, end } }
         rule package_routine() -> Node = start:position!() function:(kw("procedure") { false } / kw("function") { true }) name:pl_ident() params:routine_parameters(false,true)
-            result:(enabled(function) kw("return") value:data_type() { value })? end:position!() {?
+            result:(enabled(function) kw("return") value:routine_data_type() { value })? end:position!() {?
                 if function && result.is_none() { return Err("function return type"); }
                 let mut children=vec![Node::name(name),params];
                 if function { children.extend([Node::optional(result),Node::missing()]); }
@@ -2047,7 +2082,7 @@ peg::parser! {
         }
         rule routine_parameter(function: bool,row_types: bool) -> Node
             = direction:(enabled(!function) value:(kw("inout") { 2 } / kw("out") { 1 } / kw("in") { 0 }) { value })?
-                name:pl_ident() data_type:(data_type() / enabled(row_types) value:row_type() { value }) default:(enabled(!function) value:routine_default() { value })? {
+                name:pl_ident() data_type:(routine_data_type() / enabled(row_types) value:row_type() { value }) default:(enabled(!function) value:routine_default() { value })? {
                 let mut children=vec![Node::name(name),data_type];
                 if !function { children.push(Node::optional(default)); }
                 Node::new(Kind::RoutineParameter,children).value(direction.unwrap_or(0))
@@ -2067,7 +2102,7 @@ peg::parser! {
             / kw("sql") kw("security") value:(kw("definer") { 0 } / kw("invoker") { 2 }) { Node::new(Kind::InvokeRights,vec![]).value(value) }
         rule routine_definition(internal: bool) -> Node = start:position!() function:(kw("procedure") { false } / kw("function") { true })
             absent:if_not_exists()? name:routine_name(true) params:routine_parameters(function,internal)
-            result:(enabled(function) kw("returns") value:data_type() { value })?
+            result:(enabled(function) kw("returns") value:routine_data_type() { value })?
             clauses:routine_characteristic()* body:pl_statement(0) end:position!() {?
                 if function && result.is_none() { return Err("function return type"); }
                 let mut children=vec![Node::missing(),name,params];
@@ -2120,7 +2155,7 @@ peg::parser! {
             / name:pl_ident() kw("cursor") kw("for") start:position!() query:select(level+1) end:position!() {
                 Node::new(Kind::PlCursor,vec![Node::name(name),Node::missing(),Node::missing(),Node::new(Kind::PlSql,vec![query]).at(start,end)])
             }
-            / names:(pl_ident() ++ ("," _)) data_type:data_type() default:routine_default()? {
+            / names:(pl_ident() ++ ("," _)) data_type:routine_data_type() default:routine_default()? {
                 Node::new(Kind::PlDeclaration,vec![Node::new(Kind::PlIdentifiers,names.into_iter().map(Node::name).collect()),data_type,Node::optional(default)])
             }
         ) end:position!() { value.at(start,end) }
