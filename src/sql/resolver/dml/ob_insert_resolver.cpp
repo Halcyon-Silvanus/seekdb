@@ -371,7 +371,7 @@ int ObInsertResolver::resolve_insert_field(const peg::Node &query, TableItem*& t
     } else { /*do nothing*/ }
   }
 
-  if (OB_SUCC(ret) &&
+  if (OB_SUCC(ret) && peg::insert_source(query) != peg::InsertSource::Assignments &&
       OB_FAIL(resolve_insert_columns(peg::insert_columns(query), insert_stmt->get_insert_table_info()))) {
   }
 
