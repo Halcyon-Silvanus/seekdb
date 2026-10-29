@@ -536,6 +536,10 @@ peg::parser! {
                 Node::named_call(Kind::Function,Node::new(Kind::Ident,vec![]).text("get_format".into()),
                     vec![Node::new(Kind::HiddenInt,vec![]).value(unit),format]).expression(start,end)
             }
+            / start:position!() kw("interval") "(" _ first:expr(level) "," _ rest:expr_list(level) ")" end:position!() _ {?
+                let mut arguments=vec![first];arguments.extend(rest);
+                Node::named_call(Kind::Function,Node::new(Kind::Ident,vec![]).text("interval".into()),arguments).expression(start,end)
+            }
         rule collated(level: usize) -> Node = value:atom(level) collations:(kw("collate") value:collation_name() { Node { kind:Kind::Collation,..value } })* {?
             collations.into_iter().try_fold(value,|value,collation| {
                 let (start,end)=(value.start,collation.end);
