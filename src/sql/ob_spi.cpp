@@ -1894,7 +1894,7 @@ int ObSPIService::spi_parse_prepare(common::ObIAllocator &allocator,
     ObParser parser(allocator, session.get_sql_mode());
     ParsedSql parsed;
     ObSEArray<const peg::Node *, 8> bindings;
-    if (OB_FAIL(parser.parse(sql, parsed))) {
+    if (OB_FAIL(parser.parse_pl_sql(sql, parsed))) {
     } else if (OB_FAIL(bind_embedded_sql(parsed, *secondary_namespace, allocator,
                                         prepare_result.route_sql_, bindings))) {
     } else {

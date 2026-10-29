@@ -497,10 +497,12 @@ pub fn split_sql(input: &[u8], mode: SqlMode, first_only: bool) -> StatementSpli
     };
     let mut offset = 0;
     while offset < sql.len() {
-        let end = grammar::sql::statement_end(&sql[offset..], mode).or_else(|error| {
+        let pl = classify_statement(sql[offset..].as_bytes(), mode).pl != PlPrefix::None;
+        let end = grammar::sql::statement_end(&sql[offset..], mode, pl).or_else(|error| {
             if matches!(sql, std::borrow::Cow::Owned(_)) {
                 let ignored = grammar::executable_sql(&original[offset..], mode, false)?;
-                grammar::sql::statement_end(&ignored, mode)
+                let pl = classify_statement(ignored.as_bytes(), mode).pl != PlPrefix::None;
+                grammar::sql::statement_end(&ignored, mode, pl)
             } else {
                 Err(error)
             }

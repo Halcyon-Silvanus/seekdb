@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::{grammar, node::{Kind, Node}, prefix::normalized_sql_length, ParseMode, SqlMode};
+use crate::{grammar, node::{Kind, Node}, prefix::{normalized_sql_length, classify_statement}, ParseMode, SqlMode};
 
 pub struct Parsed {
     root: Node,
@@ -61,13 +61,18 @@ pub fn parse(sql: &[u8], mode: SqlMode, parse_mode: ParseMode) -> Result<Parsed,
         std::borrow::Cow::Borrowed(sql)
     };
     let sql = source.as_ref();
-    let entry = |text: &str| match parse_mode {
-        ParseMode::Routine => grammar::sql::routine_body(text, mode),
-        ParseMode::Trigger => grammar::sql::trigger(text, mode),
-        ParseMode::Statistics => grammar::sql::statistics_options(text, mode),
-        ParseMode::Expression => grammar::sql::expression(text, mode),
-        ParseMode::Sql | ParseMode::RoutineDefinition => grammar::sql::query(text, mode),
+    let entry = |text: &str| {
+        let pl = matches!(parse_mode, ParseMode::Routine | ParseMode::Trigger | ParseMode::RoutineDefinition
+            | ParseMode::PlSql | ParseMode::PlExpression)
+            || (parse_mode == ParseMode::Sql && classify_statement(text.as_bytes(), mode).pl != crate::bridge::ffi::PlPrefix::None);
+        match parse_mode {
+        ParseMode::Routine => grammar::sql::routine_body(text, mode, pl),
+        ParseMode::Trigger => grammar::sql::trigger(text, mode, pl),
+        ParseMode::Statistics => grammar::sql::statistics_options(text, mode, pl),
+        ParseMode::Expression | ParseMode::PlExpression => grammar::sql::expression(text, mode, pl),
+        ParseMode::Sql | ParseMode::RoutineDefinition | ParseMode::PlSql => grammar::sql::query(text, mode, pl),
         _ => unreachable!("unknown parser entry point"),
+        }
     };
     let mut expanded_sql = String::new();
     let parsed = grammar::executable_sql(sql, mode, true).and_then(|mut text| {
@@ -83,7 +88,7 @@ pub fn parse(sql: &[u8], mode: SqlMode, parse_mode: ParseMode) -> Result<Parsed,
     });
     let parsed = parsed.map_err(|error| {
         let offset = if error.location.offset == sql.len() {
-            grammar::sql::last_token_start(sql, mode).unwrap()
+            grammar::sql::last_token_start(sql, mode, false).unwrap()
         } else {
             error.location.offset
         };

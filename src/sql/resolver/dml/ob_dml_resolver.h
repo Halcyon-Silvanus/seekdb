@@ -202,6 +202,9 @@ public:
   int resolve_joined_table_item(const peg::Node &parse_node, JoinedTable *&joined_table);
   int resolve_function_table_item(const peg::Node &table_node,
                                   TableItem *&table_item);
+  int resolve_unnest_table(const peg::Node &table_node, TableItem *&table_item);
+  int create_unnest_table(TableItem *&table_item, common::ObString table_name);
+  int add_unnest_column(TableItem &table_item, common::ObString column_name);
   int resolve_json_table_item(const peg::Node &table_node,
                               TableItem *&table_item);
 

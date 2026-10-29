@@ -126,6 +126,8 @@ public:
       : allocator_(allocator), sql_mode_(mode) {}
   int parse(const common::ObString &query, ParsedSql &parsed, ParseMode mode = STD_MODE);
   int parse_expression(const common::ObString &text, ParsedSql &parsed);
+  int parse_pl_sql(const common::ObString &text, ParsedSql &parsed);
+  int parse_pl_expression(const common::ObString &text, ParsedSql &parsed);
   int parse_routine_body(const common::ObString &text, ParsedSql &parsed);
   int parse_routine_definition(const common::ObString &definition, ParsedSql &parsed);
   int split_multiple_stmt(const common::ObString &stmt,

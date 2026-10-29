@@ -16,6 +16,7 @@
 
 #define USING_LOG_PREFIX SQL_RESV
 #include "rust/config.h"
+#include "common/udt/ob_collection_type.h"
 #include "ob_dml_resolver.h"
 #include "sql/resolver/dml/ob_view_table_resolver.h"
 #include "sql/optimizer/ob_optimizer_util.h"
@@ -1850,6 +1851,10 @@ int ObDMLResolver::resolve_table(const peg::Node &parse_tree,
         OZ (resolve_function_table_item(*table_node, table_item));
         break;
       }
+      case peg::NodeKind::UnnestTable: {
+        OZ(resolve_unnest_table(*table_node, table_item));
+        break;
+      }
       case peg::NodeKind::JsonTable: {
         OZ (resolve_json_table_item(*table_node, table_item));
         break;
@@ -2554,6 +2559,128 @@ int ObDMLResolver::resolve_str_const(const peg::Node &node, ObString &path)
   return ret;
 }
 
+
+int ObDMLResolver::resolve_unnest_table(const peg::Node &table_node, TableItem *&table_item)
+{
+  int ret = OB_SUCCESS;
+  const auto arguments = peg::unnest_arguments(table_node);
+  const auto columns = peg::table_columns(table_node);
+  ObString table_name("unnest");
+  TableItem *item = nullptr;
+  if (!columns.empty() && columns.size() != arguments.size()) {
+    ret = OB_ERR_PARAM_SIZE;
+  } else if (peg::table_has_alias(table_node)) {
+    const auto name = peg::table_alias(table_node).text();
+    OZ(ob_write_string(*allocator_, ObString(name.size(), name.data()), table_name));
+  }
+  for (size_t i = 0; OB_SUCC(ret) && i < arguments.size(); ++i) {
+    ObRawExpr *expression = nullptr;
+    ObString column_name("unnest");
+    OZ(resolve_sql_expr(arguments[i], expression));
+    CK(OB_NOT_NULL(expression));
+    OZ(expression->deduce_type(session_info_));
+    if (OB_SUCC(ret) && !columns.empty()) {
+      const auto name = columns[i].text();
+      OZ(ob_write_string(*allocator_, ObString(name.size(), name.data()), column_name));
+    }
+    if (OB_SUCC(ret) && OB_ISNULL(item)) {
+      OZ(create_unnest_table(item, table_name));
+    }
+    OZ(item->json_table_def_->doc_exprs_.push_back(expression));
+    OZ(add_unnest_column(*item, column_name));
+  }
+  OX(table_item = item);
+  return ret;
+}
+
+int ObDMLResolver::create_unnest_table(TableItem *&table_item, ObString table_name)
+{
+  int ret = OB_SUCCESS;
+  ObDMLStmt *stmt = get_stmt();
+  ObJsonTableDef *definition = nullptr;
+  ObDmlJtColDef *root = nullptr;
+  CK(OB_NOT_NULL(stmt));
+  if (OB_FAIL(ret)) {
+  } else if (OB_ISNULL(table_item = stmt->create_table_item(*allocator_))
+             || OB_ISNULL(definition = static_cast<ObJsonTableDef *>(allocator_->alloc(sizeof(ObJsonTableDef))))) {
+    ret = OB_ALLOCATE_MEMORY_FAILED;
+  } else {
+    definition = new (definition) ObJsonTableDef();
+    definition->table_type_ = MulModeTableType::OB_UNNEST_TABLE_TYPE;
+    table_item->table_name_ = table_name;
+    table_item->alias_name_ = table_name;
+    table_item->table_id_ = generate_table_id();
+    table_item->type_ = TableItem::JSON_TABLE;
+    table_item->json_table_def_ = definition;
+    OZ(stmt->add_table_item(session_info_, table_item));
+  }
+  if (OB_FAIL(ret)) {
+  } else if (OB_ISNULL(root = static_cast<ObDmlJtColDef *>(allocator_->alloc(sizeof(ObDmlJtColDef))))) {
+    ret = OB_ALLOCATE_MEMORY_FAILED;
+  } else {
+    root = new (root) ObDmlJtColDef();
+    root->table_id_ = table_item->table_id_;
+    root->col_base_info_.col_type_ = NESTED_COL_TYPE;
+    root->col_base_info_.parent_id_ = -1;
+    root->col_base_info_.id_ = 0;
+    OZ(json_table_infos_.push_back(root));
+    OZ(definition->all_cols_.push_back(&root->col_base_info_));
+  }
+  return ret;
+}
+
+int ObDMLResolver::add_unnest_column(TableItem &table_item, ObString column_name)
+{
+  int ret = OB_SUCCESS;
+  ObDmlJtColDef *column = nullptr;
+  ObDataType data_type;
+  const int64_t column_id = table_item.json_table_def_->all_cols_.count();
+  ObRawExpr *expression = table_item.json_table_def_->doc_exprs_.at(column_id - 1);
+  if (OB_ISNULL(column = static_cast<ObDmlJtColDef *>(allocator_->alloc(sizeof(ObDmlJtColDef))))) {
+    ret = OB_ALLOCATE_MEMORY_FAILED;
+  } else {
+    column = new (column) ObDmlJtColDef();
+    column->col_base_info_.col_name_ = column_name;
+    column->col_base_info_.col_type_ = COL_TYPE_UNNEST;
+    column->col_base_info_.parent_id_ = 0;
+    column->col_base_info_.id_ = column_id;
+    column->col_base_info_.output_column_idx_ = column_id;
+  }
+  if (OB_SUCC(ret)) {
+    ObSubSchemaValue value;
+    if (ObCollectionSQLType != expression->get_data_type()) {
+      ret = OB_ERR_INVALID_TYPE_FOR_ARGUMENT;
+    } else if (OB_FAIL(session_info_->get_cur_exec_ctx()->get_sqludt_meta_by_subschema_id(expression->get_subschema_id(), value))) {
+    } else if (value.type_ >= OB_SUBSCHEMA_MAX_TYPE) {
+      ret = OB_ERR_UNEXPECTED;
+    } else {
+      const auto *collection = static_cast<const ObSqlCollectionInfo *>(value.value_);
+      const auto *array = static_cast<const ObCollectionArrayType *>(collection->collection_meta_);
+      if (array->element_type_->type_id_ == ObNestedType::OB_BASIC_TYPE) {
+        data_type = static_cast<const ObCollectionBasicType *>(array->element_type_)->basic_meta_;
+      } else if (array->element_type_->type_id_ == ObNestedType::OB_ARRAY_TYPE
+                 || array->element_type_->type_id_ == ObNestedType::OB_VECTOR_TYPE) {
+        ObString child_definition;
+        uint16_t child_id = 0;
+        OZ(collection->get_child_def_string(child_definition));
+        OZ(session_info_->get_cur_exec_ctx()->get_subschema_id_by_type_string(child_definition, child_id));
+        OX(data_type.set_collation_level(CS_LEVEL_IMPLICIT));
+        OX(data_type.set_obj_type(ObCollectionSQLType));
+        OX(data_type.set_subschema_id(child_id));
+      } else {
+        ret = OB_ERR_UNEXPECTED;
+      }
+    }
+  }
+  if (OB_SUCC(ret)) {
+    ColumnItem *item = nullptr;
+    column->col_base_info_.data_type_ = data_type;
+    OZ(generate_json_table_output_column_item(&table_item, data_type, column_name, column_id, item));
+    OX(item->col_idx_ = column_id);
+    OZ(table_item.json_table_def_->all_cols_.push_back(&column->col_base_info_));
+  }
+  return ret;
+}
 
 int ObDMLResolver::resolve_json_table_item(const peg::Node &parse_tree, TableItem *&tbl_item)
 {

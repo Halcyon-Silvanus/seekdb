@@ -333,6 +333,11 @@ impl<'a> Collector<'a> {
                 }
             }
             Kind::TableCollection => self.collect(collection_table_expression(node), scope)?,
+            Kind::UnnestTable => {
+                for argument in unnest_arguments(node) {
+                    self.collect(argument, scope)?;
+                }
+            }
             Kind::Select => self.query(node, scope)?,
             _ => return Err(ParameterError::Unsupported),
         }
@@ -614,7 +619,7 @@ impl<'a> Collector<'a> {
                 }
             }
             Kind::MatchAgainst => self.collect(fulltext_search(node), scope)?,
-            Kind::Table | Kind::JoinedTable | Kind::JsonTable | Kind::TableCollection => {
+            Kind::Table | Kind::JoinedTable | Kind::JsonTable | Kind::TableCollection | Kind::UnnestTable => {
                 self.table(node, scope)?
             }
             Kind::Values => self.list(values_rows(node), scope)?,

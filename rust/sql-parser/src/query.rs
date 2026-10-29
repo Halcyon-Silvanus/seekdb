@@ -554,6 +554,9 @@ pub(crate) fn join_columns(join: &Node) -> &[Node] {
 pub(crate) fn values_rows(values: &Node) -> &[Node] {
     list(values, Kind::ValuesRows)
 }
+pub(crate) fn unnest_arguments(table: &Node) -> &[Node] {
+    list(table, Kind::ExprList)
+}
 pub(crate) fn collection_table_expression(table: &Node) -> &Node {
     &table.children[0]
 }

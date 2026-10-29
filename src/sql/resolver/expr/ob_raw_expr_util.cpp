@@ -1112,7 +1112,7 @@ int ObRawExprUtils::function_alias(ObRawExprFactory &expr_factory, ObSysFunRawEx
 int ObRawExprUtils::parse_default_expr_from_str(const ObString &expr_str, ObIAllocator &allocator, ParsedSql &owner)
 {
   ObParser parser(allocator, SMO_DEFAULT);
-  return parser.parse_expression(expr_str, owner);
+  return parser.parse_pl_expression(expr_str, owner);
 }
 
 int ObRawExprUtils::parse_expr_node_from_str(const ObString &expr_str,

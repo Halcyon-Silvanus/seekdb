@@ -222,6 +222,16 @@ int ObParser::parse_expression(const ObString &text, ParsedSql &parsed)
   return parse_entry(text, parsed, peg::ParseMode::Expression);
 }
 
+int ObParser::parse_pl_sql(const ObString &text, ParsedSql &parsed)
+{
+  return parse_entry(text, parsed, peg::ParseMode::PlSql);
+}
+
+int ObParser::parse_pl_expression(const ObString &text, ParsedSql &parsed)
+{
+  return parse_entry(text, parsed, peg::ParseMode::PlExpression);
+}
+
 int ObParser::parse_routine_body(const ObString &text, ParsedSql &parsed)
 {
   return parse_entry(text, parsed, peg::ParseMode::Routine);

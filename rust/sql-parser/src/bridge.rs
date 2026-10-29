@@ -242,6 +242,7 @@ pub(crate) mod ffi {
         CharsetName,
         ConvertTableCharset,
         TableCollection,
+        UnnestTable,
         DateLiteral,
         TimeLiteral,
         TimestampLiteral,
@@ -852,6 +853,8 @@ pub(crate) mod ffi {
         Statistics,
         Expression,
         RoutineDefinition,
+        PlSql,
+        PlExpression,
     }
 
     enum DefaultForm {
@@ -2156,6 +2159,7 @@ pub(crate) mod ffi {
         fn join_columns(join: &Node) -> &[Node];
         fn values_rows(values: &Node) -> &[Node];
         fn collection_table_expression(table: &Node) -> &Node;
+        fn unnest_arguments(table: &Node) -> &[Node];
         fn is_literal(expression: &Node) -> bool;
         unsafe fn expression_literal<'a>(expression: &'a Node) -> ExpressionLiteral<'a>;
         fn integer_literal_value(literal: &Node) -> u64;
@@ -2328,7 +2332,7 @@ fn parse_sql(sql: &[u8], mode: SqlMode, parse_mode: ffi::ParseMode) -> Box<Parse
 }
 
 use crate::query::{
-    assignment_target, assignment_value, collection_table_expression, cte_columns, cte_name,
+    assignment_target, assignment_value, collection_table_expression, unnest_arguments, cte_columns, cte_name,
     cte_query, delete_targets, explain_display, explain_format, explain_has_into_table,
     explain_has_statement_id, explain_into_table, explain_statement, explain_statement_id,
     grouping_keys, grouping_with_rollup, hint_condition, hint_distribution_methods,
