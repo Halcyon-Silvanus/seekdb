@@ -377,7 +377,7 @@ peg::parser! {
                 / kind:(kw("array") { Kind::ArrayLiteral } / kw("map") { Kind::MapLiteral })
                     "(" _ args:expr_list(level) ")" { Node::callable(kind,args) }
                 / kw("array_agg") "(" _ distinct:kw("distinct")? value:expr(level)
-                    order:(kw("order") kw("by") keys:(order_item(level) ++ ("," _)) { keys })? ")" {
+                    order:(kw("order") kw("by") keys:(array_order_item(level) ++ ("," _)) { keys })? ")" {
                     let mut result=Node::callable(Kind::ArrayAgg,vec![value]);
                     if distinct.is_some() { result.children.push(Node::new(Kind::Distinct,vec![])); }
                     if let Some(keys)=order { result.children.push(Node::new(Kind::Order,keys)); }
@@ -687,6 +687,10 @@ peg::parser! {
                 crate::query::associate_join(kind,left,right,condition)
             })
         }
+        rule array_order_item(level: usize) -> Node = key:order_item(level)
+            nulls:(kw("nulls") value:(kw("first") { 1 } / kw("last") { 2 }) { value })? {
+                key.value(nulls.unwrap_or(0))
+            }
         rule order_item(level: usize) -> Node = expression:expr(level) direction:(kw("asc") { Kind::Asc } / kw("desc") { Kind::Desc })? {
             Node::new(Kind::SortKey, vec![expression, Node::new(direction.unwrap_or(Kind::Asc), vec![])])
         }

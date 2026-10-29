@@ -5356,8 +5356,13 @@ int ObResolverUtils::check_select_item_subquery(ObSelectStmt &stmt,
 
 int ObResolverUtils::set_direction_by_mode(const peg::Node &sort_node, OrderItem &order_item)
 {
-  order_item.order_type_ = peg::sort_direction(sort_node) == peg::SortDirection::Descending
-      ? NULLS_LAST_DESC : NULLS_FIRST_ASC;
+  const bool descending = peg::sort_direction(sort_node) == peg::SortDirection::Descending;
+  const auto nulls = peg::sort_null_placement(sort_node);
+  const bool nulls_first = nulls == peg::NullPlacement::First
+      || (nulls == peg::NullPlacement::Default && !descending);
+  order_item.order_type_ = descending
+      ? (nulls_first ? NULLS_FIRST_DESC : NULLS_LAST_DESC)
+      : (nulls_first ? NULLS_FIRST_ASC : NULLS_LAST_ASC);
   return OB_SUCCESS;
 }
 

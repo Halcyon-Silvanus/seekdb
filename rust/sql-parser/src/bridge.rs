@@ -981,6 +981,12 @@ pub(crate) mod ffi {
         Descending,
     }
 
+    enum NullPlacement {
+        Default,
+        First,
+        Last,
+    }
+
     enum IntoPosition {
         Absent,
         AfterProjection,
@@ -2096,6 +2102,7 @@ pub(crate) mod ffi {
         fn grouping_with_rollup(grouping: &Node) -> bool;
         fn sort_expression(sort: &Node) -> &Node;
         fn sort_direction(sort: &Node) -> SortDirection;
+        fn sort_null_placement(sort: &Node) -> NullPlacement;
         fn limit_count(limit: &Node) -> &Node;
         fn limit_has_offset(limit: &Node) -> bool;
         fn limit_offset(limit: &Node) -> &Node;
@@ -2344,7 +2351,7 @@ use crate::query::{
     query_recursive, query_set_operands, query_set_operator, query_sources,
     query_vector_parameters, query_windows, relation_database, relation_has_database,
     relation_name, relation_references, row_elements, sample_has_seed, sample_method,
-    sample_percent, sample_scope, sample_seed, sort_direction, sort_expression, table_alias,
+    sample_percent, sample_scope, sample_seed, sort_direction, sort_expression, sort_null_placement, table_alias,
     table_columns, table_has_alias, table_has_sample, table_has_snapshot, table_index_hints,
     table_lateral, table_parenthesized, table_partitions, table_sample, table_snapshot,
     table_source, values_rows, vector_parameter_name, vector_parameter_value, RelationReferences,

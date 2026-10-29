@@ -2437,8 +2437,7 @@ int ObRawExprResolverImpl::process_agg_node(const peg::Node &node, ObRawExpr *&e
   for (const auto &sort : peg::aggregate_order(node)) {
     OrderItem order;
     const auto &key = peg::sort_expression(sort);
-    order.order_type_ = peg::sort_direction(sort) == peg::SortDirection::Descending
-        ? (type == T_FUNC_SYS_ARRAY_AGG ? NULLS_FIRST_DESC : NULLS_LAST_DESC) : NULLS_FIRST_ASC;
+    OZ(ObResolverUtils::set_direction_by_mode(sort, order));
     if (type == T_FUN_GROUP_CONCAT && key.kind() == peg::NodeKind::Int) {
       const int64_t position = peg::integer_literal_value(key);
       if (position <= 0 || position > aggregate->get_real_param_count()) ret = OB_ERR_BAD_FIELD_ERROR;

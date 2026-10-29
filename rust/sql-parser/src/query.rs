@@ -14,7 +14,7 @@
 
 use crate::bridge::ffi::{
     AliasForm, ExplainDisplay, ExplainFormat, IndexHintKind, InsertSource, IntoPosition,
-    JoinCondition, JoinKind, LockKind, LockWait, MergeDirection, ParallelPolicy, PlanCachePolicy,
+    JoinCondition, JoinKind, LockKind, LockWait, MergeDirection, NullPlacement, ParallelPolicy, PlanCachePolicy,
     ReadConsistency, SampleMethod, SampleScope, SetOperator, SortDirection,
 };
 use crate::node::{Kind, Node};
@@ -304,6 +304,13 @@ pub(crate) fn sort_direction(sort: &Node) -> SortDirection {
         Some(Kind::Asc) => SortDirection::Ascending,
         Some(Kind::Desc) => SortDirection::Descending,
         _ => SortDirection::Unspecified,
+    }
+}
+pub(crate) fn sort_null_placement(sort: &Node) -> NullPlacement {
+    match sort.value {
+        1 => NullPlacement::First,
+        2 => NullPlacement::Last,
+        _ => NullPlacement::Default,
     }
 }
 pub(crate) fn limit_count(limit: &Node) -> &Node {
