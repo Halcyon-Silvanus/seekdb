@@ -919,6 +919,7 @@ peg::parser! {
             / kind:(kw("enable_parallel_dml") { Kind::EnableParallelDml } / kw("disable_parallel_dml") { Kind::DisableParallelDml }
                 / kw("gather_optimizer_statistics") { Kind::GatherStatistics } / kw("no_gather_optimizer_statistics") { Kind::NoGatherStatistics }
                 / kw("trace_log") { Kind::TraceLog }
+                / kw("cursor_sharing_exact") { Kind::CursorSharingExact }
                 / kw("no_parallel") { Kind::NoParallel }) { Node::new(kind,vec![]) }
             / kw("tracing") "(" _ ids:((("+" _)? value:hint_integer() { value }) ++ (("," _)?)) ")" _ { Node::new(Kind::Tracing,ids) }
             / kw("dml_parallel") "(" _ value:type_size() ")" _ { Node::new(Kind::DmlParallel,vec![value]) }

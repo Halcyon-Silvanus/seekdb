@@ -146,6 +146,7 @@ pub(crate) mod ffi {
         QueryTimeout,
         TraceLog,
         Tracing,
+        CursorSharingExact,
         TopK,
         DynamicSampling,
         TableDynamicSampling,

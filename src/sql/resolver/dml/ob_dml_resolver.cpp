@@ -7099,6 +7099,9 @@ int ObDMLResolver::resolve_global_hint(const peg::Node &hint_node,
     case Kind::TraceLog:
       global_hint.force_trace_log_ = true;
       break;
+    case Kind::CursorSharingExact:
+      global_hint.merge_param_option_hint(ObParamOption::EXACT);
+      break;
     case Kind::ReadConsistency:
       global_hint.merge_read_consistency_hint(
           peg::hint_read_consistency(hint_node) == peg::ReadConsistency::Frozen ? FROZEN : STRONG, -1);
