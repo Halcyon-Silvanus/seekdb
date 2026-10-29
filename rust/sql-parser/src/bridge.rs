@@ -1628,6 +1628,7 @@ pub(crate) mod ffi {
         fn transaction_command(sql: &[u8]) -> TransactionCommand;
         fn insert_outline_hint(sql: &[u8], hint: &[u8], mode: SqlMode) -> Vec<u8>;
         fn classify_statement(sql: &[u8], mode: SqlMode) -> StatementInfo;
+        fn explain_body_offset(sql: &[u8], mode: SqlMode) -> usize;
         fn normalized_sql_length(sql: &[u8]) -> usize;
         fn is_single_statement(sql: &[u8]) -> bool;
         fn restore_parameter_sql(sql: &[u8], parameters: &[RestoreParameter], terminate: bool) -> RestoredSql;
@@ -2479,7 +2480,7 @@ use crate::ddl::{
 
 use crate::parameterize::{parameterize, classify_parameter_tokens, rewrite_parameter_sql, fold_parameter_in_lists, unchecked_parameter_types};
 
-use crate::prefix::{classify_statement, normalized_sql_length, is_single_statement, split_sql, fast_parameterization_allowed, transaction_command, insert_outline_hint};
+use crate::prefix::{classify_statement, explain_body_offset, normalized_sql_length, is_single_statement, split_sql, fast_parameterization_allowed, transaction_command, insert_outline_hint};
 use crate::batch::{compress_insert, compress_values, restore_parameter_sql};
 
 use crate::lex::{normalize_numeric_sign, integer_literal_is_nonnegative};

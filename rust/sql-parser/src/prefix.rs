@@ -377,6 +377,15 @@ fn trace_range(sql: &[u8]) -> (usize, usize) {
     (value_start, value_end)
 }
 
+pub fn explain_body_offset(input: &[u8], mode: SqlMode) -> usize {
+    match Tokens::new(input, mode).next() {
+        Ok(Some(first)) if first.is(b"explain") || first.text.starts_with(b"/*!") => {
+            classify_statement(input, mode).explain_offset
+        }
+        _ => input.len(),
+    }
+}
+
 pub fn classify_statement(input: &[u8], mode: SqlMode) -> StatementInfo {
     let (trace_start, trace_end) = trace_range(input);
     let mut result = StatementInfo {

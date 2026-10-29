@@ -219,10 +219,9 @@ int ObParser::parse_routine_definition(const ObString &definition, ParsedSql &pa
 
 bool ObParser::is_explain_stmt(const ObString &stmt, const char *&body)
 {
-  const auto info = peg::classify_statement(sql_bytes(stmt), peg::SqlMode{});
-  const bool explained = info.kind == peg::StatementClass::Explain
-      && info.explain_offset < static_cast<size_t>(stmt.length());
-  body = explained ? stmt.ptr() + info.explain_offset : nullptr;
+  const auto offset = peg::explain_body_offset(sql_bytes(stmt), peg::SqlMode{});
+  const bool explained = offset < static_cast<size_t>(stmt.length());
+  body = explained ? stmt.ptr() + offset : nullptr;
   return explained;
 }
 
