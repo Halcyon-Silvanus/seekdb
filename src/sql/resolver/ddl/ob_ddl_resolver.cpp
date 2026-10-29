@@ -1148,6 +1148,14 @@ int ObDDLResolver::resolve_table_option(const peg::Node &option, const bool is_i
         }
         break;
       }
+      case peg::NodeKind::IndexVisibility: {
+        if (peg::index_visible(option)) {
+          index_attributes_set_ &= ~(uint64_t(1) << ObTableSchema::INDEX_VISIBILITY);
+        } else {
+          index_attributes_set_ |= uint64_t(1) << ObTableSchema::INDEX_VISIBILITY;
+        }
+        break;
+      }
       case peg::NodeKind::UsingHash: {
         has_index_using_type_ = true;
         index_using_type_ = USING_HASH;

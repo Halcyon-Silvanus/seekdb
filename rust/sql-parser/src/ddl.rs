@@ -815,7 +815,7 @@ pub(crate) fn alter_table_options(node: &Node) -> &[Node] {
 pub(crate) fn alter_index_name(node: &Node) -> &Node {
     &node.children[0]
 }
-pub(crate) fn alter_index_visible(node: &Node) -> bool {
+pub(crate) fn index_visible(node: &Node) -> bool {
     node.value == 0
 }
 pub(crate) fn alter_index_parallel(node: &Node) -> u64 {

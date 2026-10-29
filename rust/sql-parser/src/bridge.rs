@@ -1916,7 +1916,7 @@ pub(crate) mod ffi {
         fn alter_table_options(node: &Node) -> &[Node];
         fn alter_index_name(node: &Node) -> &Node;
         fn alter_index_new_name(node: &Node) -> &Node;
-        fn alter_index_visible(node: &Node) -> bool;
+        fn index_visible(node: &Node) -> bool;
         fn alter_index_parallel(node: &Node) -> u64;
         fn statistics_clauses(node: &Node) -> &[Node];
         fn statistics_scope(node: &Node) -> StatisticsScope;
@@ -2671,7 +2671,7 @@ use crate::statistics::{
 
 use crate::ddl::partition_element_values;
 
-use crate::ddl::{alter_index_name, alter_index_new_name, alter_index_visible, alter_index_parallel, alter_table_options};
+use crate::ddl::{alter_index_name, alter_index_new_name, index_visible, alter_index_parallel, alter_table_options};
 use crate::inspect::syntax_literals;
 use crate::lex::{decode_binary_literal, identifier_requires_quotes};
 use crate::embedded_sql::{embedded_sql_symbols, rewrite_embedded_sql};

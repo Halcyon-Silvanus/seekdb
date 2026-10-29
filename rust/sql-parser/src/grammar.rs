@@ -1502,11 +1502,14 @@ peg::parser! {
                 let direction=Node::optional(direction);
                 Node::new(Kind::IndexColumn,vec![value.0,value.1,direction])
             }
+        rule index_visibility() -> Node
+            = visibility:(kw("visible") { 0 } / kw("invisible") { 1 }) { Node::new(Kind::IndexVisibility,vec![]).value(visibility) }
         rule index_option() -> Node
             = global:(kw("global") { true } / kw("local") { false }) {
                 Node::new(Kind::IndexScope,vec![Node::new(Kind::HiddenInt,vec![]).value(u64::from(global)),Node::new(Kind::String,vec![]).text(if global { "GLOBAL" } else { "LOCAL" }.into())])
             }
             / kw("storing") "(" _ names:(ident() ++ ("," _)) ")" _ { Node::new(Kind::StoringColumns,names.into_iter().map(Node::name).collect()) }
+            / index_visibility()
             / index_method()
             / parallel_option()
             / kw("comment") value:string() { Node::new(Kind::ColumnComment,vec![value]) }
@@ -1615,7 +1618,7 @@ peg::parser! {
             / kw("drop") kw("primary") kw("key") { Node::new(Kind::PrimaryKeyDrop,vec![]) }
             / kw("rename") (kw("index") / kw("key")) from:ident() kw("to") to:ident() { Node::new(Kind::IndexRename,vec![Node::name(from),Node::name(to)]) }
             / keyword("alter") hint_slot() kw("index") name:ident() value:(
-                visibility:(kw("visible") { 0 } / kw("invisible") { 1 }) { Node::new(Kind::IndexVisibility,vec![]).value(visibility) }
+                index_visibility()
                 / value:parallel_option() { Node::new(Kind::IndexParallel,value.children) }) {
                 let mut children=vec![Node::name(name)];children.extend(value.children);
                 Node::new(value.kind,children).value(value.value)

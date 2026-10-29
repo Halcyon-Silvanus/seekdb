@@ -1723,7 +1723,7 @@ int ObAlterTableResolver::resolve_index_visibility(const peg::Node &node)
     } else {
       argument = new (buffer) ObAlterIndexArg();
       argument->index_name_ = index_name;
-      argument->index_visibility_ = peg::alter_index_visible(node) ? 0 : 1;
+      argument->index_visibility_ = peg::index_visible(node) ? 0 : 1;
     }
   }
   if (OB_SUCC(ret) && (table_schema_->is_parent_table() || table_schema_->is_child_table())) {
