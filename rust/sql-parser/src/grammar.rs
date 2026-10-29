@@ -1778,7 +1778,7 @@ peg::parser! {
         rule view_definition() -> Node = view_mode:(keyword("create") hint_slot() replace:(kw("or") kw("replace"))? { (false,replace.is_some()) }
                 / keyword("alter") hint_slot() { (true,false) })
             (kw("algorithm") "=" _ (kw("undefined") / kw("merge") / kw("temptable")))?
-            (kw("definer") "=" _ account())? (kw("sql") kw("security") kw("definer"))?
+            (kw("definer") "=" _ (kw("current_user") ("(" _ ")" _)? / account()))? (kw("sql") kw("security") kw("definer"))?
             kw("view") name:name() columns:("(" _ names:(ident() ++ ("," _)) ")" _ { names })? kw("as")
             start:position!() query:select(0) end:position!()
             check:(kw("with") local:(kw("local") { true } / kw("cascaded") { false })? kw("check") kw("option") { if local==Some(true) { 1 } else { 2 } })? {?
