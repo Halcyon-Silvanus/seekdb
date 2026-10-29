@@ -56,7 +56,6 @@ fn reserved(word: &str) -> bool {
         "having",
         "order",
         "limit",
-        "offset",
         "asc",
         "desc",
         "join",
@@ -160,16 +159,20 @@ peg::parser! {
                 / ((!['\''|'"'|'`'|'/'|'-'|'#'] [_])+ / !"/*!" [_]) { vec![] }
             )* { spans.into_iter().flatten().collect() }
         rule space() = [' ' | '\t' | '\r' | '\n' | '\x0b' | '\x0c']
-        rule _() = quiet!{(space() / "/*" !['!' | '+'] (!"*/" [_])* "*/"
+        rule block_comment() = "/*" !"!" (!"*/" [_])* "*/"
+        rule _() = quiet!{(space() / block_comment()
             / ("--" &(space() / ![_]) / "#") (!"\n" [_])*)*}
+        rule hint_gap() = quiet!{(space() / !"/*+" block_comment())*}
         rule cont() = ['a'..='z' | 'A'..='Z' | '0'..='9' | '_' | '$' | '\u{80}'..='\u{10ffff}']
         rule word() = ['a'..='z' | 'A'..='Z' | '_' | '$' | '\u{80}'..='\u{10ffff}'] cont()*
-        rule kw(word: &'static str) -> ()
+        rule keyword(word: &'static str) -> ()
             = quiet!{#{|input: &str, pos| {
                 if input.get(pos..pos+word.len()).is_some_and(|text| text.eq_ignore_ascii_case(word)) {
                     peg::RuleResult::Matched(pos+word.len(), ())
                 } else { peg::RuleResult::Failed }
-            }} !cont()} _ / expected!(word)
+            }} !cont()} / expected!(word)
+        rule kw(word: &'static str) -> () = keyword(word) _
+        rule hint_slot() -> Option<Vec<Node>> = hint_gap() value:hints()? !"/*+" _ { value }
         pub rule last_token_start() -> usize = tokens:(space()* start:position!()
             (temporal_literal() / opaque_comment_token() / word() / number()
                 / "<=>" / "<=" / ">=" / "<>" / "!=" / ":=" / "<<" / ">>" / "||" / "&&" / [_]) { start })* space()* {
@@ -199,8 +202,14 @@ peg::parser! {
         rule alias() -> Name = kw("as")? value:ident() { value }
         rule table_alias() -> Name = !(kw("full") kw("outer")? kw("join") / (kw("use") / kw("force") / kw("ignore"))) value:alias() { value }
         rule number() -> Node
-            = start:position!() text:$((['0'..='9']+ ("." ['0'..='9']*)? / "." ['0'..='9']+)
-                (['e' | 'E'] ['+' | '-']? ['0'..='9']+)?) !cont() end:position!() _
+            = start:position!() text:$(
+                ['0'..='9']+ (
+                    "." ['0'..='9']* (['e' | 'E'] ['+' | '-']? ['0'..='9']+)?
+                    / ['e' | 'E'] (['+' | '-'] ['0'..='9']+ / ['0'..='9']+ !cont())
+                    / !cont()
+                )
+                / "." ['0'..='9']+ (['e' | 'E'] ['+' | '-']? ['0'..='9']+)?
+            ) end:position!() _
                 {? Node::number(text, start, end) }
         rule string_segment(quote: rule<()>) -> &'input str
             = text:$(quote() (quote() quote() / enabled(!mode.no_backslash_escapes) "\\" [_]
@@ -963,7 +972,7 @@ peg::parser! {
                 }) ++ ("," _)) rollup:(kw("with") kw("rollup") { Node::new(Kind::Rollup,vec![]) })? {
                     let mut children=vec![Node::new(Kind::SortList,keys)];children.extend(rollup);Node::new(Kind::GroupBy,children)
                 }
-        rule select_query(level: usize) -> Select = depth(level) kw("select") hints:hints()? options:select_option()* projection:(item(level) ++ ("," _)) into:select_into()?
+        rule select_query(level: usize) -> Select = depth(level) keyword("select") hints:hint_slot() options:select_option()* projection:(item(level) ++ ("," _)) into:select_into()?
             from:(kw("from") tables:(kw("dual") { vec![] } / tables:(table(level) ++ ("," _)) { tables }) { tables })?
             filter:(kw("where") value:expr(level) { value })?
             group_by:group_by(level)?
@@ -983,7 +992,7 @@ peg::parser! {
         rule row() -> Node = "(" _ values:(expr_or_default() ** ("," _)) ")" _ {
             Node::new(Kind::ValueVector,values)
         }
-        rule insert() -> Node = replace:(kw("insert") { false } / kw("replace") { true }) hints:hints()?
+        rule insert() -> Node = replace:(keyword("insert") { false } / keyword("replace") { true }) hints:hint_slot()
             (kw("low_priority") / kw("high_priority"))? ignore:kw("ignore")? kw("into")? table:name() partition:use_partition()?
             columns:("(" _ columns:(column() ** ("," _)) ")" _ { columns })?
             values:((kw("values") / kw("value")) rows:(row() ++ ("," _)) { Node::new(Kind::ValueList, rows) }
@@ -998,7 +1007,7 @@ peg::parser! {
                     Ok(Node::insert(replace, ignore.is_some(), table, columns.unwrap_or_default(), values, duplicate.unwrap_or_default(), hints.unwrap_or_default()))
                 }
             }
-        rule update() -> Node = with:with_clause(0)? kw("update") hints:hints()? kw("low_priority")? ignore:kw("ignore")?
+        rule update() -> Node = with:with_clause(0)? keyword("update") hints:hint_slot() kw("low_priority")? ignore:kw("ignore")?
             tables:(table(0) ++ ("," _)) kw("set") values:assignments()
             filter:(kw("where") value:expr(0) { value })?
             order:(kw("order") kw("by") values:(order_item(0) ++ ("," _)) { values })?
@@ -1021,7 +1030,7 @@ peg::parser! {
                 Node::new(Kind::DeleteTables,vec![Node::new(Kind::DeleteTargets,targets),Node::new(Kind::FromList,tables)])
             }
             / kw("from") table:relation(0) { Node::new(Kind::DeleteTables,vec![Node::new(Kind::FromList,vec![table])]) }
-        rule delete() -> Node = with:with_clause(0)? kw("delete") hints:hints()? ignore:kw("ignore")? (kw("low_priority") / kw("quick"))*
+        rule delete() -> Node = with:with_clause(0)? keyword("delete") hints:hint_slot() ignore:kw("ignore")? (kw("low_priority") / kw("quick"))*
             tables:delete_tables() filter:(kw("where") value:expr(0) { value })?
             order:(enabled(tables.children.len()==1) kw("order") kw("by") values:(order_item(0) ++ ("," _)) { values })?
             limit:(enabled(tables.children.len()==1) value:limit() { value })? {
@@ -1393,8 +1402,8 @@ peg::parser! {
             / kw("set")? options:table_option()+ { Node::new(Kind::TableOptions,options) }
             / kw("algorithm") ("=" _)? (kw("default") / kw("inplace") / kw("copy") / kw("instant")) { Node::missing() }
             / kw("lock") ("=" _)? (kw("default") / kw("none") / kw("shared") / kw("exclusive")) { Node::missing() }
-        rule view_definition() -> Node = view_mode:(kw("create") hints()? replace:(kw("or") kw("replace"))? { (false,replace.is_some()) }
-                / kw("alter") hints()? { (true,false) })
+        rule view_definition() -> Node = view_mode:(keyword("create") hint_slot() replace:(kw("or") kw("replace"))? { (false,replace.is_some()) }
+                / keyword("alter") hint_slot() { (true,false) })
             (kw("algorithm") "=" _ (kw("undefined") / kw("merge") / kw("temptable")))?
             (kw("definer") "=" _ account())? (kw("sql") kw("security") kw("definer"))?
             kw("view") name:name() columns:("(" _ names:(ident() ++ ("," _)) ")" _ { names })? kw("as")
@@ -1425,9 +1434,9 @@ peg::parser! {
                 ddl::OutlineBody::Statement { statement,target }
             }
         rule outline_definition() -> Node
-            = kw("create") hints()? replace:(kw("or") kw("replace"))? format:kw("format")?
+            = keyword("create") hint_slot() replace:(kw("or") kw("replace"))? format:kw("format")?
                 kw("outline") name:ident() kw("on") body:(outline_body()
-                    / value:string() kw("using") kw("hint") start:position!() hints:hints() end:position!() {
+                    / value:string() kw("using") keyword("hint") hint_gap() start:position!() hints:hints() end:position!() {
                         ddl::OutlineBody::SqlId { value,hint:Node::new(Kind::Hints,hints).at(start,end) }
                     }) {?
                 Ok(ddl::Outline { kind:Kind::CreateOutline,relation:Node::relation(vec![name])?,
@@ -1457,12 +1466,12 @@ peg::parser! {
             / kw("create") (kw("database") / kw("schema")) absent:if_not_exists()? name:ident() options:database_option()* {
                 Node::new(Kind::CreateDatabase, vec![Node::optional(absent), Node::name(name), Node::list(Kind::DatabaseOptions,options)])
             }
-            / kw("create") hints()? temporary:temporary()? kw("table") absent:if_not_exists()? name:name()
+            / keyword("create") hint_slot() temporary:temporary()? kw("table") absent:if_not_exists()? name:name()
                 source:(kw("like") name:name() { name } / "(" _ kw("like") name:name() ")" _ { name }) {?
                 Ok(ddl::TableLike { relation:Node::relation(name)?, source:Node::relation(source)?,
                     temporary:temporary.is_some(), if_not_exists:absent.is_some() }.into_node())
             }
-            / kw("create") hints:hints()? temporary:temporary()? kw("table") absent:if_not_exists()? name:name()
+            / keyword("create") hints:hint_slot() temporary:temporary()? kw("table") absent:if_not_exists()? name:name()
                 elements:("(" _ elements:(table_element() ++ ("," _)) ")" _ { elements })?
                 options:((value:table_option() ("," _)? { value })*) partition:partition_option()?
                 query:(modifier:(kw("ignore") { Kind::Ignore } / kw("replace") { Kind::Replace })? kw("as")? query:select(0) { (modifier,query) })? {?
@@ -1473,7 +1482,7 @@ peg::parser! {
                     temporary:temporary.is_some(), if_not_exists:absent.is_some(),
                 }.into_node())
             }
-            / kw("create") hints:hints()? kind:index_kind()? kw("index") absent:if_not_exists()? name:name() method:index_method()? kw("on") table:name()
+            / keyword("create") hints:hint_slot() kind:index_kind()? kw("index") absent:if_not_exists()? name:name() method:index_method()? kw("on") table:name()
                 "(" _ columns:(index_column(kind==Some(3)) ++ ("," _)) ")" _ options:index_options(kind==Some(3)) partition:partition_option()? {?
                 Ok(ddl::Index {
                     kind:kind.unwrap_or(0), name:Some(Node::relation(name)?), table:Some(Node::relation(table)?),
@@ -1495,7 +1504,7 @@ peg::parser! {
                 Ok(Node::new(Kind::OptimizeTable,vec![Node::new(Kind::TableList,names.into_iter().map(Node::relation).collect::<Result<Vec<_>,_>>()?)]))
             }
             / kw("rename") kw("table") values:(rename_table() ++ ("," _)) { Node::new(Kind::RenameTables,values) }
-            / kw("alter") hints:hints()? kw("table") name:name() actions:(alter_action() ++ ("," _)) {?
+            / keyword("alter") hints:hint_slot() kw("table") name:name() actions:(alter_action() ++ ("," _)) {?
                 Ok(Node::new(Kind::AlterTable,vec![Node::relation(name)?,Node::list(Kind::AlterTableActions,actions.into_iter().filter(|value| value.kind!=Kind::Missing).collect()),Node::missing(),Node::list(Kind::Hints,hints.unwrap_or_default())]))
             }
             / kw("use") name:ident() { Node::new(Kind::UseDatabase, vec![Node::name(name)]) }
