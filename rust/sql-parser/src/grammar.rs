@@ -1803,9 +1803,11 @@ peg::parser! {
         ) { value }
         rule alter_system() -> Node = kw("alter") kw("system") value:(
             flush_cache()
-            / kind:(kw("major") { 1 } / kw("minor") { 2 }) kw("freeze") {
-                Node::new(Kind::Freeze,vec![Node::new(Kind::HiddenInt,vec![]).value(kind),Node::missing(),Node::missing()])
+            / kind:(kw("major") { 1 } / kw("minor") { 2 }) kw("freeze")
+                tablet:(kw("tablet_id") "=" _ value:load_integer() { value })? {
+                Node::new(Kind::Freeze,vec![Node::new(Kind::HiddenInt,vec![]).value(kind),Node::missing(),Node::optional(tablet)])
             }
+            / kw("checkpoint") { Node::new(Kind::Freeze,vec![Node::new(Kind::HiddenInt,vec![]).value(1),Node::missing(),Node::missing()]) }
             / kw("set_tp") options:(tracepoint_option() ** ("," _)) { Node::new(Kind::SetTracepoint,vec![Node::list(Kind::TracepointOptions,options),Node::missing()]) }
             / kw("reset") actions:((name:ident() scope:config_scope()? { Node::new(Kind::ConfigAction,vec![Node::name(name)]).value(scope.unwrap_or(2)) }) ++ ("," _)) {
                 Node::new(Kind::ResetConfig,vec![Node::new(Kind::ConfigList,actions)])

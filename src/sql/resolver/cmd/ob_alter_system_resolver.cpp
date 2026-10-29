@@ -41,7 +41,10 @@ int ObFreezeResolver::resolve(const peg::Node &statement)
   ObFreezeStmt *stmt = nullptr;
   if (OB_ISNULL(session_info_)) ret = OB_ERR_UNEXPECTED;
   else if (OB_ISNULL(stmt = create_stmt<ObFreezeStmt>())) ret = OB_ALLOCATE_MEMORY_FAILED;
-  else stmt->set_major_freeze(peg::freeze_is_major(statement));
+  else {
+    stmt->set_major_freeze(peg::freeze_is_major(statement));
+    stmt->get_tablet_id() = peg::freeze_tablet_id(statement);
+  }
   return ret;
 }
 
