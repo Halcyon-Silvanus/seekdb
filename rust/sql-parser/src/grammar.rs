@@ -119,7 +119,6 @@ fn reserved(word: &str) -> bool {
         "lateral",
         "over",
         "partition",
-        "rows",
         "range",
         "window",
         "with",
@@ -679,7 +678,8 @@ peg::parser! {
                 children.extend(bounds.1);
                 Node::new(Kind::WindowFrame,children).value(bounds.0)
             }
-        rule window_spec(level: usize) -> Node = start:position!() "(" _ name:ident()?
+        rule window_name() -> Name = !kw("rows") name:ident() { name }
+        rule window_spec(level: usize) -> Node = start:position!() "(" _ name:window_name()?
             partition:(kw("partition") kw("by") values:expr_list(level) { values })?
             order:(kw("order") kw("by") values:(order_item(level) ++ ("," _)) { values })?
             frame:window_frame()? ")" end:position!() _ {
@@ -690,11 +690,11 @@ peg::parser! {
                 let mut children=vec![Node::new(Kind::WindowSpec,spec)];children.extend(name.map(Node::name));
                 Node::new(Kind::Window,children).at(start,end)
             }
-        rule window(level: usize) -> Node = window_spec(level) / name:ident() {
+        rule window(level: usize) -> Node = window_spec(level) / name:window_name() {
             let (start,end)=(name.start,name.end);
             Node::new(Kind::Window,vec![Node::name(name)]).at(start,end)
         }
-        rule named_window(level: usize) -> Node = name:ident() kw("as") window:window_spec(level) {
+        rule named_window(level: usize) -> Node = name:window_name() kw("as") window:window_spec(level) {
             Node::new(Kind::NamedWindow,vec![Node::name(name),window])
         }
         rule limit_value() -> Node = parameter() / start:position!() text:$(['0'..='9']+) !cont() end:position!() _ {? Node::number(text, start, end) }
@@ -1482,11 +1482,17 @@ peg::parser! {
             / full:kw("full")? kw("tables") database:show_database()? condition:show_condition()? {
                 Node::new(Kind::ShowTables,vec![Node::optional(database),Node::optional(condition),Node::new(Kind::Int,vec![]).value(u64::from(full.is_some()))])
             }
+            / kw("table") kw("status") database:show_database()? condition:show_condition()? {
+                Node::new(Kind::ShowTableStatus,vec![Node::optional(database),Node::optional(condition)])
+            }
             / full:kw("full")? (kw("columns") / kw("fields")) (kw("from") / kw("in")) table:name() database:show_database()? condition:show_condition()? {?
                 Ok(Node::new(Kind::ShowColumns,vec![Node::new(Kind::Int,vec![]).value(u64::from(full.is_some())),Node::relation(table)?,Node::optional(database),Node::optional(condition)]))
             }
             / scope:scope()? kw("variables") condition:show_condition()? {
                 Node::new(Kind::ShowVariables,vec![Node::new(Kind::Int,vec![]).value(scope.unwrap_or(0)),Node::optional(condition)])
+            }
+            / scope:scope()? kw("status") condition:show_condition()? {
+                Node::new(Kind::ShowStatus,vec![Node::new(Kind::Int,vec![]).value(scope.unwrap_or(0)),Node::optional(condition)])
             }
             / kw("create") kind:(kw("table") { Kind::ShowCreateTable } / kw("view") { Kind::ShowCreateView }
                 / kw("procedure") { Kind::ShowCreateProcedure } / kw("function") { Kind::ShowCreateFunction }

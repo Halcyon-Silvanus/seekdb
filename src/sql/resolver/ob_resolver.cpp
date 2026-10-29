@@ -288,12 +288,20 @@ int ObResolver::resolve(const peg::Node &statement, ObStmt *&stmt)
         params_.resolver_scope_stmt_type_ = T_SHOW_TABLES;
         ret = stmt_resolver_func<ObShowResolver>(params_, statement, stmt);
         break;
+      case peg::NodeKind::ShowTableStatus:
+        params_.resolver_scope_stmt_type_ = T_SHOW_TABLE_STATUS;
+        ret = stmt_resolver_func<ObShowResolver>(params_, statement, stmt);
+        break;
       case peg::NodeKind::ShowDatabases:
         params_.resolver_scope_stmt_type_ = T_SHOW_DATABASES;
         ret = stmt_resolver_func<ObShowResolver>(params_, statement, stmt);
         break;
       case peg::NodeKind::ShowVariables:
         params_.resolver_scope_stmt_type_ = T_SHOW_VARIABLES;
+        ret = stmt_resolver_func<ObShowResolver>(params_, statement, stmt);
+        break;
+      case peg::NodeKind::ShowStatus:
+        params_.resolver_scope_stmt_type_ = T_SHOW_STATUS;
         ret = stmt_resolver_func<ObShowResolver>(params_, statement, stmt);
         break;
       case peg::NodeKind::ShowColumns:

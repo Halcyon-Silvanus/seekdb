@@ -148,14 +148,14 @@ pub(crate) fn show_extended(statement: &Node) -> bool {
     statement.kind == Kind::ShowIndexes && statement.children[3].value != 0
 }
 pub(crate) fn show_global(statement: &Node) -> bool {
-    statement.kind == Kind::ShowVariables && statement.children[0].value == 1
+    matches!(statement.kind, Kind::ShowVariables | Kind::ShowStatus) && statement.children[0].value == 1
 }
 pub(crate) fn show_if_not_exists(statement: &Node) -> bool {
     statement.kind == Kind::ShowCreateDatabase && statement.children[0].kind != Kind::Missing
 }
 fn show_database_clause(statement: &Node) -> Option<&Node> {
     let database = match statement.kind {
-        Kind::ShowTables => &statement.children[0],
+        Kind::ShowTables | Kind::ShowTableStatus => &statement.children[0],
         Kind::ShowColumns => &statement.children[2],
         Kind::ShowIndexes => &statement.children[1],
         Kind::ShowCreateDatabase => return Some(&statement.children[1]),
@@ -178,7 +178,9 @@ pub(crate) fn show_object(statement: &Node) -> &Node {
 }
 fn show_condition(statement: &Node) -> Option<&Node> {
     let condition = match statement.kind {
-        Kind::ShowTables | Kind::ShowVariables => &statement.children[1],
+        Kind::ShowTables | Kind::ShowTableStatus | Kind::ShowVariables | Kind::ShowStatus => {
+            &statement.children[1]
+        }
         Kind::ShowColumns => &statement.children[3],
         Kind::ShowIndexes => &statement.children[2],
         Kind::ShowParameters | Kind::ShowCharset | Kind::ShowCollation | Kind::ShowDatabases => {

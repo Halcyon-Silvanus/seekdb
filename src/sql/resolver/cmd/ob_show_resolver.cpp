@@ -130,6 +130,16 @@ int ObShowResolver::resolve(const peg::Node &statement)
       }
       break;
     }
+    case peg::NodeKind::ShowTableStatus: {
+      show_resv_ctx.stmt_type_ = stmt::T_SHOW_TABLE_STATUS;
+      uint64_t database_id = OB_INVALID_ID;
+      OZ(get_database_info(peg::show_has_database(statement) ? &peg::show_database(statement) : nullptr,
+          database_name, show_resv_ctx, database_id));
+      OZ(check_db_access_for_show_sql(show_resv_ctx, session_priv, roles));
+      GEN_SQL_STEP_1(ObShowSqlSet::SHOW_TABLE_STATUS);
+      GEN_SQL_STEP_2(ObShowSqlSet::SHOW_TABLE_STATUS, NEW_TABLE_STATUS_SQL, database_id);
+      break;
+    }
     case peg::NodeKind::ShowDatabases: {
       show_resv_ctx.stmt_type_ = stmt::T_SHOW_DATABASES;
       if (peg::show_filter(statement) == peg::ShowFilter::Like) {
@@ -152,6 +162,17 @@ int ObShowResolver::resolve(const peg::Node &statement)
       } else {
         GEN_SQL_STEP_1(ObShowSqlSet::SHOW_VARIABLES);
         GEN_SQL_STEP_2(ObShowSqlSet::SHOW_VARIABLES, OB_SYS_DATABASE_NAME, OB_ALL_VIRTUAL_SESSION_VARIABLE_TNAME);
+      }
+      break;
+    }
+    case peg::NodeKind::ShowStatus: {
+      show_resv_ctx.stmt_type_ = stmt::T_SHOW_STATUS;
+      if (peg::show_global(statement)) {
+        GEN_SQL_STEP_1(ObShowSqlSet::SHOW_GLOBAL_STATUS);
+        GEN_SQL_STEP_2(ObShowSqlSet::SHOW_GLOBAL_STATUS, OB_INFORMATION_SCHEMA_NAME, OB_SESSION_STATUS_TNAME);
+      } else {
+        GEN_SQL_STEP_1(ObShowSqlSet::SHOW_SESSION_STATUS);
+        GEN_SQL_STEP_2(ObShowSqlSet::SHOW_SESSION_STATUS, OB_INFORMATION_SCHEMA_NAME, OB_SESSION_STATUS_TNAME);
       }
       break;
     }
