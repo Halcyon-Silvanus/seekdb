@@ -17,14 +17,38 @@ use crate::{
     node::Node,
 };
 
+pub(crate) struct View {
+    pub relation: Node,
+    pub columns: Vec<Node>,
+    pub query: Node,
+    pub replace: bool,
+    pub alter: bool,
+    pub check: u64,
+}
+
+impl View {
+    pub fn into_node(self) -> Node {
+        let mut children = vec![self.relation, self.query];
+        if !self.columns.is_empty() {
+            children.push(Node::new(Kind::ColumnList, self.columns));
+        }
+        if self.replace {
+            children.push(Node::new(Kind::Replace, vec![]));
+        }
+        children.push(Node::new(Kind::ViewCheckOption,
+            vec![Node::new(Kind::HiddenInt, vec![]).value(self.check)]));
+        Node::new(Kind::CreateView, children).value(u64::from(self.alter))
+    }
+}
+
 pub(crate) fn view_definition(node: &Node) -> ViewDefinition<'_> {
     ViewDefinition {
-        relation: &node.children[0],
-        columns: &node.children[1].children,
-        query: &node.children[3],
-        replace: node.children[4].kind == crate::node::Kind::IfNotExists,
+        relation: child(node, Kind::Relation).unwrap(),
+        columns: list(node, Kind::ColumnList),
+        query: child(node, Kind::Select).unwrap(),
+        replace: child(node, Kind::Replace).is_some(),
         alter: node.value != 0,
-        check: match node.children[5].value {
+        check: match child(node, Kind::ViewCheckOption).unwrap().children[0].value {
             0 => ViewCheck::None,
             1 => ViewCheck::Local,
             2 => ViewCheck::Cascaded,
@@ -115,17 +139,37 @@ pub(crate) fn table_definition_query(node: &Node) -> &Node {
 pub(crate) fn table_definition_partition(node: &Node) -> &Node {
     &child(node, Kind::PartitionOption).unwrap().children[0]
 }
+pub(crate) struct TableLike {
+    pub relation: Node,
+    pub source: Node,
+    pub temporary: bool,
+    pub if_not_exists: bool,
+}
+
+impl TableLike {
+    pub fn into_node(self) -> Node {
+        let mut children = vec![self.relation, Node::new(Kind::TableLikeSource, vec![self.source])];
+        if self.temporary {
+            children.push(Node::new(Kind::Temporary, vec![]));
+        }
+        if self.if_not_exists {
+            children.push(Node::new(Kind::IfNotExists, vec![]));
+        }
+        Node::new(Kind::CreateTableLike, children)
+    }
+}
+
 pub(crate) fn table_like_relation(node: &Node) -> &Node {
-    &node.children[2]
+    child(node, Kind::Relation).unwrap()
 }
 pub(crate) fn table_like_source(node: &Node) -> &Node {
-    &node.children[3]
+    &child(node, Kind::TableLikeSource).unwrap().children[0]
 }
 pub(crate) fn table_like_temporary(node: &Node) -> bool {
-    node.children[0].kind == Kind::Temporary
+    child(node, Kind::Temporary).is_some()
 }
 pub(crate) fn table_like_if_not_exists(node: &Node) -> bool {
-    node.children[1].kind == Kind::IfNotExists
+    child(node, Kind::IfNotExists).is_some()
 }
 
 pub(crate) struct Column {
@@ -229,18 +273,49 @@ pub(crate) fn column_srid(attribute: &Node) -> u64 {
     attribute.children[0].value
 }
 
+pub(crate) struct Index {
+    pub kind: u64,
+    pub name: Option<Node>,
+    pub table: Option<Node>,
+    pub columns: Vec<Node>,
+    pub options: Node,
+    pub method: Option<Node>,
+    pub partition: Option<Node>,
+    pub if_not_exists: bool,
+    pub hints: Vec<Node>,
+}
+
+impl Index {
+    pub fn into_node(self) -> Node {
+        let kind = if self.table.is_some() { Kind::CreateIndex } else { Kind::Index };
+        let mut children = Vec::new();
+        if let Some(name) = self.name {
+            children.push(Node::new(Kind::IndexName, vec![name]));
+        }
+        if let Some(table) = self.table {
+            children.push(Node::new(Kind::IndexTable, vec![table]));
+        }
+        children.push(Node::new(Kind::IndexColumns, self.columns));
+        if self.options.kind != Kind::Missing {
+            children.push(self.options);
+        }
+        children.extend(self.method);
+        children.extend(self.partition);
+        if self.if_not_exists {
+            children.push(Node::new(Kind::IfNotExists, vec![]));
+        }
+        if !self.hints.is_empty() {
+            children.push(Node::new(Kind::Hints, self.hints));
+        }
+        Node::new(kind, children).value(self.kind)
+    }
+}
+
 pub(crate) fn index_definition(node: &Node) -> IndexDefinition<'_> {
-    let standalone = node.kind == Kind::CreateIndex;
-    let offset = usize::from(standalone);
-    let value = if standalone {
-        node.children[0].value
-    } else {
-        node.value
-    };
     IndexDefinition {
-        columns: &node.children[1 + offset].children,
-        options: &node.children[2 + offset].children,
-        kind: match value {
+        columns: list(node, Kind::IndexColumns),
+        options: list(node, Kind::TableOptions),
+        kind: match node.value {
             0 => IndexKind::Normal,
             1 => IndexKind::Unique,
             2 => IndexKind::Spatial,
@@ -248,24 +323,24 @@ pub(crate) fn index_definition(node: &Node) -> IndexDefinition<'_> {
             6 => IndexKind::Vector,
             _ => unreachable!(),
         },
-        method: if node.children[3 + offset].kind == Kind::UsingHash {
+        method: if child(node, Kind::UsingHash).is_some() {
             IndexMethod::Hash
         } else {
             IndexMethod::Default
         },
-        has_name: node.children[0].kind != Kind::Missing,
-        has_partition: node.children[4 + offset].kind != Kind::Missing,
-        if_not_exists: standalone && node.children[7].kind == Kind::IfNotExists,
+        has_name: child(node, Kind::IndexName).is_some(),
+        has_partition: child(node, Kind::PartitionOption).is_some(),
+        if_not_exists: child(node, Kind::IfNotExists).is_some(),
     }
 }
 pub(crate) fn index_definition_name(node: &Node) -> &Node {
-    &node.children[0]
+    &child(node, Kind::IndexName).unwrap().children[0]
 }
 pub(crate) fn index_definition_table(node: &Node) -> &Node {
-    &node.children[1]
+    &child(node, Kind::IndexTable).unwrap().children[0]
 }
 pub(crate) fn index_definition_partition(node: &Node) -> &Node {
-    &node.children[if node.kind == Kind::CreateIndex { 5 } else { 4 }].children[0]
+    &child(node, Kind::PartitionOption).unwrap().children[0]
 }
 pub(crate) fn index_column_expression(node: &Node) -> &Node {
     &node.children[0]
@@ -297,9 +372,48 @@ pub(crate) fn primary_key_options(node: &Node) -> &[Node] {
     }
 }
 
+pub(crate) struct Partition {
+    pub kind: Kind,
+    pub expression: Node,
+    pub start: usize,
+    pub end: usize,
+    pub count: Option<Node>,
+    pub elements: Option<Node>,
+    pub subpartition: Option<Node>,
+    pub template: bool,
+}
+
+impl Partition {
+    pub fn into_node(self) -> Node {
+        let mut children = vec![Node::new(Kind::PartitionExpression, vec![self.expression])];
+        let count = self.count.map(|count| Node::new(Kind::PartitionCount, vec![count]));
+        if matches!(self.kind, Kind::HashPartition | Kind::KeyPartition) {
+            children.extend(count);
+            children.extend(self.elements);
+            children.extend(self.subpartition);
+        } else {
+            children.extend(self.elements);
+            children.extend(self.subpartition);
+            children.extend(count);
+        }
+        Node::new(self.kind, children).value(u64::from(self.template)).at(self.start, self.end)
+    }
+}
+
+fn subpartition(node: &Node) -> Option<&Node> {
+    node.children.iter().find(|child| matches!(child.kind,
+        Kind::HashPartition | Kind::KeyPartition | Kind::RangePartition |
+        Kind::RangeColumnsPartition | Kind::ListPartition | Kind::ListColumnsPartition))
+}
+
+fn partition_elements(node: &Node) -> &[Node] {
+    node.children.iter().find(|child| matches!(child.kind,
+        Kind::Partitions | Kind::HashSubpartitions | Kind::RangeSubpartitions | Kind::ListSubpartitions))
+        .map_or(&[], |elements| &elements.children)
+}
+
 pub(crate) fn partition_definition(node: &Node) -> PartitionDefinition<'_> {
-    let hash = matches!(node.kind, Kind::HashPartition | Kind::KeyPartition);
-    let count = &node.children[if hash { 1 } else { 3 }];
+    let count = child(node, Kind::PartitionCount);
     PartitionDefinition {
         kind: match node.kind {
             Kind::HashPartition => PartitionKind::Hash,
@@ -310,32 +424,50 @@ pub(crate) fn partition_definition(node: &Node) -> PartitionDefinition<'_> {
             Kind::ListColumnsPartition => PartitionKind::ListColumns,
             _ => unreachable!(),
         },
-        expression: &node.children[0],
-        elements: &node.children[if hash { 2 } else { 1 }].children,
-        has_count: count.kind != Kind::Missing,
-        count: count.value,
-        has_subpartition: node.children[if hash { 3 } else { 2 }].kind != Kind::Missing,
-        is_template: node.children[4].kind != Kind::Missing,
+        expression: &child(node, Kind::PartitionExpression).unwrap().children[0],
+        elements: partition_elements(node),
+        has_count: count.is_some(),
+        count: count.map_or(0, |count| count.children[0].value),
+        has_subpartition: subpartition(node).is_some(),
+        is_template: node.value != 0,
     }
 }
 pub(crate) fn partition_subpartition(node: &Node) -> &Node {
-    &node.children[if matches!(node.kind, Kind::HashPartition | Kind::KeyPartition) {
-        3
-    } else {
-        2
-    }]
+    subpartition(node).unwrap()
 }
+
+pub(crate) struct PartitionEntry {
+    pub kind: Kind,
+    pub name: Node,
+    pub values: Node,
+    pub subpartitions: Option<Node>,
+}
+
+impl PartitionEntry {
+    pub fn into_node(self) -> Node {
+        let mut children = vec![self.name];
+        if self.values.kind != Kind::Missing {
+            children.push(self.values);
+        }
+        children.extend(self.subpartitions);
+        Node::new(self.kind, children)
+    }
+}
+
 pub(crate) fn partition_element(node: &Node) -> PartitionElement<'_> {
     PartitionElement {
-        name: &node.children[0],
-        values: &node.children[1].children,
-        value_kind: match node.children[1].kind {
-            Kind::Missing => PartitionValues::None,
-            Kind::Default => PartitionValues::Default,
-            _ if node.kind == Kind::RangePartitionElement => PartitionValues::Range,
-            _ => PartitionValues::List,
+        name: child(node, Kind::Relation).unwrap(),
+        values: list(node, Kind::ExprList),
+        value_kind: if child(node, Kind::Default).is_some() {
+            PartitionValues::Default
+        } else if child(node, Kind::ExprList).is_none() {
+            PartitionValues::None
+        } else if node.kind == Kind::RangePartitionElement {
+            PartitionValues::Range
+        } else {
+            PartitionValues::List
         },
-        subpartitions: &node.children[3].children,
+        subpartitions: partition_elements(node),
     }
 }
 pub(crate) fn check_constraint_has_name(node: &Node) -> bool {
@@ -350,22 +482,46 @@ pub(crate) fn check_constraint_expression(node: &Node) -> &Node {
 pub(crate) fn check_constraint_enforced(node: &Node) -> bool {
     node.children[2].kind == Kind::Enforced
 }
+pub(crate) struct ForeignKey {
+    pub columns: Vec<Node>,
+    pub parent: Node,
+    pub parent_columns: Vec<Node>,
+    pub actions: Vec<Node>,
+    pub constraint: Option<Node>,
+    pub index_name: Option<Node>,
+}
+
+impl ForeignKey {
+    pub fn into_node(self) -> Node {
+        let mut children = vec![
+            Node::new(Kind::ColumnList, self.columns),
+            Node::new(Kind::ForeignKeyParent, vec![self.parent, Node::new(Kind::ColumnList, self.parent_columns)]),
+        ];
+        if !self.actions.is_empty() {
+            children.push(Node::new(Kind::ReferenceOptions, self.actions));
+        }
+        children.extend(self.constraint.filter(|name| name.children[0].kind != Kind::Missing));
+        children.extend(self.index_name);
+        Node::new(Kind::ForeignKey, children)
+    }
+}
+
 pub(crate) fn foreign_key_definition(node: &Node) -> ForeignKeyDefinition<'_> {
+    let parent = child(node, Kind::ForeignKeyParent).unwrap();
     ForeignKeyDefinition {
-        columns: &node.children[0].children,
-        parent: &node.children[1],
-        parent_columns: &node.children[2].children,
-        actions: &node.children[3].children,
-        has_name: node.children[4].kind != Kind::Missing
-            && node.children[4].children[0].kind != Kind::Missing,
-        has_index_name: node.children[5].kind != Kind::Missing,
+        columns: list(node, Kind::ColumnList),
+        parent: child(parent, Kind::Relation).unwrap(),
+        parent_columns: list(parent, Kind::ColumnList),
+        actions: list(node, Kind::ReferenceOptions),
+        has_name: child(node, Kind::CheckConstraint).is_some(),
+        has_index_name: child(node, Kind::Ident).is_some(),
     }
 }
 pub(crate) fn foreign_key_name(node: &Node) -> &Node {
-    &node.children[4].children[0]
+    &child(node, Kind::CheckConstraint).unwrap().children[0]
 }
 pub(crate) fn foreign_key_index_name(node: &Node) -> &Node {
-    &node.children[5]
+    child(node, Kind::Ident).unwrap()
 }
 pub(crate) fn referential_action(node: &Node) -> ReferentialAction {
     ReferentialAction {
@@ -549,7 +705,7 @@ pub(crate) fn purge_relation(node: &Node) -> &Node {
 }
 
 pub(crate) fn partition_element_values(node: &Node) -> &Node {
-    &node.children[1]
+    node.children.iter().find(|child| matches!(child.kind, Kind::ExprList | Kind::Default)).unwrap()
 }
 
 pub(crate) fn alter_table_options(node: &Node) -> &[Node] {

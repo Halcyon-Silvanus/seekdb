@@ -274,21 +274,17 @@ int ObDDLResolver::check_add_column_as_pk_allowed(const ObColumnSchemaV2 &column
 int ObDDLResolver::resolve_default_value(const peg::Node &node, ObDefaultValueRes &resolve_res)
 {
   int ret = OB_SUCCESS;
-  using Kind = peg::NodeKind;
-  const peg::Node *expression = node.kind() == Kind::ColumnDefault
-      ? &peg::column_attribute_expression(node) : &node;
-  const bool literal_timestamp = node.kind() == Kind::ColumnDefault && expression->kind() != Kind::Parenthesized;
-  while (expression->kind() == Kind::Parenthesized) {
-    expression = &peg::parenthesized_expression(*expression);
-  }
-  const peg::Node &value = *expression;
+  const auto syntax = peg::default_expression(node);
+  const peg::Node &value = syntax.node;
+  const auto form = syntax.form;
+  using Form = peg::DefaultForm;
   ObObjParam &default_value = resolve_res.value_;
   resolve_res.is_literal_ = true;
   if (OB_ISNULL(allocator_) || OB_ISNULL(session_info_)) {
     ret = OB_ERR_UNEXPECTED;
-  } else if (value.kind() == Kind::HiddenDouble) {
-  } else if (peg::is_literal(value) && value.kind() != Kind::CharsetName) {
-    const auto literal = peg::expression_literal(value);
+  } else if (form == Form::Hidden) {
+  } else if (form == Form::Literal) {
+    const auto literal = peg::default_literal(value);
     ObString text(literal.text.size(), literal.text.data());
     ObString owned_text;
     int16_t scale = -1;
@@ -298,8 +294,7 @@ int ObDDLResolver::resolve_default_value(const peg::Node &node, ObDefaultValueRe
           ObString(bytes.size(), reinterpret_cast<const char *>(bytes.data())), text, true));
     }
     if (OB_SUCC(ret)) {
-      const auto kind = value.kind() == Kind::CharsetLiteral ? peg::LiteralKind::String : literal.kind;
-      switch (kind) {
+      switch (literal.kind) {
       case peg::LiteralKind::Integer: {
         int64_t integer = literal.integer;
         if (!literal.date_unit.empty()) {
@@ -439,119 +434,45 @@ int ObDDLResolver::resolve_default_value(const peg::Node &node, ObDefaultValueRe
         break;
       }
     }
-  } else if (value.kind() == Kind::CurrentTimestamp) {
-    resolve_res.is_literal_ = literal_timestamp;
-    const auto arguments = peg::call_arguments(value);
+  } else if (form == Form::Timestamp) {
+    resolve_res.is_literal_ = syntax.literal_timestamp;
     default_value.set_ext(ObActionFlag::OP_DEFAULT_NOW_FLAG);
     default_value.set_param_meta();
-    default_value.set_scale(arguments.empty() ? 0 : static_cast<int16_t>(peg::integer_literal_value(arguments[0])));
-  } else if (value.kind() == Kind::Unary &&
-             (peg::unary_operator(value) == peg::UnaryOperator::Plus ||
-              peg::unary_operator(value) == peg::UnaryOperator::Minus)) {
-    OZ(resolve_sign_in_default_value(value, resolve_res, peg::unary_operator(value) == peg::UnaryOperator::Minus));
+    default_value.set_scale(static_cast<int16_t>(syntax.timestamp_precision));
+  } else if (form == Form::Positive || form == Form::MinimumInteger ||
+             form == Form::UnsignedDecimal || form == Form::NegateValue ||
+             form == Form::NegateDecimal) {
+    OZ(resolve_sign_in_default_value(syntax, resolve_res));
   } else {
     resolve_res.is_literal_ = false;
-    auto resolve_argument = [&](const peg::Node &argument) -> int {
-      ObObjParam result;
-      ObDefaultValueRes resolved(result);
-      return SMART_CALL(resolve_default_value(argument, resolved));
-    };
-    auto resolve_arguments = [&](rust::Slice<const peg::Node> arguments) -> int {
-      int ret = OB_SUCCESS;
-      for (const peg::Node &argument : arguments) {
-        OZ(resolve_argument(argument));
-      }
-      return ret;
-    };
-    switch (value.kind()) {
-      case Kind::Ident:
-      case Kind::CurrentDate:
-      case Kind::UtcDate:
-        break;
-      case Kind::Column:
+    switch (form) {
+      case Form::ColumnReference:
         ret = OB_NOT_SUPPORTED;
         LOG_USER_ERROR(OB_NOT_SUPPORTED, "Column reference in default value expression");
         break;
-      case Kind::Unary:
-        OZ(resolve_argument(peg::unary_operand(value)));
+      case Form::Concatenation:
+        ret = OB_NOT_SUPPORTED;
+        LOG_USER_ERROR(OB_NOT_SUPPORTED, "Connect operator in default value expression");
         break;
-      case Kind::Binary:
-        switch (peg::binary_operator(value)) {
-          case peg::BinaryOperator::IntegerDivide:
-          case peg::BinaryOperator::NotLike:
-          case peg::BinaryOperator::LogicalXor:
-          case peg::BinaryOperator::Regexp:
-          case peg::BinaryOperator::NotRegexp:
-            ret = OB_ERR_ILLEGAL_TYPE;
-            break;
-          case peg::BinaryOperator::Concat:
-            ret = OB_NOT_SUPPORTED;
-            LOG_USER_ERROR(OB_NOT_SUPPORTED, "Connect operator in default value expression");
-            break;
-          default:
-            OZ(resolve_argument(peg::binary_left(value)));
-            OZ(resolve_argument(peg::binary_right(value)));
-            if (peg::like_has_escape(value)) { OZ(resolve_argument(peg::like_escape(value))); }
-            break;
+      case Form::InvalidPoint:
+        ret = OB_INVALID_ARGUMENT;
+        break;
+      case Form::Expression:
+      case Form::QueryMembership:
+      case Form::Cast: {
+        auto arguments = peg::default_arguments(value);
+        while (arguments->advance()) {
+          ObObjParam result;
+          ObDefaultValueRes resolved(result);
+          OZ(SMART_CALL(resolve_default_value(arguments->argument(), resolved)));
         }
-        break;
-      case Kind::In:
-        OZ(resolve_argument(peg::predicate_subject(value)));
-        if (peg::membership_source(value) == peg::MembershipSource::Query) {
+        if (form == Form::QueryMembership) {
           ret = OB_ERR_ILLEGAL_TYPE;
-        } else {
-          OZ(resolve_arguments(peg::membership_expressions(value)));
-        }
-        break;
-      case Kind::Between:
-        OZ(resolve_argument(peg::predicate_subject(value)));
-        OZ(resolve_argument(peg::between_lower(value)));
-        OZ(resolve_argument(peg::between_upper(value)));
-        break;
-      case Kind::Case:
-        if (peg::case_has_operand(value)) { OZ(resolve_argument(peg::case_operand(value))); }
-        for (const peg::Node &arm : peg::case_arms(value)) {
-          OZ(resolve_argument(peg::case_condition(arm)));
-          OZ(resolve_argument(peg::case_result(arm)));
-        }
-        if (peg::case_has_else(value)) { OZ(resolve_argument(peg::case_else(value))); }
-        break;
-      case Kind::ExprList:
-        OZ(resolve_arguments(peg::row_elements(value)));
-        break;
-      case Kind::Function:
-        if (!peg::call_qualifiers(value).empty()) {
+        } else if (form == Form::Cast && OB_SUCC(ret)) {
           ret = OB_ERR_ILLEGAL_TYPE;
-          break;
-        }
-        OZ(resolve_arguments(peg::call_arguments(value)));
-        break;
-      case Kind::Cast:
-        OZ(resolve_argument(peg::cast_argument(value)));
-        if (OB_SUCC(ret)) { ret = OB_ERR_ILLEGAL_TYPE; }
-        break;
-      case Kind::Point:
-        if (peg::call_arguments(value).size() != 2) {
-          ret = OB_INVALID_ARGUMENT;
-        } else {
-          OZ(resolve_arguments(peg::call_arguments(value)));
         }
         break;
-      case Kind::If:
-      case Kind::IsNull:
-      case Kind::StringConcat:
-      case Kind::Sum:
-      case Kind::Min:
-      case Kind::Max:
-      case Kind::Avg:
-      case Kind::CurrentTime:
-      case Kind::UtcTimestamp:
-      case Kind::UtcTime:
-      case Kind::Sysdate:
-      case Kind::ArrayLiteral:
-      case Kind::MapLiteral:
-        OZ(resolve_arguments(peg::call_arguments(value)));
-        break;
+      }
       default:
         ret = OB_ERR_ILLEGAL_TYPE;
         break;
@@ -560,21 +481,20 @@ int ObDDLResolver::resolve_default_value(const peg::Node &node, ObDefaultValueRe
   return ret;
 }
 
-int ObDDLResolver::resolve_sign_in_default_value(const peg::Node &expression,
-                                                 ObDefaultValueRes &resolve_res, const bool negative)
+int ObDDLResolver::resolve_sign_in_default_value(const peg::DefaultExpression &syntax,
+                                                 ObDefaultValueRes &resolve_res)
 {
   int ret = OB_SUCCESS;
-  const peg::Node &operand = peg::unary_operand(expression);
-  if (!negative) {
+  using Form = peg::DefaultForm;
+  const peg::Node &operand = syntax.node;
+  if (syntax.form == Form::Positive) {
     OZ(resolve_default_value(operand, resolve_res));
   } else {
-    const peg::Node *number_node = &operand;
-    while (number_node->kind() == peg::NodeKind::Parenthesized) { number_node = &peg::parenthesized_expression(*number_node); }
-    if (number_node->kind() == peg::NodeKind::Uint) {
-      if (operand.kind() == peg::NodeKind::Uint && peg::integer_literal_value(*number_node) == (uint64_t(1) << 63)) {
+    if (syntax.form == Form::MinimumInteger || syntax.form == Form::UnsignedDecimal) {
+      if (syntax.form == Form::MinimumInteger) {
         resolve_res.value_.set_int(INT64_MIN);
       } else {
-        const auto literal = peg::expression_literal(*number_node);
+        const auto literal = peg::default_literal(operand);
         ObString source(literal.text.size(), literal.text.data());
         char *bytes = static_cast<char *>(allocator_->alloc(source.length() + 1));
         if (OB_ISNULL(bytes)) {
@@ -602,7 +522,7 @@ int ObDDLResolver::resolve_sign_in_default_value(const peg::Node &expression,
       } else if (value.is_double()) {
         resolve_res.value_.set_double(-value.get_double());
         resolve_res.value_.set_param_meta();
-      } else if (number_node->kind() == peg::NodeKind::Number) {
+      } else if (syntax.form == Form::NegateDecimal) {
         ObString str;
         char buffer[number::ObNumber::MAX_PRINTABLE_SIZE];
         OZ(value.get_varchar(str));

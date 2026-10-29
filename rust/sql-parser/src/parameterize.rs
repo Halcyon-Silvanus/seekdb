@@ -12,6 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+mod numeric;
+mod projection;
+
+pub use numeric::{resolve_unary, UnaryOperand, UnaryResolution};
+pub use projection::projection_names;
+use projection::parameter_template;
+
 use std::collections::{HashMap, HashSet};
 
 use crate::bridge::ffi::*;
@@ -851,7 +858,8 @@ fn apply<'a>(
     }
     if options.projection_names {
         for projection in &collector.projections {
-            if let Some(template) = Projection::new(projection).parameter_template(
+            if let Some(template) = parameter_template(
+                Projection::new(projection),
                 syntax_sql,
                 collector.literals.iter().map(|occurrence| (occurrence.literal, occurrence.expression)),
                 tokens,

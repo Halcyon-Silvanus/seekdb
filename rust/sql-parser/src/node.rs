@@ -23,6 +23,12 @@ pub struct Node {
     pub(crate) end: usize,
     pub(crate) value: u64,
     pub(crate) depth: usize,
+    pub(crate) operator: Option<Operator>,
+}
+
+pub(crate) enum Operator {
+    Unary(ffi::UnaryOperator),
+    Binary(ffi::BinaryOperator),
 }
 
 pub(crate) const MAX_DEPTH: usize = 128;
@@ -301,6 +307,7 @@ impl Node {
             end: 0,
             value: 0,
             depth,
+            operator: None,
         }
     }
 
@@ -394,16 +401,70 @@ impl Node {
                 end,
             );
         }
-        Self::new(Kind::Unary, vec![value])
-            .text(op.into())
-            .expression(start, end)
+        let operator = match op {
+            "+" => ffi::UnaryOperator::Plus,
+            "-" => ffi::UnaryOperator::Minus,
+            "!" | "not" => ffi::UnaryOperator::LogicalNot,
+            "~" => ffi::UnaryOperator::BitwiseNot,
+            _ => unreachable!(),
+        };
+        let mut node = Self::new(Kind::Unary, vec![value]).text(op.into());
+        node.operator = Some(Operator::Unary(operator));
+        node.expression(start, end)
     }
 
     pub(crate) fn binary(op: String, left: Self, right: Self) -> Result<Self, &'static str> {
         let (start, end) = (left.start, right.end);
-        Self::new(Kind::Binary, vec![left, right])
-            .text(op)
-            .expression(start, end)
+        Self::binary_operands(op, vec![left, right]).expression(start, end)
+    }
+
+    pub(crate) fn binary_operands(op: String, operands: Vec<Self>) -> Self {
+        let operator = match op.as_str() {
+            "+" => ffi::BinaryOperator::Add,
+            "-" => ffi::BinaryOperator::Subtract,
+            "*" => ffi::BinaryOperator::Multiply,
+            "/" => ffi::BinaryOperator::Divide,
+            "div" => ffi::BinaryOperator::IntegerDivide,
+            "%" | "mod" => ffi::BinaryOperator::Modulo,
+            "|" => ffi::BinaryOperator::BitOr,
+            "&" => ffi::BinaryOperator::BitAnd,
+            "^" => ffi::BinaryOperator::BitXor,
+            "<<" => ffi::BinaryOperator::ShiftLeft,
+            ">>" => ffi::BinaryOperator::ShiftRight,
+            "concat" => ffi::BinaryOperator::Concat,
+            "=" => ffi::BinaryOperator::Equal,
+            "<=>" => ffi::BinaryOperator::NullSafeEqual,
+            "!=" | "<>" => ffi::BinaryOperator::NotEqual,
+            "<" => ffi::BinaryOperator::Less,
+            "<=" => ffi::BinaryOperator::LessEqual,
+            ">" => ffi::BinaryOperator::Greater,
+            ">=" => ffi::BinaryOperator::GreaterEqual,
+            "and" => ffi::BinaryOperator::LogicalAnd,
+            "or" => ffi::BinaryOperator::LogicalOr,
+            "xor" => ffi::BinaryOperator::LogicalXor,
+            "like" => ffi::BinaryOperator::Like,
+            "not like" => ffi::BinaryOperator::NotLike,
+            "regexp" => ffi::BinaryOperator::Regexp,
+            "not regexp" => ffi::BinaryOperator::NotRegexp,
+            _ => unreachable!(),
+        };
+        let mut node = Self::new(Kind::Binary, operands).text(op);
+        node.operator = Some(Operator::Binary(operator));
+        node
+    }
+
+    pub(crate) fn unary_operator(&self) -> ffi::UnaryOperator {
+        match self.operator {
+            Some(Operator::Unary(operator)) => operator,
+            _ => unreachable!(),
+        }
+    }
+
+    pub(crate) fn binary_operator(&self) -> ffi::BinaryOperator {
+        match self.operator {
+            Some(Operator::Binary(operator)) => operator,
+            _ => unreachable!(),
+        }
     }
 
     pub(crate) fn is_wildcard(&self) -> bool {
@@ -519,8 +580,7 @@ impl Node {
             if window.is_some() || modifier.is_some() || arguments.len() != 2 {
                 return Err("MOD requires two arguments");
             }
-            return Self::new(Kind::Binary, arguments)
-                .text("mod".into())
+            return Self::binary_operands("mod".into(), arguments)
                 .expression(start, end);
         }
         let geometry = match function.as_str() {

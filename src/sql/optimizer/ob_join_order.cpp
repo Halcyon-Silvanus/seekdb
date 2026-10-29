@@ -16627,16 +16627,16 @@ int ObJoinOrder::get_query_tokens_by_boolean_mode(ObMatchFunRawExpr *match_expr,
     if (OB_SUCC(ret)) {
       const auto parsed = peg::parse_search_query(rust::Slice<const uint8_t>(
           reinterpret_cast<const uint8_t *>(str_dest.ptr()), str_dest.length()));
-      if (!parsed.error.empty()) {
+      if (!parsed->error().empty()) {
         ret = OB_ERR_PARSER_SYNTAX;
-      } else if (!parsed.root.children.empty()) {
+      } else if (!parsed->root().children().empty()) {
         ObFtsEvalNode *parant_node =nullptr;
         hash::ObHashMap<ObString, int32_t> tokens_map;
         const int64_t ft_word_bkt_cnt = MAX(search_text_string.length() / 10, 2);
         ObArray<ObString> query_token;
         bool dummy_has_duplicate_boolean_tokens = false;
         if (OB_FAIL(tokens_map.create(ft_word_bkt_cnt, common::ObMemAttr("FTWordMap")))) {
-        } else if (OB_FAIL(ObFtsEvalNode::fts_boolean_node_create(parant_node, parsed.root, cs_type, *allocator_, query_token, tokens_map, dummy_has_duplicate_boolean_tokens))) {
+        } else if (OB_FAIL(ObFtsEvalNode::fts_boolean_node_create(parant_node, parsed->root(), cs_type, *allocator_, query_token, tokens_map, dummy_has_duplicate_boolean_tokens))) {
         } else {
           for (hash::ObHashMap<ObString, int32_t>::const_iterator iter = tokens_map.begin();
               OB_SUCC(ret) && iter != tokens_map.end();

@@ -15,12 +15,9 @@
 use crate::bridge::ffi::{
     AliasForm, ExplainDisplay, ExplainFormat, IndexHintKind, InsertSource, IntoPosition,
     JoinCondition, JoinKind, LockKind, LockWait, MergeDirection, ParallelPolicy, PlanCachePolicy,
-    LiteralKind, ParameterError, ParameterOrigin, ParameterProjection, ParameterToken,
-    ProjectionNames, ReadConsistency, SampleMethod, SampleScope, SetOperator, SortDirection,
+    ReadConsistency, SampleMethod, SampleScope, SetOperator, SortDirection,
 };
-use crate::expression::{expression_literal, is_literal, parenthesized_expression};
 use crate::node::{Kind, Node};
-use crate::parameterize::ParameterEffects;
 
 #[derive(Clone, Copy)]
 pub struct Query<'a>(&'a Node);
@@ -53,137 +50,16 @@ impl<'a> Projection<'a> {
         Self(node)
     }
 
+    pub(crate) fn node(self) -> &'a Node {
+        self.0
+    }
+
     pub fn expression(self) -> &'a Node {
         projection_expression(self.0)
     }
 
     pub fn alias(self) -> Option<&'a Node> {
         (projection_alias_form(self.0) != AliasForm::Absent).then(|| projection_alias(self.0))
-    }
-
-    fn display(self) -> &'a Node {
-        let mut expression = self.expression();
-        while expression.kind == Kind::Parenthesized {
-            expression = parenthesized_expression(expression);
-        }
-        expression
-    }
-
-    fn string_name(self) -> Option<&'a [u8]> {
-        let display = self.display();
-        if self.alias().is_none() && is_literal(display) {
-            let literal = expression_literal(display);
-            if literal.kind == LiteralKind::String {
-                return Some(&literal.text.as_bytes()[..literal.first_part_length]);
-            }
-        }
-        None
-    }
-
-    pub fn names(
-        self,
-        expression_source: &'a [u8],
-        effects: Option<&ParameterEffects>,
-        null_template: bool,
-    ) -> ProjectionNames<'a> {
-        let expression = if null_template {
-            b"NULL"
-        } else {
-            self.string_name().unwrap_or(expression_source)
-        };
-        let display = self.display();
-        let alias = if display.kind == Kind::Null
-            && effects.and_then(|effects| effects.binding(display)).is_none()
-        {
-            b"NULL"
-        } else {
-            expression
-        };
-        ProjectionNames {
-            expression,
-            alias,
-            explicit_alias: self.alias().map_or(&[], |alias| alias.text.as_bytes()),
-            has_alias: self.alias().is_some(),
-        }
-    }
-
-    pub(crate) fn parameter_template(
-        self,
-        syntax_sql: &[u8],
-        occurrences: impl IntoIterator<Item = (&'a Node, &'a Node)>,
-        tokens: &[ParameterToken<'_>],
-        effects: &ParameterEffects,
-        limit: usize,
-    ) -> Result<Option<ParameterProjection<'a>>, ParameterError> {
-        if self.alias().is_some() {
-            return Ok(None);
-        }
-        let expression = self.expression();
-        if expression.kind == Kind::Star
-            || (expression.kind == Kind::Column && name_is_wildcard(expression))
-        {
-            return Ok(None);
-        }
-        let string_literal = self.string_name().is_some();
-        let original = syntax_sql
-            .get(expression.start..expression.end)
-            .ok_or(ParameterError::Unsupported)?;
-        let mut result = ParameterProjection {
-            node: self.0,
-            name: Vec::new(),
-            questions: Vec::new(),
-            parameters: Vec::new(),
-            negative_parameters: Vec::new(),
-            escaped_string: false,
-            null_literal: false,
-        };
-        let mut position = expression.start;
-        for (literal, parameter_expression) in occurrences {
-            let Some(binding) = effects.binding(parameter_expression) else {
-                continue;
-            };
-            if literal.start < expression.start || literal.end > expression.end {
-                continue;
-            }
-            if result.name.len() >= limit {
-                break;
-            }
-            let token = &tokens[binding.raw_index];
-            if !string_literal && token.start > position {
-                let start = position
-                    .checked_sub(expression.start)
-                    .ok_or(ParameterError::Unsupported)?;
-                let count = (token.start - position).min(limit - result.name.len());
-                result.name.extend_from_slice(
-                    original
-                        .get(start..start + count)
-                        .ok_or(ParameterError::Unsupported)?,
-                );
-            }
-            position = token.end;
-            result.questions.push(result.name.len());
-            result.parameters.push(binding.raw_index);
-            if result.name.len() < limit {
-                result.name.push(b'?');
-            }
-            if binding.origin == ParameterOrigin::UnaryNegation {
-                result.negative_parameters.push(binding.raw_index);
-            }
-        }
-        if !string_literal {
-            let offset = position
-                .checked_sub(expression.start)
-                .ok_or(ParameterError::Unsupported)?;
-            let suffix = original.get(offset..).ok_or(ParameterError::Unsupported)?;
-            result
-                .name
-                .extend_from_slice(&suffix[..suffix.len().min(limit - result.name.len())]);
-        }
-        result.escaped_string = string_literal && effects.binding(self.display()).is_some();
-        if result.parameters.len() == 1 && result.name == b"?" {
-            result.null_literal = tokens[result.parameters[0]].kind == LiteralKind::Null;
-        }
-        Ok((!result.parameters.is_empty()).then_some(result))
     }
 }
 

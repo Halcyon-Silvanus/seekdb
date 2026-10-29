@@ -19,6 +19,7 @@ mod prefix;
 mod bridge;
 mod command;
 mod ddl;
+mod defaults;
 mod embedded_sql;
 pub mod expression;
 mod fts;
@@ -34,10 +35,10 @@ mod scan;
 mod statistics;
 
 pub use bridge::ffi::{
-    SqlMode, ScanOptions, LiteralKind, Literal, ValuesPosition,
+    DefaultExpression, DefaultForm, SqlMode, ScanOptions, LiteralKind, Literal, ValuesPosition,
     ScanResult, NodeKind, Span, TransactionAccess, TransactionOptions,
-    ColumnReference, ExpressionInfo, StatementSplits, ParseMode, SearchNodeKind,
-    SearchNode, SearchTree, AccountKind, AccountNameForm, AccountIdentity,
+    ColumnReference, ExpressionInfo, StatementSplits, ParseMode, SearchOccurrence,
+    AccountKind, AccountNameForm, AccountIdentity,
     AuthenticationKind, RoleSelection, PrivilegeScope, PrivilegeObject, AccessOptions,
     PrivilegeTarget, ExplainFormat, ExplainDisplay, SetOperator, AliasForm,
     SortDirection, IntoPosition, InsertSource, LockKind, LockWait,
@@ -66,8 +67,10 @@ pub use parser::{parse, Parsed, ParseFailure};
 pub use inspect::syntax_literals;
 pub use batch::{compress_insert, compress_values, restore_parameter_sql};
 pub use prefix::{classify_statement, explain_body_offset, normalized_sql_length, is_single_statement, split_sql, fast_parameterization_allowed, transaction_command, insert_outline_hint};
-pub use parameterize::{ParameterEffects, parameterize, classify_parameter_tokens, rewrite_parameter_sql, fold_parameter_in_lists, unchecked_parameter_types};
+pub use parameterize::{projection_names, resolve_unary, UnaryOperand, UnaryResolution, ParameterEffects, parameterize, classify_parameter_tokens, rewrite_parameter_sql, fold_parameter_in_lists, unchecked_parameter_types};
 pub use scan::{begin_scan, finish_scan, Scanner};
-pub use fts::{parse_search_query};
+pub use fts::{parse_search_query, SearchNode, SearchTree};
 pub use embedded_sql::{embedded_sql_symbols, rewrite_embedded_sql};
 pub use lex::{decode_binary_literal, identifier_requires_quotes, normalize_numeric_sign, integer_literal_is_nonnegative};
+
+pub use defaults::{default_expression, default_literal, default_arguments, DefaultArguments};

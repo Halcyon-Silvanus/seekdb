@@ -775,6 +775,13 @@ pub(crate) mod ffi {
         SumOpnsize,
         TopFreHist,
         HybridHist,
+        TableLikeSource,
+        IndexName,
+        IndexTable,
+        ForeignKeyParent,
+        PartitionExpression,
+        PartitionCount,
+        ViewCheckOption,
     }
 
     #[derive(Clone, Copy)]
@@ -823,23 +830,36 @@ pub(crate) mod ffi {
         RoutineDefinition,
     }
 
-    enum SearchNodeKind {
-        Term,
-        List,
-        Group,
+    enum DefaultForm {
+        Hidden,
+        Literal,
+        Timestamp,
+        Positive,
+        MinimumInteger,
+        UnsignedDecimal,
+        NegateValue,
+        NegateDecimal,
+        Expression,
+        ColumnReference,
+        Concatenation,
+        IllegalType,
+        QueryMembership,
+        Cast,
+        InvalidPoint,
+    }
+
+    struct DefaultExpression<'a> {
+        node: &'a Node,
+        form: DefaultForm,
+        literal_timestamp: bool,
+        timestamp_precision: u64,
+    }
+
+    enum SearchOccurrence {
+        Optional,
         Required,
         Excluded,
-    }
-
-    struct SearchNode {
-        kind: SearchNodeKind,
-        text: String,
-        children: Vec<SearchNode>,
-    }
-
-    struct SearchTree {
-        root: SearchNode,
-        error: String,
+        Alternative,
     }
 
     enum AccountKind {
@@ -1945,7 +1965,21 @@ pub(crate) mod ffi {
         fn advance(self: &mut Scanner<'_>) -> bool;
         fn finish_scan(scanner: Box<Scanner<'_>>) -> ScanResult;
         fn split_sql(sql: &[u8], mode: SqlMode, first_only: bool) -> StatementSplits;
-        fn parse_search_query(input: &[u8]) -> SearchTree;
+        unsafe fn default_expression<'a>(node: &'a Node) -> DefaultExpression<'a>;
+        unsafe fn default_literal<'a>(node: &'a Node) -> ExpressionLiteral<'a>;
+        type DefaultArguments<'a>;
+        unsafe fn default_arguments<'a>(node: &'a Node) -> Box<DefaultArguments<'a>>;
+        fn advance(self: &mut DefaultArguments<'_>) -> bool;
+        unsafe fn argument<'a>(self: &DefaultArguments<'a>) -> &'a Node;
+        type SearchNode;
+        type SearchTree;
+        fn is_term(self: &SearchNode) -> bool;
+        fn text(self: &SearchNode) -> &str;
+        fn children(self: &SearchNode) -> &[SearchNode];
+        fn occurrence(self: &SearchNode) -> SearchOccurrence;
+        fn root(self: &SearchTree) -> &SearchNode;
+        fn error(self: &SearchTree) -> &str;
+        fn parse_search_query(input: &[u8]) -> Box<SearchTree>;
         fn inspect_expression(sql: &[u8], mode: SqlMode) -> ExpressionInfo;
         fn transaction_options(node: &Node) -> TransactionOptions;
         fn prepared_source(node: &Node) -> &Node;
@@ -2197,7 +2231,8 @@ use crate::access::{
     account_name, account_name_form, account_password, account_plugin, privilege_columns,
     privilege_name,
 };
-use crate::fts::parse_search_query;
+use crate::defaults::{default_expression, default_literal, default_arguments, DefaultArguments};
+use crate::fts::{parse_search_query, SearchNode, SearchTree};
 use crate::inspect::inspect_expression;
 use crate::scan::{begin_scan, finish_scan, Scanner};
 
@@ -2393,8 +2428,8 @@ use crate::lex::{normalize_numeric_sign, integer_literal_is_nonnegative};
 
 use crate::parameterize::ParameterEffects;
 
-fn unary_resolution<'a>(node: &'a Node, result: crate::numeric::UnaryResolution<'a>) -> ffi::UnaryResolution<'a> {
-    use crate::numeric::UnaryOperand;
+fn unary_resolution<'a>(node: &'a Node, result: crate::parameterize::UnaryResolution<'a>) -> ffi::UnaryResolution<'a> {
+    use crate::parameterize::UnaryOperand;
     let (operand, literal, kind, integer, text) = match result.operand {
         UnaryOperand::Resolve(operand) => (operand, false, ffi::LiteralKind::Null, 0, &[][..]),
         UnaryOperand::Literal { kind, integer, text } => (node, true, kind, integer, text),
@@ -2403,17 +2438,17 @@ fn unary_resolution<'a>(node: &'a Node, result: crate::numeric::UnaryResolution<
 }
 
 fn resolve_plain_unary<'a>(node: &'a Node, syntax_sql: &'a [u8]) -> ffi::UnaryResolution<'a> {
-    unary_resolution(node, crate::numeric::resolve_unary(node, syntax_sql, None))
+    unary_resolution(node, crate::parameterize::resolve_unary(node, syntax_sql, None))
 }
 
 fn resolve_parameterized_unary<'a>(node: &'a Node, syntax_sql: &'a [u8], effects: &ParameterEffects) -> ffi::UnaryResolution<'a> {
-    unary_resolution(node, crate::numeric::resolve_unary(node, syntax_sql, Some(effects)))
+    unary_resolution(node, crate::parameterize::resolve_unary(node, syntax_sql, Some(effects)))
 }
 
 fn projection_names<'a>(projection: &'a Node, expression_source: &'a [u8], null_template: bool) -> ffi::ProjectionNames<'a> {
-    crate::query::Projection::new(projection).names(expression_source, None, null_template)
+    crate::parameterize::projection_names(crate::query::Projection::new(projection), expression_source, None, null_template)
 }
 
 fn parameterized_projection_names<'a>(projection: &'a Node, expression_source: &'a [u8], effects: &ParameterEffects, null_template: bool) -> ffi::ProjectionNames<'a> {
-    crate::query::Projection::new(projection).names(expression_source, Some(effects), null_template)
+    crate::parameterize::projection_names(crate::query::Projection::new(projection), expression_source, Some(effects), null_template)
 }

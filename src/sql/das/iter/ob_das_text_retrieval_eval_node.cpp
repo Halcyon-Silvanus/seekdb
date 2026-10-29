@@ -113,9 +113,10 @@ int ObFtsEvalNode::fts_boolean_node_create(
   } else {
     node = new(buf) ObFtsEvalNode();
     node->parant_node_ = nullptr;
-    if (peg::SearchNodeKind::Term == search_node.kind) {
+    if (search_node.is_term()) {
       ObString token_string;
-      const ObString term(search_node.text.size(), search_node.text.data());
+      const auto text = search_node.text();
+      const ObString term(text.size(), text.data());
       if (OB_FAIL(common::ObCharset::charset_convert(
           allocator, term, ObCollationType::CS_TYPE_UTF8MB4_GENERAL_CI, cs_type, token_string,
           common::ObCharset::CONVERT_FLAG::COPY_STRING_ON_SAME_CHARSET))) {
@@ -136,34 +137,26 @@ int ObFtsEvalNode::fts_boolean_node_create(
         node->postion_ = token_idx;
         node->leaf_node_ = true;
       }
-    } else if (peg::SearchNodeKind::List == search_node.kind
-        || peg::SearchNodeKind::Group == search_node.kind) {
-      for (const auto &child : search_node.children) {
+    } else {
+      for (const auto &child : search_node.children()) {
         if (OB_FAIL(ret)) {
           break;
         }
-        const peg::SearchNode *operand = &child;
         FtsComputeFlag flag = NO_OPERATOR;
-        if (peg::SearchNodeKind::Group == child.kind
-            || peg::SearchNodeKind::Group == search_node.kind) {
-          flag = OR;
-        } else if (peg::SearchNodeKind::List == child.kind) {
-          OB_ASSERT(2 == child.children.size());
-          const auto &prefix = child.children[0];
-          if (peg::SearchNodeKind::Required == prefix.kind) {
-            flag = AND;
-          } else if (peg::SearchNodeKind::Excluded == prefix.kind) {
-            flag = NOT;
-          } else {
+        switch (child.occurrence()) {
+          case peg::SearchOccurrence::Required: flag = AND; break;
+          case peg::SearchOccurrence::Excluded: flag = NOT; break;
+          case peg::SearchOccurrence::Alternative: flag = OR; break;
+          case peg::SearchOccurrence::Optional: break;
+          default:
             ret = OB_ERR_UNEXPECTED;
-            LOG_WARN("unexpected search prefix", "kind", static_cast<uint8_t>(prefix.kind));
-          }
-          operand = &child.children[1];
+            LOG_WARN("unexpected search occurrence");
+            break;
         }
         ObFtsEvalNode *child_node = nullptr;
         if (OB_FAIL(ret)) {
         } else if (OB_FAIL(fts_boolean_node_create(
-            child_node, *operand, cs_type, allocator, tokens, tokens_map, has_duplicate_tokens))) {
+            child_node, child, cs_type, allocator, tokens, tokens_map, has_duplicate_tokens))) {
         } else if (OB_FAIL(node->child_flags_.push_back(flag))) {
         } else if (OB_FAIL(node->child_nodes_.push_back(child_node))) {
         }
@@ -171,9 +164,6 @@ int ObFtsEvalNode::fts_boolean_node_create(
           child_node->release();
         }
       }
-    } else {
-      ret = OB_ERR_UNEXPECTED;
-      LOG_WARN("unexpected search node kind", "kind", static_cast<uint8_t>(search_node.kind));
     }
   }
   if (OB_SUCC(ret)) {

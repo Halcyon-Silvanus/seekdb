@@ -152,47 +152,13 @@ pub(crate) fn parenthesized_expression(expression: &Node) -> &Node {
     &expression.children[0]
 }
 pub(crate) fn unary_operator(expression: &Node) -> UnaryOperator {
-    match expression.text.as_str() {
-        "+" => UnaryOperator::Plus,
-        "-" => UnaryOperator::Minus,
-        "!" | "not" => UnaryOperator::LogicalNot,
-        "~" => UnaryOperator::BitwiseNot,
-        _ => unreachable!(),
-    }
+    expression.unary_operator()
 }
 pub(crate) fn unary_operand(expression: &Node) -> &Node {
     &expression.children[0]
 }
 pub(crate) fn binary_operator(expression: &Node) -> BinaryOperator {
-    match expression.text.as_str() {
-        "+" => BinaryOperator::Add,
-        "-" => BinaryOperator::Subtract,
-        "*" => BinaryOperator::Multiply,
-        "/" => BinaryOperator::Divide,
-        "div" => BinaryOperator::IntegerDivide,
-        "%" | "mod" => BinaryOperator::Modulo,
-        "|" => BinaryOperator::BitOr,
-        "&" => BinaryOperator::BitAnd,
-        "^" => BinaryOperator::BitXor,
-        "<<" => BinaryOperator::ShiftLeft,
-        ">>" => BinaryOperator::ShiftRight,
-        "concat" => BinaryOperator::Concat,
-        "=" => BinaryOperator::Equal,
-        "<=>" => BinaryOperator::NullSafeEqual,
-        "!=" | "<>" => BinaryOperator::NotEqual,
-        "<" => BinaryOperator::Less,
-        "<=" => BinaryOperator::LessEqual,
-        ">" => BinaryOperator::Greater,
-        ">=" => BinaryOperator::GreaterEqual,
-        "and" => BinaryOperator::LogicalAnd,
-        "or" => BinaryOperator::LogicalOr,
-        "xor" => BinaryOperator::LogicalXor,
-        "like" => BinaryOperator::Like,
-        "not like" => BinaryOperator::NotLike,
-        "regexp" => BinaryOperator::Regexp,
-        "not regexp" => BinaryOperator::NotRegexp,
-        _ => unreachable!(),
-    }
+    expression.binary_operator()
 }
 pub(crate) fn binary_left(expression: &Node) -> &Node {
     &expression.children[0]

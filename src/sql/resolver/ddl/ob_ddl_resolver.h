@@ -174,7 +174,7 @@ public:
       const peg::Node &node,
       ObDefaultValueRes &resolve_res);
   int resolve_sign_in_default_value(
-      const peg::Node &expression, ObDefaultValueRes &resolve_res, const bool negative);
+      const peg::DefaultExpression &syntax, ObDefaultValueRes &resolve_res);
   static int check_and_fill_column_charset_info(
       share::schema::ObColumnSchemaV2 &column,
       const common::ObCharsetType table_charset_type,

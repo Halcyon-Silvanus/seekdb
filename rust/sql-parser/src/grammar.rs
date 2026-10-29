@@ -528,7 +528,7 @@ peg::parser! {
                             if escape.kind==Kind::String && escape.text.is_empty() { escape.text="\\".into(); }
                             children.push(escape);
                         }
-                        Node::new(Kind::Binary,children).text(if negated { "not like" } else { "like" }.into()).expression(start,end)
+                        Node::binary_operands(if negated { "not like" } else { "like" }.into(),children).expression(start,end)
                     },
                     Tail::Between(negated, low, high) => { let end=high.end; Node::new(Kind::Between, vec![value, low, high]).value(u64::from(negated)).expression(start, end) },
                     Tail::In(negated, right, end) => Node::new(Kind::In, vec![value, right]).value(u64::from(negated)).expression(start, end),
@@ -1143,9 +1143,11 @@ peg::parser! {
             "(" _ columns:(ident() ++ ("," _)) ")" _ kw("references") table:name()
             "(" _ parent:(ident() ++ ("," _)) ")" _ (kw("match") (kw("simple") / kw("full") / kw("partial")))?
             options:reference_option()* {?
-                Ok(Node::new(Kind::ForeignKey,vec![Node::new(Kind::ColumnList,columns.into_iter().map(Node::name).collect()),Node::relation(table)?,
-                    Node::new(Kind::ColumnList,parent.into_iter().map(Node::name).collect()),Node::list(Kind::ReferenceOptions,options),
-                    Node::optional(constraint),index.map(Node::name).unwrap_or_else(Node::missing),Node::missing()]))
+                Ok(ddl::ForeignKey {
+                    columns:columns.into_iter().map(Node::name).collect(), parent:Node::relation(table)?,
+                    parent_columns:parent.into_iter().map(Node::name).collect(), actions:options,
+                    constraint, index_name:index.map(Node::name),
+                }.into_node())
             }
         rule check_constraint() -> Node = name:constraint_name()?
             kw("check") "(" _ start:position!() value:expr(0) end:position!() ")" _
@@ -1217,12 +1219,15 @@ peg::parser! {
                 / (kw("key") / kw("index")) { 0 })
             name:ident()? method:(enabled(kind!=6) value:index_method() { value })? "(" _ columns:(index_column(kind==3) ++ ("," _)) ")" _ options:index_options(kind==3)
             partition:(enabled(kind<2) value:partition_option() { value })? {
-                Node::new(Kind::Index,vec![name.map(Node::name).unwrap_or_else(Node::missing),Node::new(Kind::IndexColumns,columns),options,Node::optional(method),Node::optional(partition),Node::missing()]).value(kind)
+                ddl::Index {
+                    kind, name:name.map(Node::name), table:None, columns, options, method, partition,
+                    if_not_exists:false, hints:vec![],
+                }.into_node()
             }
         rule index_options(fulltext: bool) -> Node = values:((index_option() / enabled(fulltext) value:fulltext_option() { value })*) {
             Node::list(Kind::TableOptions,values.into_iter().filter(|value| value.kind!=Kind::Missing).collect())
         }
-        rule partition_header(sub: bool) -> Node = kind:(kw("key") { Kind::KeyPartition } / kw("hash") { Kind::HashPartition }
+        rule partition_header(sub: bool) -> ddl::Partition = kind:(kw("key") { Kind::KeyPartition } / kw("hash") { Kind::HashPartition }
                 / kw("range") columns:kw("columns")? { if columns.is_some() { Kind::RangeColumnsPartition } else { Kind::RangePartition } }
                 / kw("list") columns:kw("columns")? { if columns.is_some() { Kind::ListColumnsPartition } else { Kind::ListPartition } })
             "(" _ start:position!() expressions:(enabled(kind==Kind::KeyPartition) names:(ident() ** ("," _)) { names.into_iter().map(Node::name).collect() }
@@ -1234,9 +1239,7 @@ peg::parser! {
                     Node::named_call(if kind==Kind::KeyPartition { Kind::PartitionKeyFunction } else { Kind::PartitionHashFunction },
                         Node::new(Kind::Ident,vec![]).text(if kind==Kind::KeyPartition { "partition_key" } else { "partition_hash" }.into()),expressions)
                 } else { Node::new(Kind::ExprList,expressions) };
-                let mut children=vec![expression,Node::missing(),Node::missing(),Node::missing(),Node::missing()];
-                if hash || !sub && matches!(kind,Kind::RangePartition|Kind::RangeColumnsPartition) { children.push(Node::missing()); }
-                Ok(Node::new(kind,children).at(start,end))
+                Ok(ddl::Partition { kind, expression, start, end, count:None, elements:None, subpartition:None, template:false })
             }
         rule partition_count() -> Node = kw("partitions") value:type_size() { value }
         rule partition_options() -> (Option<Node>,Option<Node>)
@@ -1246,22 +1249,13 @@ peg::parser! {
         rule partition_option() -> Node = kw("partition") kw("by") header:partition_header(false) options:partition_options()
             elements:partition_elements(header.kind,options.1.as_ref().map_or(Kind::Missing,|sub| sub.kind))? {?
                 if matches!(header.kind,Kind::ListPartition|Kind::ListColumnsPartition) && elements.is_none() { return Err("list partitions"); }
-                let mut partition=header;let hash=matches!(partition.kind,Kind::KeyPartition|Kind::HashPartition);
-                partition.children[if hash { 1 } else { 3 }]=Node::optional(options.0);
-                partition.children[if hash { 3 } else { 2 }]=Node::optional(options.1);
-                partition.children[if hash { 2 } else { 1 }]=Node::optional(elements);
-                Ok(Node::new(Kind::PartitionOption,vec![partition]))
+                let partition=ddl::Partition { count:options.0, subpartition:options.1, elements, ..header };
+                Ok(Node::new(Kind::PartitionOption,vec![partition.into_node()]))
             }
         rule subpartition_option() -> Node = kw("subpartition") kw("by") header:partition_header(true)
             template:(kw("subpartition") kw("template") elements:subpartition_elements(header.kind) { elements })?
             count:(enabled(template.is_none() && matches!(header.kind,Kind::KeyPartition|Kind::HashPartition)) kw("subpartitions") value:type_size() { value })? {
-                let mut partition=header;let hash=matches!(partition.kind,Kind::KeyPartition|Kind::HashPartition);
-                if let Some(elements)=template {
-                    partition.children[if hash { 2 } else { 1 }]=elements;
-                    partition.children[4]=Node::new(Kind::Ident,vec![]).text("template_mark".into());
-                }
-                if let Some(count)=count { partition.children[1]=count; }
-                partition
+                ddl::Partition { template:template.is_some(), elements:template, count, ..header }.into_node()
             }
         rule partition_elements(kind: Kind,subkind: Kind) -> Node = "(" _
             elements:((kw("partition") value:partition_element(kind,subkind) { value }) ++ ("," _)) ")" _ {
@@ -1285,7 +1279,7 @@ peg::parser! {
                 / enabled(matches!(kind,Kind::KeyPartition|Kind::HashPartition)) { (Kind::HashPartitionElement,Node::missing()) })
             engine:(kw("engine") "=" _ value:collation_name() {? if value.text.eq_ignore_ascii_case("innodb") { Ok(()) } else { Err("InnoDB engine") } })?
             elements:(enabled(subkind!=Kind::Missing) values:subpartition_elements(subkind) { values })? {?
-                Ok(Node::new(bound.0,vec![Node::relation(name)?,bound.1,Node::missing(),Node::optional(elements)]))
+                Ok(ddl::PartitionEntry { kind:bound.0, name:Node::relation(name)?, values:bound.1, subpartitions:elements }.into_node())
             }
         rule rename_table() -> Node = from:name() kw("to") to:name() {?
             Ok(Node::new(Kind::RenameTableAction,vec![Node::relation(from)?,Node::relation(to)?]))
@@ -1353,8 +1347,10 @@ peg::parser! {
             kw("view") name:name() columns:("(" _ names:(ident() ++ ("," _)) ")" _ { names })? kw("as")
             start:position!() query:select(0) end:position!()
             check:(kw("with") local:(kw("local") { true } / kw("cascaded") { false })? kw("check") kw("option") { if local==Some(true) { 1 } else { 2 } })? {?
-                Ok(Node::new(Kind::CreateView,vec![Node::relation(name)?,Node::list(Kind::ColumnList,columns.unwrap_or_default().into_iter().map(Node::name).collect()),Node::missing(),query.at(start,end),
-                    if view_mode.1 { Node::new(Kind::IfNotExists,vec![]) } else { Node::missing() },Node::new(Kind::HiddenInt,vec![]).value(check.unwrap_or(0)),Node::missing()]).value(u64::from(view_mode.0)))
+                Ok(ddl::View {
+                    relation:Node::relation(name)?, columns:columns.unwrap_or_default().into_iter().map(Node::name).collect(),
+                    query:query.at(start,end), replace:view_mode.1, alter:view_mode.0, check:check.unwrap_or(0),
+                }.into_node())
             }
         rule ddl() -> Node
             = view_definition()
@@ -1373,7 +1369,8 @@ peg::parser! {
             }
             / kw("create") hints()? temporary:temporary()? kw("table") absent:if_not_exists()? name:name()
                 source:(kw("like") name:name() { name } / "(" _ kw("like") name:name() ")" _ { name }) {?
-                Ok(Node::new(Kind::CreateTableLike,vec![Node::optional(temporary),Node::optional(absent),Node::relation(name)?,Node::relation(source)?]))
+                Ok(ddl::TableLike { relation:Node::relation(name)?, source:Node::relation(source)?,
+                    temporary:temporary.is_some(), if_not_exists:absent.is_some() }.into_node())
             }
             / kw("create") hints:hints()? temporary:temporary()? kw("table") absent:if_not_exists()? name:name()
                 elements:("(" _ elements:(table_element() ++ ("," _)) ")" _ { elements })?
@@ -1388,7 +1385,10 @@ peg::parser! {
             }
             / kw("create") hints:hints()? kind:index_kind()? kw("index") absent:if_not_exists()? name:name() method:index_method()? kw("on") table:name()
                 "(" _ columns:(index_column(kind==Some(3)) ++ ("," _)) ")" _ options:index_options(kind==Some(3)) partition:partition_option()? {?
-                Ok(Node::new(Kind::CreateIndex,vec![Node::relation(name)?.value(kind.unwrap_or(0)),Node::relation(table)?,Node::new(Kind::IndexColumns,columns),options,Node::optional(method),Node::optional(partition),Node::missing(),Node::optional(absent),Node::list(Kind::Hints,hints.unwrap_or_default())]))
+                Ok(ddl::Index {
+                    kind:kind.unwrap_or(0), name:Some(Node::relation(name)?), table:Some(Node::relation(table)?),
+                    columns, options, method, partition, if_not_exists:absent.is_some(), hints:hints.unwrap_or_default(),
+                }.into_node())
             }
             / kw("drop") kw("index") name:ident() kw("on") table:name() {?
                 Ok(Node::new(Kind::DropIndex,vec![Node::name(name),Node::relation(table)?]))
@@ -1846,7 +1846,7 @@ peg::parser! {
         rule diagnostics_item(condition: bool) -> Node = target:diagnostics_target() "=" _ name:(
             enabled(condition) name:(kw("returned_sqlstate") { "RETURNED_SQLSTATE" } / name:signal_item_name() { name.0 }) { name }
             / enabled(!condition) name:(kw("number") { "NUMBER" } / kw("row_count") { "ROW_COUNT" }) { name }
-        ) { Node::new(Kind::Binary,vec![target,Node::new(Kind::String,vec![]).text(name.into())]).text("=".into()) }
+        ) { Node::binary_operands("=".into(),vec![target,Node::new(Kind::String,vec![]).text(name.into())]) }
         rule diagnostics() -> Node = kw("get") current:(kw("current") { 1 } / kw("stacked") { 0 })? kw("diagnostics")
             condition:(kw("condition") value:(user_variable() / parameter() / string() / type_size() / name:ident() { Node::name(name) }) { value })?
             items:(diagnostics_item(condition.is_some()) ++ ("," _)) {
