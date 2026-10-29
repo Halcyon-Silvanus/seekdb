@@ -2157,7 +2157,7 @@ int ObPLResolver::resolve_case(const peg::Node *parse_tree, ObPLCaseStmt *stmt, 
     set_item_type(T_SP_CASE);
     ObPLStmtBlock *current_block = current_block_;
     if (OB_FAIL(make_block(func, current_block, current_block_))) {
-    } else if (NULL == expr_node) {
+    } else if (peg::NodeKind::Missing == expr_node->kind()) {
       //no case expression
     } else if (OB_FAIL(resolve_expr(expr_node, 
                                     func,

@@ -2240,9 +2240,9 @@ peg::parser! {
             }
             / pl_block(level+1) / pl_control(level+1)
             / kw("if") body:pl_if(level+1) kw("end") kw("if") { body }
-            / kw("case") value:pl_expression(level+1)
+            / kw("case") value:pl_expression(level+1)?
                 arms:((kw("when") condition:pl_expression(level+1) kw("then") body:pl_statements(level+1) { Node::new(Kind::PlWhen,vec![condition,body]) })+)
-                alternative:pl_else(level+1)? kw("end") kw("case") { Node::new(Kind::PlCase,vec![value,Node::new(Kind::WhenList,arms),Node::optional(alternative)]) }
+                alternative:pl_else(level+1)? kw("end") kw("case") { Node::new(Kind::PlCase,vec![Node::optional(value),Node::new(Kind::WhenList,arms),Node::optional(alternative)]) }
             / kw("return") value:pl_expression(level+1) { Node::new(Kind::PlReturn,vec![value]) }
             / kind:(kw("leave") { Kind::PlLeave } / kw("iterate") { Kind::PlIterate }) label:pl_ident() { Node::new(kind,vec![Node::name(label),Node::missing()]) }
             / kw("open") name:pl_ident() { Node::new(Kind::PlOpen,vec![Node::name(name),Node::missing(),Node::missing()]) }
