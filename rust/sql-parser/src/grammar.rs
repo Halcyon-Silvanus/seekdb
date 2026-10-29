@@ -1689,6 +1689,8 @@ peg::parser! {
             / expr_or_default()
         rule charset_name() -> Node = kw("default") { Node::new(Kind::Default,vec![]) } / string() / name:ident() { Node { kind:Kind::CharsetName,..Node::name(name) } }
         rule collation_name() -> Node = string() / name:ident() { Node::name(name) }
+        rule assignment_name(scoped: bool) -> Name
+            = (enabled(scoped) / !kw("password")) name:ident() { name }
         rule variable_assignment() -> Node
             = kw("names") charset:charset_name() collation:(kw("collate") value:collation_name() { value })? {
                 Node::new(Kind::SetNames,vec![charset,Node::optional(collation)])
@@ -1697,7 +1699,7 @@ peg::parser! {
             / variable:user_variable() (":=" / "=" / kw("to")) _ value:expr(0) {
                 Node::new(Kind::VariableValue,vec![variable,value]).value(2)
             }
-            / scope:scope()? variable:(system_variable() / name:ident() { Node::name(name) })
+            / scope:scope()? variable:(system_variable() / name:assignment_name(scope.is_some()) { Node::name(name) })
                 (":=" / "=" / kw("to")) _ value:setting_value() {
                 let assignment_scope=scope.unwrap_or(if variable.kind==Kind::SystemVariable && variable.value!=0 { variable.value } else { 2 });
                 let value=Node::setting_value(&variable,value);
@@ -2127,7 +2129,7 @@ peg::parser! {
         rule pl_setting(level: usize) -> Node = kw("set") assignments:((
             variable:(user_variable() / system_variable()
                 / start:position!() first:ident() "." _ second:ident() end:position!() {? Node::column(vec![first,second],false,start,end) }
-                / name:ident() { Node::name(name) }) (":=" / "=") _ value:pl_expression(level) {
+                / name:assignment_name(false) { Node::name(name) }) (":=" / "=") _ value:pl_expression(level) {
                 Node::new(Kind::VariableValue,vec![variable,value]).value(2)
             }
         ) ++ ("," _)) { Node::new(Kind::VariableSet,assignments) }
