@@ -3103,7 +3103,8 @@ int ObRawExprResolverImpl::process_window_function_node(const peg::Node &node, O
     type = callable_expression_type(function.kind());
     const bool was_window_aggregate = ctx_.is_win_agg_;
     OZ(ctx_.parents_expr_info_.add_member(IS_WINDOW_FUNC));
-    if (IS_AGGR_FUN(type)) {
+    if (IS_AGGR_FUN(type) || type == T_FUN_VARIANCE || type == T_FUN_STDDEV
+        || type == T_FUN_STDDEV_POP || type == T_FUN_STDDEV_SAMP) {
       ctx_.is_win_agg_ = true;
       OZ(SMART_CALL(recursive_resolve(function, aggregate)));
     } else {
