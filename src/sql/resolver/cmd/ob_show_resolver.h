@@ -32,6 +32,36 @@ public:
 private:
   class ObSqlStrGenerator;
   struct ObShowSqlSet;
+  struct CheckTableInfo
+  {
+    CheckTableInfo() : db_name_(), table_name_(), db_exist_(false),
+                        table_exist_(false), is_view_(false),
+                        valid_(true) {}
+    int hash(uint64_t &res) const { res = db_name_.hash(table_name_.hash()); return OB_SUCCESS; }
+    bool operator==(const CheckTableInfo &other) const
+    {
+      return db_name_ == other.db_name_ && table_name_ == other.table_name_;
+    }
+    ObString db_name_;
+    ObString table_name_;
+    bool db_exist_;
+    bool table_exist_;
+    bool is_view_;
+    bool valid_;
+    TO_STRING_KV(K_(db_name),
+                K_(table_name),
+                K_(table_exist),
+                K_(db_exist),
+                K_(is_view),
+                K_(valid));
+  };
+  typedef common::hash::ObHashSet<ObShowResolver::CheckTableInfo, common::hash::NoPthreadDefendMode> TableInfoSet;
+  int resolve_show_check_table(const peg::Node &statement, ObShowResolverContext &context,
+                               ObString &select_sql);
+  int resolve_check_table_info(const peg::Node &table, ObIAllocator &allocator,
+                              ObIArray<CheckTableInfo> &infos, TableInfoSet &tables);
+  int append_check_table_row(ObSqlString &sql, const ObString &table,
+                             const char *message_type, const ObString &message);
   int get_database_info(const peg::Node *database, const ObString &session_database,
                        ObShowResolverContext &context, uint64_t &id);
   int resolve_show_from_table(const peg::Node &object, const peg::Node *database,

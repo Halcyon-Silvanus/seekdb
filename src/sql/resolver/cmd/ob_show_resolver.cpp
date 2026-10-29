@@ -62,6 +62,26 @@ ObShowResolver::~ObShowResolver()
     }                                                                   \
   } while(0)
 
+int ObShowResolver::append_check_table_row(ObSqlString &sql, const ObString &table,
+                                             const char *message_type, const ObString &message)
+{
+  int ret = OB_SUCCESS;
+  const bool no_backslash = (session_info_->get_sql_mode() & SMO_NO_BACKSLASH_ESCAPES) != 0;
+  ObCStringHelper helper;
+  const char *escaped_table = nullptr;
+  const char *escaped_message = nullptr;
+  const char *escaped_type = nullptr;
+  OZ(helper.convert(ObHexEscapeSqlStr(table, false, no_backslash), escaped_table));
+  OZ(helper.convert(ObHexEscapeSqlStr(message, false, no_backslash), escaped_message));
+  OZ(helper.convert(ObHexEscapeSqlStr(ObString::make_string(message_type), false, no_backslash), escaped_type));
+  if (OB_SUCC(ret) && !sql.empty()) {
+    OZ(sql.append(" UNION ALL "));
+  }
+  OZ(sql.append_fmt("(SELECT '%s' AS `Table`, 'check' AS Op, '%s' AS Msg_type, '%s' AS Msg_text FROM dual)",
+      escaped_table, escaped_type, escaped_message));
+  return ret;
+}
+
 int ObShowResolver::check_db_access_for_show_sql(const ObShowResolverContext &show_resv_ctx,
                                                  ObSessionPrivInfo &session_priv,
                                                  const common::ObIArray<uint64_t> &enable_role_id_array)
@@ -140,6 +160,51 @@ int ObShowResolver::resolve(const peg::Node &statement)
       GEN_SQL_STEP_2(ObShowSqlSet::SHOW_TABLE_STATUS, NEW_TABLE_STATUS_SQL, database_id);
       break;
     }
+    case peg::NodeKind::ShowProcedureStatus:
+    case peg::NodeKind::ShowFunctionStatus: {
+      const bool procedure = statement.kind() == peg::NodeKind::ShowProcedureStatus;
+      show_resv_ctx.stmt_type_ = procedure ? stmt::T_SHOW_PROCEDURE_STATUS : stmt::T_SHOW_FUNCTION_STATUS;
+      uint64_t database_id = OB_INVALID_ID;
+      OZ(get_database_info(peg::show_has_database(statement) ? &peg::show_database(statement) : nullptr,
+          database_name, show_resv_ctx, database_id));
+      OZ(check_db_access_for_show_sql(show_resv_ctx, session_priv, roles));
+      const int64_t routine_type = procedure ? ROUTINE_PROCEDURE_TYPE : ROUTINE_FUNCTION_TYPE;
+      GEN_SQL_STEP_1(ObShowSqlSet::SHOW_PROCEDURE_STATUS);
+      GEN_SQL_STEP_2(ObShowSqlSet::SHOW_PROCEDURE_STATUS,
+          OB_SYS_DATABASE_NAME, OB_ALL_ROUTINE_TNAME, OB_SYS_DATABASE_NAME, OB_ALL_DATABASE_TNAME,
+          OB_MYSQL_SCHEMA_NAME, OB_PROC_TNAME, database_id, routine_type);
+      break;
+    }
+    case peg::NodeKind::ShowTriggers: {
+      show_resv_ctx.stmt_type_ = stmt::T_SHOW_TRIGGERS;
+      uint64_t database_id = OB_INVALID_ID;
+      OZ(get_database_info(peg::show_has_database(statement) ? &peg::show_database(statement) : nullptr,
+          database_name, show_resv_ctx, database_id));
+      if (peg::show_filter(statement) == peg::ShowFilter::Like) {
+        GEN_SQL_STEP_1(ObShowSqlSet::SHOW_TRIGGERS_LIKE);
+        GEN_SQL_STEP_2(ObShowSqlSet::SHOW_TRIGGERS_LIKE, OB_INFORMATION_SCHEMA_NAME,
+            OB_TRIGGERS_TNAME, OB_SYS_DATABASE_NAME, OB_ALL_DATABASE_TNAME, database_id);
+      } else {
+        GEN_SQL_STEP_1(ObShowSqlSet::SHOW_TRIGGERS);
+        GEN_SQL_STEP_2(ObShowSqlSet::SHOW_TRIGGERS, OB_INFORMATION_SCHEMA_NAME,
+            OB_TRIGGERS_TNAME, OB_SYS_DATABASE_NAME, OB_ALL_DATABASE_TNAME, database_id);
+      }
+      break;
+    }
+    case peg::NodeKind::ShowProfile: {
+      show_resv_ctx.stmt_type_ = stmt::T_SHOW_PROFILE;
+      ObWarningBuffer *warnings = common::ob_get_tsi_warning_buffer();
+      CK(OB_NOT_NULL(warnings));
+      GEN_SQL_STEP_1(ObShowSqlSet::SHOW_PROFILE);
+      GEN_SQL_STEP_2(ObShowSqlSet::SHOW_PROFILE, OB_INFORMATION_SCHEMA_NAME, OB_PROFILING_TNAME);
+      OX(warnings->append_warning(
+          "SHOW PROFILES Statement just mocks the syntax of MySQL without supporting specific realization",
+          OB_NOT_SUPPORTED));
+      break;
+    }
+    case peg::NodeKind::CheckTable:
+      OZ(resolve_show_check_table(statement, show_resv_ctx, select_sql));
+      break;
     case peg::NodeKind::ShowDatabases: {
       show_resv_ctx.stmt_type_ = stmt::T_SHOW_DATABASES;
       if (peg::show_filter(statement) == peg::ShowFilter::Like) {
@@ -380,6 +445,149 @@ int ObShowResolver::resolve(const peg::Node &statement)
   }
   return ret;
 }
+
+int ObShowResolver::resolve_show_check_table(const peg::Node &statement,
+                                             ObShowResolverContext &show_resv_ctx,
+                                             ObString &select_sql)
+{
+  int ret = OB_SUCCESS;
+  show_resv_ctx.stmt_type_ = stmt::T_SHOW_CHECK_TABLE;
+  static const int64_t MAX_CHECK_TABLE_CNT = 10000;
+  ObArenaAllocator alloc("ShowCKTable", OB_MALLOC_NORMAL_BLOCK_SIZE);
+  ObSEArray<CheckTableInfo, 1> infos;
+  TableInfoSet tables_set;
+  ObSchemaGetterGuard *schema_guard = NULL;
+  share::schema::ObSessionPrivInfo session_priv;
+  if (OB_FAIL(tables_set.create(MAX_CHECK_TABLE_CNT / 2))) {
+  }
+  for (const auto &table : peg::check_tables(statement)) {
+    if (OB_FAIL(ret)) { break; }
+    OZ(resolve_check_table_info(table, alloc, infos, tables_set));
+  }
+  if (OB_FAIL(ret)) {
+  } else if (infos.empty()) {
+    ret = OB_ERR_UNEXPECTED;
+  } else if (infos.count() >= MAX_CHECK_TABLE_CNT) {
+    ret = OB_NOT_SUPPORTED;
+    LOG_USER_ERROR(OB_NOT_SUPPORTED, "check table count exceed 10000 is");
+  } else if (OB_ISNULL(session_info_) ||
+    OB_ISNULL(params_.schema_checker_) ||
+    OB_ISNULL(schema_guard = params_.schema_checker_->get_schema_guard())) {
+    ret = OB_ERR_UNEXPECTED;
+  } else if (OB_FAIL(session_info_->get_session_priv_info(session_priv))) {
+  }
+  if (OB_SUCC(ret)) {
+    ObSqlString check_table_str;
+    bool allow_show = true;
+    for (int64_t i = 0; OB_SUCC(ret) && i < infos.count(); ++i) {
+      const common::ObIArray<uint64_t> &enable_role_id_array = session_info_->get_enable_role_array();
+      if (OB_FAIL(schema_guard->check_db_show(
+        session_priv, enable_role_id_array, infos.at(i).db_name_, allow_show))) {
+      } else if (allow_show && OB_FAIL(schema_guard->check_table_show(
+              session_priv, enable_role_id_array, infos.at(i).db_name_, infos.at(i).table_name_, allow_show))) {
+      }
+      if (OB_FAIL(ret)) {
+      } else if (!allow_show) {
+      ret = OB_ERR_NO_TABLE_PRIVILEGE;
+      LOG_USER_ERROR(OB_ERR_NO_TABLE_PRIVILEGE, (int)strlen("SELECT"), "SELECT",
+                session_priv.user_name_.length(), session_priv.user_name_.ptr(),
+                session_priv.host_name_.length(),session_priv.host_name_.ptr(),
+                infos.at(i).table_name_.length(),
+                infos.at(i).table_name_.ptr());
+      } else {
+        const CheckTableInfo &info = infos.at(i);
+        ObSqlString table_name;
+        ObSqlString message;
+        const char *final_message = nullptr;
+        const char *final_type = "error";
+        OZ(table_name.append_fmt("%.*s.%.*s", info.db_name_.length(), info.db_name_.ptr(),
+            info.table_name_.length(), info.table_name_.ptr()));
+        if (!info.db_exist_) {
+          OZ(message.append_fmt("Unknown database '%.*s'", info.db_name_.length(), info.db_name_.ptr()));
+          final_message = "Corrupt";
+        } else if (!info.table_exist_) {
+          OZ(message.append_fmt("Table '%.*s' doesn't exist", table_name.string().length(), table_name.ptr()));
+          final_type = "status";
+          final_message = "Operation failed";
+        } else if (info.is_view_ && !info.valid_) {
+          OZ(message.append_fmt("View '%.*s' references invalid table(s) or column(s) or function(s) or definer/invoker of view lack rights to use them",
+              table_name.string().length(), table_name.ptr()));
+          final_message = "Corrupt";
+        } else {
+          OZ(message.assign("OK"));
+        }
+        OZ(append_check_table_row(check_table_str, table_name.string(),
+            final_message == nullptr ? "status" : "Error", message.string()));
+        if (final_message != nullptr) {
+          OZ(append_check_table_row(check_table_str, table_name.string(), final_type,
+              ObString::make_string(final_message)));
+        }
+      }
+    }
+    OZ (check_table_str.append(";"));
+    OZ (ob_write_string(*allocator_, check_table_str.string(), select_sql));
+  }
+  return ret;
+}
+
+int ObShowResolver::resolve_check_table_info(const peg::Node &table_node,
+                                       ObIAllocator &alloc,
+                                       ObIArray<CheckTableInfo> &table_infos,
+                                       TableInfoSet &tables_set)
+{
+  int ret = OB_SUCCESS;
+  ObString table_name;
+  ObString database_name;
+
+  uint64_t database_id = OB_INVALID_ID;
+  CheckTableInfo curr_info;
+  if (OB_ISNULL(schema_checker_)) {
+    ret = OB_INVALID_ARGUMENT;
+  } else if (OB_FAIL(resolve_table_relation_node(&table_node, table_name, database_name))) {
+  } else if (OB_FAIL(ob_write_string(alloc, database_name, curr_info.db_name_, true))) {
+  } else if (OB_FAIL(ob_write_string(alloc, table_name, curr_info.table_name_, true))) {
+  } else {
+    const ObTableSchema *table_schema = nullptr;
+    if (OB_FAIL(schema_checker_->get_database_id(database_name, database_id))) {
+      if (OB_ERR_BAD_DATABASE != ret) {
+      } else {
+        ret = OB_SUCCESS;
+        curr_info.db_exist_ = false;
+      }
+    } else {
+      curr_info.db_exist_ = true;
+    }
+    if (OB_SUCC(ret)
+        && curr_info.db_exist_
+        && OB_FAIL(schema_checker_->get_table_schema( database_name,
+                                                     table_name, false, table_schema))) {
+      if (OB_TABLE_NOT_EXIST != ret) {
+      } else {
+        curr_info.table_exist_ = false;
+        ret = OB_SUCCESS;
+      }
+    } else if (nullptr == table_schema) {
+      curr_info.table_exist_ = false;
+    } else {
+      curr_info.table_exist_ = true;
+      curr_info.is_view_ = table_schema->is_view_table();
+      curr_info.valid_ = ObObjectStatus::VALID == table_schema->get_object_status();
+    }
+    if (OB_SUCC(ret)) {
+      if (OB_FAIL(tables_set.set_refactored(curr_info, 0))) {
+        if (OB_HASH_EXIST != ret) {
+        } else {
+          ret = OB_ERR_NONUNIQ_TABLE;
+          LOG_USER_ERROR(OB_ERR_NONUNIQ_TABLE, curr_info.table_name_.length(), curr_info.table_name_.ptr());
+        }
+      } else {
+        OZ (table_infos.push_back(curr_info));
+      }
+    }
+  }
+  return ret;
+}
+
 
 int ObShowResolver::get_database_info(const peg::Node *database, const ObString &session_database,
                                      ObShowResolverContext &context, uint64_t &id)

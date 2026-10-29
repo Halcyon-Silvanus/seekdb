@@ -458,6 +458,11 @@ pub(crate) mod ffi {
         ShowCollation,
         ShowTables,
         ShowTableStatus,
+        ShowProcedureStatus,
+        ShowFunctionStatus,
+        ShowTriggers,
+        ShowProfile,
+        CheckTable,
         ShowColumns,
         ShowVariables,
         ShowStatus,
@@ -1797,6 +1802,7 @@ pub(crate) mod ffi {
         fn show_has_database(statement: &Node) -> bool;
         fn show_database(statement: &Node) -> &Node;
         fn show_object(statement: &Node) -> &Node;
+        fn check_tables(statement: &Node) -> &[Node];
         fn show_filter(statement: &Node) -> ShowFilter;
         fn show_filter_expression(statement: &Node) -> &Node;
         fn show_like_pattern(statement: &Node) -> &Node;
@@ -2434,7 +2440,7 @@ use crate::command::{
     show_account_has_host, show_account_host, show_account_name, show_database, show_extended,
     show_filter, show_filter_expression, show_full, show_global, show_has_account,
     show_has_database, show_has_limit, show_if_not_exists, show_like_escape, show_like_pattern,
-    show_limit_count, show_limit_offset, show_object,
+    show_limit_count, show_limit_offset, show_object, check_tables,
 };
 
 use crate::routine::{

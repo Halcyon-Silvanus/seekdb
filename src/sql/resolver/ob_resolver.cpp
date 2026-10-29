@@ -307,6 +307,26 @@ int ObResolver::resolve(const peg::Node &statement, ObStmt *&stmt)
         params_.resolver_scope_stmt_type_ = T_SHOW_TABLE_STATUS;
         ret = stmt_resolver_func<ObShowResolver>(params_, statement, stmt);
         break;
+      case peg::NodeKind::ShowProcedureStatus:
+        params_.resolver_scope_stmt_type_ = T_SHOW_PROCEDURE_STATUS;
+        ret = stmt_resolver_func<ObShowResolver>(params_, statement, stmt);
+        break;
+      case peg::NodeKind::ShowFunctionStatus:
+        params_.resolver_scope_stmt_type_ = T_SHOW_FUNCTION_STATUS;
+        ret = stmt_resolver_func<ObShowResolver>(params_, statement, stmt);
+        break;
+      case peg::NodeKind::ShowTriggers:
+        params_.resolver_scope_stmt_type_ = T_SHOW_TRIGGERS;
+        ret = stmt_resolver_func<ObShowResolver>(params_, statement, stmt);
+        break;
+      case peg::NodeKind::ShowProfile:
+        params_.resolver_scope_stmt_type_ = T_SHOW_PROFILE;
+        ret = stmt_resolver_func<ObShowResolver>(params_, statement, stmt);
+        break;
+      case peg::NodeKind::CheckTable:
+        params_.resolver_scope_stmt_type_ = T_SHOW_CHECK_TABLE;
+        ret = stmt_resolver_func<ObShowResolver>(params_, statement, stmt);
+        break;
       case peg::NodeKind::ShowDatabases:
         params_.resolver_scope_stmt_type_ = T_SHOW_DATABASES;
         ret = stmt_resolver_func<ObShowResolver>(params_, statement, stmt);

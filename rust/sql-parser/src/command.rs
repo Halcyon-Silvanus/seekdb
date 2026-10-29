@@ -165,7 +165,8 @@ pub(crate) fn show_if_not_exists(statement: &Node) -> bool {
 }
 fn show_database_clause(statement: &Node) -> Option<&Node> {
     let database = match statement.kind {
-        Kind::ShowTables | Kind::ShowTableStatus => &statement.children[0],
+        Kind::ShowTables | Kind::ShowTableStatus | Kind::ShowProcedureStatus
+        | Kind::ShowFunctionStatus | Kind::ShowTriggers => &statement.children[0],
         Kind::ShowColumns => &statement.children[2],
         Kind::ShowIndexes => &statement.children[1],
         Kind::ShowCreateDatabase => return Some(&statement.children[1]),
@@ -186,9 +187,13 @@ pub(crate) fn show_database(statement: &Node) -> &Node {
 pub(crate) fn show_object(statement: &Node) -> &Node {
     &statement.children[usize::from(statement.kind == Kind::ShowColumns)]
 }
+pub(crate) fn check_tables(statement: &Node) -> &[Node] {
+    &statement.children
+}
 fn show_condition(statement: &Node) -> Option<&Node> {
     let condition = match statement.kind {
-        Kind::ShowTables | Kind::ShowTableStatus | Kind::ShowVariables | Kind::ShowStatus => {
+        Kind::ShowTables | Kind::ShowTableStatus | Kind::ShowVariables | Kind::ShowStatus
+        | Kind::ShowProcedureStatus | Kind::ShowFunctionStatus | Kind::ShowTriggers => {
             &statement.children[1]
         }
         Kind::ShowColumns => &statement.children[3],

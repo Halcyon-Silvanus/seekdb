@@ -102,6 +102,11 @@ std::optional<NativeStatementTraits> native_statement_traits(Kind kind)
     case Kind::SetTransaction: return NativeStatementTraits{stmt::T_VARIABLE_SET, true, false};
     case Kind::ShowTables: return NativeStatementTraits{stmt::T_SHOW_TABLES, true, false};
     case Kind::ShowTableStatus: return NativeStatementTraits{stmt::T_SHOW_TABLE_STATUS, true, false};
+    case Kind::ShowProcedureStatus: return NativeStatementTraits{stmt::T_SHOW_PROCEDURE_STATUS, true, false};
+    case Kind::ShowFunctionStatus: return NativeStatementTraits{stmt::T_SHOW_FUNCTION_STATUS, true, false};
+    case Kind::ShowTriggers: return NativeStatementTraits{stmt::T_SHOW_TRIGGERS, true, false};
+    case Kind::ShowProfile: return NativeStatementTraits{stmt::T_SHOW_PROFILE, true, false};
+    case Kind::CheckTable: return NativeStatementTraits{stmt::T_SHOW_CHECK_TABLE, true, false};
     case Kind::ShowDatabases: return NativeStatementTraits{stmt::T_SHOW_DATABASES, true, false};
     case Kind::ShowVariables: return NativeStatementTraits{stmt::T_SHOW_VARIABLES, true, false};
     case Kind::ShowStatus: return NativeStatementTraits{stmt::T_SHOW_STATUS, true, false};

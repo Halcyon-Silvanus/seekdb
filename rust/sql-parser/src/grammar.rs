@@ -1585,9 +1585,13 @@ peg::parser! {
             / full:kw("full")? kw("tables") database:show_database()? condition:show_condition()? {
                 Node::new(Kind::ShowTables,vec![Node::optional(database),Node::optional(condition),Node::new(Kind::Int,vec![]).value(u64::from(full.is_some()))])
             }
-            / kw("table") kw("status") database:show_database()? condition:show_condition()? {
-                Node::new(Kind::ShowTableStatus,vec![Node::optional(database),Node::optional(condition)])
+            / kind:(kw("table") kw("status") { Kind::ShowTableStatus }
+                / kw("procedure") kw("status") { Kind::ShowProcedureStatus }
+                / kw("function") kw("status") { Kind::ShowFunctionStatus }
+                / kw("triggers") { Kind::ShowTriggers }) database:show_database()? condition:show_condition()? {
+                Node::new(kind,vec![Node::optional(database),Node::optional(condition)])
             }
+            / (kw("profile") / kw("profiles")) { Node::new(Kind::ShowProfile,vec![]) }
             / full:kw("full")? (kw("columns") / kw("fields")) (kw("from") / kw("in")) table:name() database:show_database()? condition:show_condition()? {?
                 Ok(Node::new(Kind::ShowColumns,vec![Node::new(Kind::Int,vec![]).value(u64::from(full.is_some())),Node::relation(table)?,Node::optional(database),Node::optional(condition)]))
             }
@@ -1602,8 +1606,13 @@ peg::parser! {
                 / kw("trigger") { Kind::ShowCreateTrigger }) name:name() {? Ok(Node::new(kind,vec![Node::relation(name)?])) }
             / kw("create") (kw("database") / kw("schema")) absent:if_not_exists()? name:ident() { Node::new(Kind::ShowCreateDatabase,vec![Node::optional(absent),Node::name(name)]) }
             / kind:(kw("warnings") { Kind::ShowWarnings } / kw("errors") { Kind::ShowErrors }) limit:show_limit()? { Node::new(kind,vec![Node::optional(limit)]) }
+        rule check_table_option() = kw("for") kw("upgrade") / kw("quick") / kw("fast")
+            / kw("medium") / kw("extended") / kw("changed")
         rule show() -> Node
             = kw("show") value:show_body() { value }
+            / kw("check") kw("table") tables:((name:name() {? Node::relation(name) }) ++ ("," _)) check_table_option()* {
+                Node::new(Kind::CheckTable,tables)
+            }
             / (kw("describe") / kw("desc") / kw("explain")) table:name() {? Ok(Node::new(Kind::ShowColumns,vec![Node::new(Kind::Int,vec![]),Node::relation(table)?,Node::missing(),Node::missing()])) }
         rule config_scope() -> u64 = kw("scope") "=" _ value:(kw("memory") { 0 } / kw("spfile") { 1 } / kw("both") { 2 }) { value }
         rule config_value() -> Node = string() / bool_null() / system_variable() / number()
