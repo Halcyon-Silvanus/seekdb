@@ -337,7 +337,8 @@ namespace {
 peg::SqlMode parser_mode(ObSQLMode mode)
 {
   return {bool(mode & SMO_ANSI_QUOTES), bool(mode & SMO_NO_BACKSLASH_ESCAPES),
-      bool(mode & SMO_PIPES_AS_CONCAT), bool(mode & SMO_HIGH_NOT_PRECEDENCE)};
+      bool(mode & SMO_PIPES_AS_CONCAT), bool(mode & SMO_HIGH_NOT_PRECEDENCE),
+      bool(mode & SMO_REAL_AS_FLOAT)};
 }
 }
 

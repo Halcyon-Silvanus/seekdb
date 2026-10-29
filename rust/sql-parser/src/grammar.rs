@@ -1057,9 +1057,10 @@ peg::parser! {
             / (kw("mediumint") / kw("int3") / kw("middleint")) { "mediumint" }
             / (kw("int") / kw("integer") / kw("int4")) { "int" } / (kw("bigint") / kw("int8")) { "bigint" }
             / kw("float") { "float" } / (kw("double") kw("precision")?) { "double" }
-            / (kw("decimal") / kw("numeric") / kw("number")) { "decimal" }
+            / kw("real") kw("precision")? { if mode.real_as_float { "float" } else { "double" } }
+            / (kw("decimal") / kw("dec") / kw("numeric") / kw("number") / kw("fixed")) { "decimal" }
             / kw("boolean") { "boolean" } / kw("bool") { "bool" }
-            / kw("varchar") { "varchar" } / (kw("char") / kw("character")) { "char" }
+            / (kw("varchar") / kw("varcharacter")) { "varchar" } / (kw("char") / kw("character")) { "char" }
             / kw("text") { "text" } / kw("blob") { "blob" }
             / kw("tinytext") { "tinytext" } / kw("tinyblob") { "tinyblob" }
             / kw("mediumtext") { "mediumtext" } / kw("mediumblob") { "mediumblob" } / kw("string") { "string" }
@@ -1070,10 +1071,10 @@ peg::parser! {
             / kw("bit") { "bit" }
         rule type_size() -> Node = start:position!() text:$(['0'..='9']+) !cont() end:position!() _ {? Node::number(text, start, end) }
         rule charset_keyword() = kw("charset") / (kw("character") / kw("char")) kw("set")
-        rule cast_type() -> Node = start:position!() name:(kw("signed") kw("integer")? { "signed" }
-                / kw("unsigned") kw("integer")? { "unsigned" } / kw("binary") { "binary" }
+        rule cast_type() -> Node = start:position!() name:(kw("signed") (kw("int") / kw("integer"))? { "signed" }
+                / kw("unsigned") (kw("int") / kw("integer"))? { "unsigned" } / kw("binary") { "binary" }
                 / (kw("char") / kw("character")) { "char" }
-                / (kw("decimal") / kw("numeric") / kw("number") / kw("fixed")) { "decimal" }
+                / (kw("decimal") / kw("dec") / kw("numeric") / kw("number") / kw("fixed")) { "decimal" }
                 / kw("double") { "double" } / kw("float") { "float" } / kw("json") { "json" }
                 / kw("datetime") { "datetime" } / kw("date") { "date" } / kw("time") { "time" } / kw("year") { "year" })
             parameters:("(" _ values:(type_size() ++ ("," _)) ")" _ { values })?

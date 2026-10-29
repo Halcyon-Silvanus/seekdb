@@ -25,6 +25,7 @@ pub(crate) mod ffi {
         no_backslash_escapes: bool,
         pipes_as_concat: bool,
         high_not_precedence: bool,
+        real_as_float: bool,
     }
 
     struct ScanOptions {

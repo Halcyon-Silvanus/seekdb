@@ -29,7 +29,8 @@ int scan(const ObString &stmt, const FPContext &context, ObIAllocator &allocator
 {
   peg::ScanOptions options{
       peg::SqlMode{bool(context.sql_mode_ & SMO_ANSI_QUOTES), bool(context.sql_mode_ & SMO_NO_BACKSLASH_ESCAPES),
-                   bool(context.sql_mode_ & SMO_PIPES_AS_CONCAT), bool(context.sql_mode_ & SMO_HIGH_NOT_PRECEDENCE)},
+                   bool(context.sql_mode_ & SMO_PIPES_AS_CONCAT), bool(context.sql_mode_ & SMO_HIGH_NOT_PRECEDENCE),
+                   bool(context.sql_mode_ & SMO_REAL_AS_FLOAT)},
       context.parameterize_, context.ignore_hint_, context.is_format_, context.enable_batched_multi_stmt_};
   int ret = OB_SUCCESS;
   if (OB_FAIL(THIS_WORKER.check_status())) return ret;

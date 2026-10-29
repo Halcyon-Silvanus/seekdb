@@ -1387,7 +1387,8 @@ int ObSQLUtils::construct_outline_sql(ObIAllocator &allocator,
         rust::Slice<const uint8_t>(reinterpret_cast<const uint8_t *>(filter_sql.ptr()), filter_sql.length()),
         rust::Slice<const uint8_t>(reinterpret_cast<const uint8_t *>(outline_content.ptr()), outline_content.length()),
         peg::SqlMode{bool(mode & SMO_ANSI_QUOTES), bool(mode & SMO_NO_BACKSLASH_ESCAPES),
-                     bool(mode & SMO_PIPES_AS_CONCAT), bool(mode & SMO_HIGH_NOT_PRECEDENCE)});
+                     bool(mode & SMO_PIPES_AS_CONCAT), bool(mode & SMO_HIGH_NOT_PRECEDENCE),
+                     bool(mode & SMO_REAL_AS_FLOAT)});
     if (rewritten.empty()) {
       ret = OB_ERR_PARSE_SQL;
     } else if (OB_FAIL(ob_write_string(allocator,
