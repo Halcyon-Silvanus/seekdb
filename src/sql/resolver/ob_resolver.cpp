@@ -40,6 +40,7 @@
 #include "sql/resolver/ddl/ob_use_database_resolver.h"
 #include "sql/resolver/ddl/ob_drop_database_resolver.h"
 #include "sql/resolver/ddl/ob_create_view_resolver.h"
+#include "sql/resolver/ddl/outline_resolver.h"
 #include "sql/resolver/ddl/ob_explain_resolver.h"
 #include "sql/resolver/ddl/ob_drop_routine_resolver.h"
 #include "sql/resolver/ddl/ob_trigger_resolver.h"
@@ -166,6 +167,14 @@ int ObResolver::resolve(const peg::Node &statement, ObStmt *&stmt)
       case peg::NodeKind::CreateView:
         params_.resolver_scope_stmt_type_ = T_CREATE_VIEW;
         ret = stmt_resolver_func<ObCreateViewResolver>(params_, statement, stmt);
+        break;
+      case peg::NodeKind::CreateOutline:
+      case peg::NodeKind::AlterOutline:
+      case peg::NodeKind::DropOutline:
+        params_.resolver_scope_stmt_type_ = statement.kind() == peg::NodeKind::CreateOutline
+            ? T_CREATE_OUTLINE : statement.kind() == peg::NodeKind::AlterOutline
+            ? T_ALTER_OUTLINE : T_DROP_OUTLINE;
+        ret = stmt_resolver_func<OutlineResolver>(params_, statement, stmt);
         break;
       case peg::NodeKind::VariableSet:
         params_.resolver_scope_stmt_type_ = T_VARIABLE_SET;

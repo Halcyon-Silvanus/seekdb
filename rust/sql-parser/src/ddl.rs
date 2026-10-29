@@ -68,6 +68,69 @@ use crate::{
     query::{child, list},
 };
 
+pub(crate) enum OutlineBody {
+    Statement { statement: Node, target: Option<Node> },
+    SqlId { value: Node, hint: Node },
+}
+
+pub(crate) struct Outline {
+    pub kind: Kind,
+    pub relation: Node,
+    pub body: Option<OutlineBody>,
+    pub format: bool,
+    pub replace: bool,
+}
+
+impl Outline {
+    pub fn into_node(self) -> Node {
+        let mut children = vec![self.relation];
+        match self.body {
+            Some(OutlineBody::Statement { statement, target }) => {
+                children.push(statement);
+                if let Some(target) = target {
+                    children.push(Node::new(Kind::OutlineTarget, vec![target]));
+                }
+            }
+            Some(OutlineBody::SqlId { value, hint }) => children.extend([value, hint]),
+            None => {}
+        }
+        Node::new(self.kind, children)
+            .value(u64::from(self.format) | (u64::from(self.replace) << 1))
+    }
+}
+
+pub(crate) fn outline_definition(node: &Node) -> crate::bridge::ffi::OutlineDefinition<'_> {
+    use crate::bridge::ffi::{OutlineDefinition, OutlineSource};
+    let source = if node.kind == Kind::DropOutline {
+        OutlineSource::None
+    } else if node.children[1].kind == Kind::String {
+        OutlineSource::SqlId
+    } else {
+        OutlineSource::Statement
+    };
+    OutlineDefinition {
+        relation: &node.children[0],
+        format: node.value & 1 != 0,
+        replace: node.value & 2 != 0,
+        source,
+        has_target: child(node, Kind::OutlineTarget).is_some(),
+        valid_hint: source == OutlineSource::SqlId && !node.children[2].children.is_empty(),
+    }
+}
+
+pub(crate) fn outline_statement(node: &Node) -> &Node {
+    &node.children[1]
+}
+pub(crate) fn outline_target(node: &Node) -> &Node {
+    &child(node, Kind::OutlineTarget).unwrap().children[0]
+}
+pub(crate) fn outline_sql_id(node: &Node) -> &str {
+    &node.children[1].text
+}
+pub(crate) fn outline_hint(node: &Node) -> &Node {
+    &node.children[2]
+}
+
 pub(crate) struct CreateTable {
     pub relation: Node,
     pub elements: Vec<Node>,

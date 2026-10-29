@@ -3229,10 +3229,12 @@ int ObSql::parser_and_check(const ObString &outlined_stmt,
                                        pc_ctx.sql_ctx_.plan_key_.constructed_sql_))) {
     }
   } else {
-    if ((add_plan_to_pc && !is_show_variables) || is_explain_parameterize
+    const bool is_outline = (stmt_type == stmt::T_CREATE_OUTLINE || stmt_type == stmt::T_ALTER_OUTLINE)
+        && peg::outline_definition(*parsed.statement()).source == peg::OutlineSource::Statement;
+    if ((add_plan_to_pc && !is_show_variables) || is_explain_parameterize || is_outline
         || (pc_ctx.sql_ctx_.multi_stmt_item_.is_batched_multi_stmt() && stmt_type == stmt::T_EXPLAIN)) {
       if (OB_FAIL(ObSqlParameterization::parameterize_syntax_tree(allocator,
-                                                                  false,
+                                                                  is_outline,
                                                                   pc_ctx,
                                                                   parsed,
                                                                   pctx->get_param_store_for_update()))) {
@@ -3244,7 +3246,7 @@ int ObSql::parser_and_check(const ObString &outlined_stmt,
             need_retry_param = false;
           }
         }
-        if (!need_retry_param) {
+        if (!need_retry_param || is_outline) {
           // do nothing
         } else {
           pctx->reset_datum_param_store();

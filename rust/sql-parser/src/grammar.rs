@@ -49,6 +49,7 @@ fn reserved(word: &str) -> bool {
         "all",
         "as",
         "from",
+        "to",
         "where",
         "group",
         "by",
@@ -780,6 +781,7 @@ peg::parser! {
             / kw("dbms_stats") { Node::new(Kind::DbmsStats,vec![]) }
             / kind:(kw("enable_parallel_dml") { Kind::EnableParallelDml } / kw("disable_parallel_dml") { Kind::DisableParallelDml }
                 / kw("gather_optimizer_statistics") { Kind::GatherStatistics } / kw("no_gather_optimizer_statistics") { Kind::NoGatherStatistics }
+                / kw("trace_log") { Kind::TraceLog }
                 / kw("no_parallel") { Kind::NoParallel }) { Node::new(kind,vec![]) }
             / kw("dml_parallel") "(" _ value:type_size() ")" _ { Node::new(Kind::DmlParallel,vec![value]) }
             / kw("query_timeout") "(" _ value:type_size() ")" _ { Node::new(Kind::QueryTimeout,vec![value]) }
@@ -1369,8 +1371,45 @@ peg::parser! {
                     query:query.at(start,end), replace:view_mode.1, alter:view_mode.0, check:check.unwrap_or(0),
                 }.into_node())
             }
+        rule outline_query_end(start: usize, end: usize) -> usize = #{|input: &str, pos| {
+            let mut tokens = crate::prefix::Tokens::new(input[start..end].as_bytes(), mode);
+            let mut last = 0;
+            loop {
+                match tokens.next() {
+                    Ok(Some(token)) => last = token.end,
+                    Ok(None) => break peg::RuleResult::Matched(pos, start + last),
+                    Err(()) => break peg::RuleResult::Failed,
+                }
+            }
+        }}
+        rule outline_query() -> Node = start:position!() query:(select(0) / insert() / update() / delete())
+            end:position!() end:outline_query_end(start,end) {
+            query.at(start,end)
+        }
+        rule outline_body() -> ddl::OutlineBody
+            = statement:outline_query() target:(kw("to") query:outline_query() { query })? {
+                ddl::OutlineBody::Statement { statement,target }
+            }
+        rule outline_definition() -> Node
+            = kw("create") hints()? replace:(kw("or") kw("replace"))? format:kw("format")?
+                kw("outline") name:ident() kw("on") body:(outline_body()
+                    / value:string() kw("using") kw("hint") start:position!() hints:hints() end:position!() {
+                        ddl::OutlineBody::SqlId { value,hint:Node::new(Kind::Hints,hints).at(start,end) }
+                    }) {?
+                Ok(ddl::Outline { kind:Kind::CreateOutline,relation:Node::relation(vec![name])?,
+                    body:Some(body),format:format.is_some(),replace:replace.is_some() }.into_node())
+            }
+            / kw("alter") format:kw("format")? kw("outline") name:ident() kw("add") body:outline_body() {?
+                Ok(ddl::Outline { kind:Kind::AlterOutline,relation:Node::relation(vec![name])?,
+                    body:Some(body),format:format.is_some(),replace:false }.into_node())
+            }
+            / kw("drop") format:kw("format")? kw("outline") name:name() {?
+                Ok(ddl::Outline { kind:Kind::DropOutline,relation:Node::relation(name)?,
+                    body:None,format:format.is_some(),replace:false }.into_node())
+            }
         rule ddl() -> Node
             = view_definition()
+            / outline_definition()
             / kw("fork") kw("table") source:name() kw("to") destination:name() {?
                 Ok(Node::new(Kind::ForkTable,vec![Node::relation(destination)?,Node::relation(source)?]))
             }

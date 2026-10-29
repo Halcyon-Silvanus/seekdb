@@ -49,6 +49,9 @@ std::optional<NativeStatementTraits> native_statement_traits(Kind kind)
     case Kind::ReleaseSavepoint: return NativeStatementTraits{stmt::T_RELEASE_SAVEPOINT, false, false};
     case Kind::RollbackSavepoint: return NativeStatementTraits{stmt::T_ROLLBACK_SAVEPOINT, false, false};
     case Kind::CreateView: return NativeStatementTraits{stmt::T_CREATE_VIEW, false, true};
+    case Kind::CreateOutline: return NativeStatementTraits{stmt::T_CREATE_OUTLINE, false, true};
+    case Kind::AlterOutline: return NativeStatementTraits{stmt::T_ALTER_OUTLINE, false, true};
+    case Kind::DropOutline: return NativeStatementTraits{stmt::T_DROP_OUTLINE, false, true};
     case Kind::VariableSet: return NativeStatementTraits{stmt::T_VARIABLE_SET, true, false};
     case Kind::SetNames:
     case Kind::SetCharset: return NativeStatementTraits{stmt::T_SET_NAMES, true, false};

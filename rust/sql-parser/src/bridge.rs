@@ -136,6 +136,7 @@ pub(crate) mod ffi {
         EnableParallelDml,
         DisableParallelDml,
         QueryTimeout,
+        TraceLog,
         TopK,
         DynamicSampling,
         TableDynamicSampling,
@@ -336,6 +337,10 @@ pub(crate) mod ffi {
         IfNotExists,
         CreateTable,
         CreateView,
+        CreateOutline,
+        AlterOutline,
+        DropOutline,
+        OutlineTarget,
         GroupConcat,
         Separator,
         GatherStatistics,
@@ -1297,6 +1302,16 @@ pub(crate) mod ffi {
         check: ViewCheck,
     }
 
+    enum OutlineSource { None, Statement, SqlId }
+    struct OutlineDefinition<'a> {
+        relation: &'a Node,
+        format: bool,
+        replace: bool,
+        source: OutlineSource,
+        has_target: bool,
+        valid_hint: bool,
+    }
+
     enum TransactionIsolation {
         Default,
         ReadUncommitted,
@@ -1874,6 +1889,11 @@ pub(crate) mod ffi {
         fn routine_invoker_rights(node: &Node) -> bool;
         fn routine_data_access(node: &Node) -> RoutineDataAccess;
         unsafe fn view_definition<'a>(node: &'a Node) -> ViewDefinition<'a>;
+        unsafe fn outline_definition<'a>(node: &'a Node) -> OutlineDefinition<'a>;
+        fn outline_statement(node: &Node) -> &Node;
+        fn outline_target(node: &Node) -> &Node;
+        fn outline_sql_id(node: &Node) -> &str;
+        fn outline_hint(node: &Node) -> &Node;
         fn equivalent_expressions(left: &Node, right: &Node) -> bool;
         fn block_declarations(node: &Node) -> &[Node];
         fn block_statements(node: &Node) -> &[Node];
@@ -2344,6 +2364,7 @@ use crate::routine::{
 };
 
 use crate::ddl::view_definition;
+use crate::ddl::{outline_definition, outline_hint, outline_sql_id, outline_statement, outline_target};
 use crate::expression::equivalent_expressions;
 
 use crate::routine::{routine_characteristics, routine_data_access, routine_invoker_rights};

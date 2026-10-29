@@ -23,6 +23,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::bridge::ffi::*;
 use crate::expression::*;
+use crate::ddl::{outline_definition, outline_statement, outline_target};
 use crate::inspect::syntax_literals;
 use crate::node::{Kind, Node};
 use crate::numeric::{negative_operand, negative_unsigned_kind, NegativeOperand, UnaryPath};
@@ -481,6 +482,15 @@ impl<'a> Collector<'a> {
             Kind::PlCall => self.list(routine_call_arguments(node), scope)?,
             Kind::PlNamedArgument => self.collect(named_argument_value(node), scope)?,
             Kind::Explain => self.collect(explain_statement(node), scope)?,
+            Kind::CreateOutline | Kind::AlterOutline => {
+                let outline = outline_definition(node);
+                if outline.source == OutlineSource::Statement {
+                    self.collect(outline_statement(node), scope)?;
+                    if outline.has_target {
+                        self.collect(outline_target(node), scope)?;
+                    }
+                }
+            }
             Kind::Ident
             | Kind::Column
             | Kind::Star
