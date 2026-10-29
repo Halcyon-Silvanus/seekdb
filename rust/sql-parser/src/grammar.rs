@@ -1159,14 +1159,17 @@ peg::parser! {
         rule skip_index_kind() -> Node
             = kw("min_max") { Node::new(Kind::SkipIndexMinMax,vec![]) }
             / kw("sum") { Node::new(Kind::SkipIndexSum,vec![]) }
+        rule primary_key_header()
+            = kw("constraint") ident()? kw("primary") kw("key")
+            / kw("primary") kw("key") ident()?
         rule table_element() -> Node
             = check_constraint()
             / foreign_key()
-            / kw("primary") kw("key") ident()? method:index_method()? "(" _ names:(ident() ++ ("," _)) ")" _
+            / primary_key_header() method:index_method()? "(" _ names:(ident() ++ ("," _)) ")" _
                 method_end:index_method()? comment:(kw("comment") value:string() { value })? {
                 Node::new(Kind::PrimaryKey, vec![Node::new(Kind::ColumnList, names.into_iter().map(Node::name).collect()), Node::optional(method_end.or(method)), Node::optional(comment)])
             }
-            / index_definition()
+            / index_definition(false)
             / column_definition()
         rule constraint_name() -> Node = kw("constraint") name:ident()? {
             Node::new(Kind::CheckConstraint,vec![name.map(Node::name).unwrap_or_else(Node::missing)])
@@ -1258,12 +1261,14 @@ peg::parser! {
             = kw("with") kw("parser") name:ident() { Node::new(Kind::ParserName,vec![Node::name(name)]) }
             / kw("parser_properties") ("=" _)? "(" _ values:(fulltext_property() ++ ("," _ / "")) ")" _ { Node::new(Kind::ParserProperties,values) }
         rule index_kind() -> u64 = kw("unique") { 1 } / kw("spatial") { 2 } / kw("fulltext") { 3 } / kw("vector") { 6 }
-        rule index_definition() -> Node = kind:(kind:index_kind() (enabled(kind!=6) (kw("key") / kw("index"))? / (kw("key") / kw("index"))) { kind }
-                / (kw("key") / kw("index")) { 0 })
+        rule index_definition(allow_constraint_partition: bool) -> Node
+            = constraint:(kw("constraint") name:ident()? { name })?
+            kind:(kind:index_kind() (enabled(kind!=6) (kw("key") / kw("index"))? / (kw("key") / kw("index"))) { kind }
+                / (kw("key") / kw("index")) { 0 }) enabled(constraint.is_none() || kind==1)
             name:ident()? method:(enabled(kind!=6) value:index_method() { value })? "(" _ columns:(index_column(kind==3) ++ ("," _)) ")" _ options:index_options(kind==3)
-            partition:(enabled(kind<2) value:partition_option() { value })? {
+            partition:(enabled(kind<2 && (constraint.is_none() || allow_constraint_partition)) value:partition_option() { value })? {
                 ddl::Index {
-                    kind, name:name.map(Node::name), table:None, columns, options, method, partition,
+                    kind, name:name.or(constraint.flatten()).map(Node::name), table:None, columns, options, method, partition,
                     if_not_exists:false, hints:vec![],
                 }.into_node()
             }
@@ -1336,11 +1341,14 @@ peg::parser! {
             / kw("rename") kw("column") from:column() kw("to") to:ident() { Node::new(Kind::ColumnRename,vec![from,Node::name(to)]) }
             / kw("alter") kw("column")? name:column() value:(kw("set") kw("default") value:expr(0) { Node::new(Kind::ColumnDefault,vec![value]) }
                 / kw("drop") kw("default") { Node::new(Kind::Nullable,vec![]) }) { Node::new(Kind::ColumnAlter,vec![name,value]) }
-        rule alter_index() -> Node
-            = kw("add") !kw("vector") value:index_definition() { Node { kind:Kind::IndexAdd,..value } }
-            / kw("add") kw("primary") kw("key") ident()? "(" _ names:(ident() ++ ("," _)) ")" _ options:index_options(false) {
+        rule alter_key_definition() -> Node
+            = !kw("vector") value:index_definition(true) { Node { kind:Kind::IndexAdd,..value } }
+            / primary_key_header() "(" _ names:(ident() ++ ("," _)) ")" _ options:index_options(false) {
                 Node::new(Kind::PrimaryKey,vec![Node::new(Kind::ColumnList,names.into_iter().map(Node::name).collect()),options])
             }
+        rule alter_index() -> Node
+            = kw("add") value:(alter_key_definition()
+                / "(" _ &kw("constraint") value:alter_key_definition() ")" _ { value }) { value }
             / kw("drop") (kw("index") / kw("key")) name:ident() { Node::new(Kind::IndexDrop,vec![Node::name(name)]) }
             / kw("drop") kw("primary") kw("key") { Node::new(Kind::PrimaryKeyDrop,vec![]) }
             / kw("rename") (kw("index") / kw("key")) from:ident() kw("to") to:ident() { Node::new(Kind::IndexRename,vec![Node::name(from),Node::name(to)]) }
