@@ -71,6 +71,13 @@ fn collect_columns(node: &Node, columns: &mut Vec<ColumnReference>) {
 pub(crate) fn embedded_sql_references(statement: &Node) -> Vec<bridge::ffi::SqlReference<'_>> {
     fn visit<'a>(node: &'a Node, references: &mut Vec<bridge::ffi::SqlReference<'a>>) {
         use bridge::ffi::{SqlReference, SqlReferenceKind as Role};
+        if node.kind == Kind::InsertColumns {
+            return;
+        }
+        if node.kind == Kind::Assignment {
+            visit(crate::query::assignment_value(node), references);
+            return;
+        }
         if matches!(node.kind, Kind::IntoVariables | Kind::TrailingIntoVariables) {
             references.push(SqlReference {
                 kind: Role::Into,
