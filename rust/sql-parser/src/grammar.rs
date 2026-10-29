@@ -1097,12 +1097,14 @@ peg::parser! {
             / geometry_type()
             / start:position!() name:type_name()
             parameters:("(" _ values:(type_size() ++ ("," _)) ")" _ { values })?
-            unsigned:kw("unsigned")? zerofill:kw("zerofill")? charset:(charset_keyword() value:collation_name() { Node { kind:Kind::Charset,..value } })? end:position!() {?
+            unsigned:kw("unsigned")? zerofill:kw("zerofill")? binary:kw("binary")?
+            charset:(charset_keyword() value:collation_name() { Node { kind:Kind::Charset,..value } })? end:position!() {?
                 let mut value=Node::data_type(name, parameters.unwrap_or_default(), unsigned.is_some(), zerofill.is_some(), start, end)?;
-                if let Some(charset)=charset {
+                if binary.is_some() || charset.is_some() {
                     if !matches!(name,"char"|"varchar"|"tinytext"|"text"|"mediumtext"|"longtext"|"string") { return Err("character type"); }
-                    value.children.push(charset);
                 }
+                if binary.is_some() { value.children.push(Node::new(Kind::BinaryAttribute,vec![]).value(1)); }
+                value.children.extend(charset);
                 Ok(value)
             }
         rule generated_column_attribute() -> Node
