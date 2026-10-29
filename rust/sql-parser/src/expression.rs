@@ -503,7 +503,11 @@ pub(crate) fn variable_assignment_value(expression: &Node) -> &Node {
     &expression.children[1]
 }
 pub(crate) fn named_argument_name(argument: &Node) -> &Node {
-    &argument.children[0]
+    let mut name = &argument.children[0];
+    while name.kind == Kind::Parenthesized {
+        name = parenthesized_expression(name);
+    }
+    name
 }
 pub(crate) fn named_argument_value(argument: &Node) -> &Node {
     &argument.children[1]

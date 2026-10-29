@@ -490,7 +490,7 @@ peg::parser! {
                     Some((None, end)) => Node::column(parts, true, start, end),
                     Some((Some((modifier, arguments, window)), end)) => Node::call(parts, modifier, arguments, window, start, end),
                 } }
-            / enabled(pl) depth(level) start:position!() text:$(keyword("force")) end:position!() _ {?
+            / enabled(pl) depth(level) start:position!() text:$(keyword("force") / keyword("cascade")) end:position!() _ {?
                 Node::column(vec![Name { text:text.to_owned(),quoted:false,start,end }],false,start,end)
             }
         rule lambda(level: usize) -> Node = parameters:(name:ident() { vec![name] }
