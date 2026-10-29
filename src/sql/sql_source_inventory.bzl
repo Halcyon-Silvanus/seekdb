@@ -1309,6 +1309,7 @@ SQL_UNITY_GROUPS = [
             "src/sql/resolver/ddl/ob_vec_index_builder_util.cpp",
             "src/sql/resolver/ddl/ob_index_builder_util.cpp",
             "src/sql/resolver/ddl/ob_alter_database_stmt.cpp",
+            "src/sql/resolver/ddl/alter_database_resolver.cpp",
             "src/sql/resolver/ddl/ob_alter_routine_resolver.cpp",
             "src/sql/resolver/ddl/ob_alter_table_resolver.cpp",
             "src/sql/resolver/ddl/ob_alter_table_stmt.cpp",

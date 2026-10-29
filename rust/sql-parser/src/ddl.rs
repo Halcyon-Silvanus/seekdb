@@ -660,6 +660,9 @@ pub(crate) fn database_name(node: &Node) -> &Node {
         0
     }]
 }
+pub(crate) fn database_has_name(node: &Node) -> bool {
+    database_name(node).kind != Kind::Missing
+}
 pub(crate) fn database_options(node: &Node) -> &[Node] {
     list(node, Kind::DatabaseOptions)
 }
@@ -786,6 +789,12 @@ pub(crate) fn alter_table_options(node: &Node) -> &[Node] {
 }
 pub(crate) fn alter_index_name(node: &Node) -> &Node {
     &node.children[0]
+}
+pub(crate) fn alter_index_visible(node: &Node) -> bool {
+    node.value == 0
+}
+pub(crate) fn alter_index_parallel(node: &Node) -> u64 {
+    node.children[1].value
 }
 pub(crate) fn alter_index_new_name(node: &Node) -> &Node {
     &node.children[1]

@@ -18,6 +18,7 @@
 #include "sql/resolver/ddl/ob_create_database_resolver.h"
 
 #include "sql/resolver/ddl/ob_create_database_stmt.h"
+#include "sql/resolver/ddl/database_options.h"
 
 namespace oceanbase
 {
@@ -101,47 +102,7 @@ int ObCreateDatabaseResolver::resolve(const peg::Node &parse_tree)
 int ObCreateDatabaseResolver::resolve_options(ObCreateDatabaseStmt &stmt,
                                                rust::Slice<const peg::Node> options)
 {
-  int ret = OB_SUCCESS;
-  bool collation_set = false;
-  for (const auto &option : options) {
-    if (OB_FAIL(ret)) { break; }
-    const auto option_text = option.text();
-    ObString name(option_text.size(), option_text.data());
-    ObCharsetType charset_type = CHARSET_INVALID;
-    ObCollationType collation_type = CS_TYPE_INVALID;
-    if (option.kind() == peg::NodeKind::Charset) {
-      charset_type = ObCharset::charset_type(name.trim());
-      collation_type = ObCharset::get_default_collation(charset_type);
-      if (charset_type == CHARSET_INVALID) {
-        ret = OB_ERR_UNKNOWN_CHARSET;
-        LOG_USER_ERROR(OB_ERR_UNKNOWN_CHARSET, name.length(), name.ptr());
-      } else if (collation_type == CS_TYPE_INVALID) {
-        ret = OB_ERR_UNEXPECTED;
-      } else if (collation_set && stmt.get_charset_type() != charset_type) {
-        ret = OB_ERR_CONFLICTING_DECLARATIONS;
-        LOG_USER_ERROR(OB_ERR_CONFLICTING_DECLARATIONS,
-                       ObCharset::charset_name(stmt.get_charset_type()),
-                       ObCharset::charset_name(charset_type));
-      }
-    } else if (option.kind() == peg::NodeKind::Collation) {
-      collation_type = ObCharset::collation_type(name.trim());
-      charset_type = ObCharset::charset_type_by_coll(collation_type);
-      if (collation_type == CS_TYPE_INVALID) {
-        ret = OB_ERR_UNKNOWN_COLLATION;
-        LOG_USER_ERROR(OB_ERR_UNKNOWN_COLLATION, name.length(), name.ptr());
-      } else if (charset_type == CHARSET_INVALID) {
-        ret = OB_ERR_UNEXPECTED;
-      } else if (collation_set && stmt.get_charset_type() != charset_type) {
-        ret = OB_ERR_COLLATION_MISMATCH;
-      }
-    }
-    if (OB_SUCC(ret)) {
-      stmt.set_charset_type(charset_type);
-      stmt.set_collation_type(collation_type);
-      collation_set = true;
-    }
-  }
-  return ret;
+  return resolve_database_options(stmt, options);
 }
 
 } //end namespace sql

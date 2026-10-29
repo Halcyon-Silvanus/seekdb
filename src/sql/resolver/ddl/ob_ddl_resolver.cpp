@@ -749,6 +749,12 @@ int ObDDLResolver::resolve_table_option(const peg::Node &option, const bool is_i
         }
         break;
       }
+      case peg::NodeKind::Parallel:
+        table_dop_ = peg::table_option_number(option);
+        if (stmt::T_ALTER_TABLE == stmt_->get_stmt_type()) {
+          OZ(alter_table_bitset_.add_member(ObAlterTableArg::TABLE_DOP));
+        }
+        break;
       case peg::NodeKind::Engine: {
         const auto &name = peg::table_option_engine_name(option);
         const auto text = name.text();

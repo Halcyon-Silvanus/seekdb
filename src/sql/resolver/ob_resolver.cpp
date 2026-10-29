@@ -33,6 +33,7 @@
 #include "sql/resolver/ddl/ob_fork_database_resolver.h"
 #include "sql/resolver/ddl/ob_create_table_like_resolver.h"
 #include "sql/resolver/ddl/ob_alter_table_resolver.h"
+#include "sql/resolver/ddl/alter_database_resolver.h"
 #include "sql/resolver/ddl/ob_drop_table_resolver.h"
 #include "sql/resolver/ddl/ob_create_index_resolver.h"
 #include "sql/resolver/ddl/ob_drop_index_resolver.h"
@@ -263,6 +264,10 @@ int ObResolver::resolve(const peg::Node &statement, ObStmt *&stmt)
       case peg::NodeKind::CreateDatabase:
         params_.resolver_scope_stmt_type_ = T_CREATE_DATABASE;
         ret = stmt_resolver_func<ObCreateDatabaseResolver>(params_, statement, stmt);
+        break;
+      case peg::NodeKind::AlterDatabase:
+        params_.resolver_scope_stmt_type_ = T_ALTER_DATABASE;
+        ret = stmt_resolver_func<AlterDatabaseResolver>(params_, statement, stmt);
         break;
       case peg::NodeKind::UseDatabase:
         params_.resolver_scope_stmt_type_ = T_USE_DATABASE;

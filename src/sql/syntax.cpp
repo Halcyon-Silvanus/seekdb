@@ -91,6 +91,7 @@ std::optional<NativeStatementTraits> native_statement_traits(Kind kind)
     case Kind::SetConfig: return NativeStatementTraits{stmt::T_ALTER_SYSTEM_SET_PARAMETER, false, false};
     case Kind::SetTracepoint: return NativeStatementTraits{stmt::T_ALTER_SYSTEM_SETTP, false, false};
     case Kind::CreateDatabase: return NativeStatementTraits{stmt::T_CREATE_DATABASE, false, true};
+    case Kind::AlterDatabase: return NativeStatementTraits{stmt::T_ALTER_DATABASE, false, true};
     case Kind::UseDatabase: return NativeStatementTraits{stmt::T_USE_DATABASE, true, false};
     case Kind::DropDatabase: return NativeStatementTraits{stmt::T_DROP_DATABASE, false, true};
     case Kind::RenameTables: return NativeStatementTraits{stmt::T_RENAME_TABLE, false, false};

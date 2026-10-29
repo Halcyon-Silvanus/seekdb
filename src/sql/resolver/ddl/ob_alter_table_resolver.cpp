@@ -385,6 +385,7 @@ int ObAlterTableResolver::resolve_action_list(rust::Slice<const peg::Node> actio
         case peg::NodeKind::ColumnModify:
         case peg::NodeKind::ColumnChange:
         case peg::NodeKind::ColumnRename:
+        case peg::NodeKind::TableForce:
         case peg::NodeKind::ColumnAlter: {
             alter_table_stmt->set_alter_table_column();
             bool temp_is_modify_column_visibility = false;
@@ -419,6 +420,8 @@ int ObAlterTableResolver::resolve_action_list(rust::Slice<const peg::Node> actio
         case peg::NodeKind::IndexAdd:
         case peg::NodeKind::IndexDrop:
         case peg::NodeKind::IndexRename:
+        case peg::NodeKind::IndexVisibility:
+        case peg::NodeKind::IndexParallel:
         case peg::NodeKind::PrimaryKey:
         case peg::NodeKind::PrimaryKeyDrop: {
             // mysql corresponds to alter index
@@ -708,6 +711,14 @@ int ObAlterTableResolver::resolve_column_options(const peg::Node &node,
       case peg::NodeKind::ColumnModify:
         OZ(resolve_modify_column(node, is_modify_column_visibility, reduced_visible_col_set)); break;
       case peg::NodeKind::ColumnDrop: is_mysql_drop_column = true; break;
+      case peg::NodeKind::TableForce:
+        if (!check_can_drop_column_instant()) {
+          ret = OB_NOT_SUPPORTED;
+          LOG_USER_ERROR(OB_NOT_SUPPORTED, "the current data format version does not support alter table force");
+        } else {
+          get_alter_table_stmt()->get_alter_table_arg().ddl_task_type_ = share::ObDDLTaskType::DELETE_COLUMN_FROM_SCHEMA;
+        }
+        break;
       default: ret = OB_ERR_UNEXPECTED; break;
     }
   }
@@ -1693,6 +1704,64 @@ int ObAlterTableResolver::check_subpart_name(const ObPartition &partition,
 
 
 
+int ObAlterTableResolver::resolve_index_visibility(const peg::Node &node)
+{
+  int ret = OB_SUCCESS;
+  const auto text = peg::alter_index_name(node).text();
+  ObString index_name;
+  ObAlterIndexArg *argument = nullptr;
+  void *buffer = nullptr;
+  OZ(ob_write_string(*allocator_, ObString(text.size(), text.data()), index_name));
+  if (OB_SUCC(ret)) {
+    if (OB_ISNULL(buffer = allocator_->alloc(sizeof(ObAlterIndexArg)))) {
+      ret = OB_ALLOCATE_MEMORY_FAILED;
+    } else {
+      argument = new (buffer) ObAlterIndexArg();
+      argument->index_name_ = index_name;
+      argument->index_visibility_ = peg::alter_index_visible(node) ? 0 : 1;
+    }
+  }
+  if (OB_SUCC(ret) && (table_schema_->is_parent_table() || table_schema_->is_child_table())) {
+    ObString index_table_name;
+    ObArenaAllocator names(ObModIds::OB_SCHEMA);
+    const ObTableSchema *index_schema = nullptr;
+    OZ(ObTableSchema::build_index_table_name(names, table_schema_->get_table_id(), index_name, index_table_name));
+    if (OB_SUCC(ret) && OB_FAIL(schema_checker_->get_table_schema(
+        get_alter_table_stmt()->get_org_database_name(), index_table_name, true, index_schema))) {
+      if (ret == OB_TABLE_NOT_EXIST) {
+        ObCStringHelper helper;
+        LOG_USER_ERROR(OB_TABLE_NOT_EXIST, helper.convert(get_alter_table_stmt()->get_org_database_name()),
+                       helper.convert(get_alter_table_stmt()->get_org_table_name()));
+      }
+    }
+    CK(OB_NOT_NULL(index_schema));
+    OZ(check_index_columns_equal_foreign_key(*table_schema_, *index_schema));
+  }
+  OZ(get_alter_table_stmt()->add_index_arg(argument));
+  return ret;
+}
+
+int ObAlterTableResolver::resolve_index_parallel(const peg::Node &node)
+{
+  int ret = OB_SUCCESS;
+  const auto text = peg::alter_index_name(node).text();
+  ObString index_name;
+  ObAlterIndexParallelArg *argument = nullptr;
+  void *buffer = nullptr;
+  OZ(ob_write_string(*allocator_, ObString(text.size(), text.data()), index_name));
+  if (OB_SUCC(ret)) {
+    if (OB_ISNULL(buffer = allocator_->alloc(sizeof(ObAlterIndexParallelArg)))) {
+      ret = OB_ALLOCATE_MEMORY_FAILED;
+    } else {
+      argument = new (buffer) ObAlterIndexParallelArg();
+      argument->index_name_ = index_name;
+      argument->new_parallel_ = peg::alter_index_parallel(node);
+    }
+  }
+  OZ(get_alter_table_stmt()->add_index_arg(argument));
+  return ret;
+}
+
 int ObAlterTableResolver::resolve_rename_index(const peg::Node &node)
 {
   int ret = OB_SUCCESS;
@@ -2002,6 +2071,8 @@ int ObAlterTableResolver::resolve_index_options(rust::Slice<const peg::Node> act
     case peg::NodeKind::IndexAdd: is_add_index = true; break;
     case peg::NodeKind::IndexDrop: OZ(resolve_drop_index(node)); break;
     case peg::NodeKind::IndexRename: OZ(resolve_rename_index(node)); break;
+    case peg::NodeKind::IndexVisibility: OZ(resolve_index_visibility(node)); break;
+    case peg::NodeKind::IndexParallel: OZ(resolve_index_parallel(node)); break;
     case peg::NodeKind::PrimaryKey: {
       bool has_drop = false;
       OZ(is_exist_item_type(actions, peg::NodeKind::PrimaryKeyDrop, has_drop));

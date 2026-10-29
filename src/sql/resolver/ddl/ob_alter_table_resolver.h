@@ -102,6 +102,8 @@ private:
   int resolve_drop_index(const peg::Node &node);
   int resolve_drop_foreign_key(const peg::Node &node);
   int resolve_rename_index(const peg::Node &node);
+  int resolve_index_visibility(const peg::Node &node);
+  int resolve_index_parallel(const peg::Node &node);
   int check_is_drop_primary_key(rust::Slice<const peg::Node> actions, bool &is_drop_primary_key);
   int resolve_drop_primary(rust::Slice<const peg::Node> actions);
   int resolve_add_primary(const peg::Node &node);

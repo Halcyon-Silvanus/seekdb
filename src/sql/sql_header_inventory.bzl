@@ -124,6 +124,8 @@ SQL_PUBLIC_HEADER_ROOTS = [
     "resolver/ddl/outline_resolver.h",
     "resolver/ddl/lock_table_resolver.h",
     "resolver/ddl/ob_ddl_resolver.h",
+    "resolver/ddl/alter_database_resolver.h",
+    "resolver/ddl/database_options.h",
     "resolver/ddl/ob_fts_index_builder_util.h",
     "resolver/ddl/ob_index_builder_util.h",
     "resolver/ddl/ob_trigger_source_builder.h",

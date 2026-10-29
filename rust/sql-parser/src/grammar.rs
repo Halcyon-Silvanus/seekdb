@@ -1298,10 +1298,17 @@ peg::parser! {
         rule column_position() -> Node
             = kw("first") { Node::new(Kind::ColumnFirst,vec![]) }
             / kind:(kw("before") { Kind::ColumnBefore } / kw("after") { Kind::ColumnAfter }) name:ident() { Node::new(kind,vec![Node::name(name)]) }
+        rule parallel_option() -> Node
+            = kw("parallel") ("=" _)? value:type_size() {?
+                if value.kind==Kind::Int && value.value>0 { Ok(Node::new(Kind::Parallel,vec![value])) }
+                else { Err("positive signed integer parallel degree") }
+            }
+            / kw("noparallel") { Node::new(Kind::Parallel,vec![Node::new(Kind::Int,vec![]).value(1)]) }
         rule table_option() -> Node
             = kw("organization") ("=" _)? kind:(kw("index") { Kind::OrganizationIndex } / kw("heap") { Kind::OrganizationHeap }) { Node::new(Kind::Organization,vec![Node::new(kind,vec![])]) }
             / kw("default")? charset_keyword() ("=" _)? value:charset_name() { Node::new(Kind::TableCharset,vec![value]) }
             / kw("default")? kw("collate") ("=" _)? value:collation_name() { Node { kind:Kind::Collation,..value } }
+            / parallel_option()
             / kw("engine") ("=" _)? value:collation_name() { Node::new(Kind::Engine,vec![value]) }
             / kw("progressive_merge_num") ("=" _)? value:type_size() {?
                 if matches!(value.kind,Kind::Int|Kind::Uint) { Ok(Node::new(Kind::ProgressiveMergeNum,vec![value])) }
@@ -1317,8 +1324,9 @@ peg::parser! {
                     Node::new(Kind::StoreFormat,vec![Node::new(Kind::HiddenInt,vec![]).value(value)])
                 }
         rule database_option() -> Node
-            = kw("default")? charset_keyword() ("=" _)? value:charset_name() { Node { kind:Kind::Charset,..value } }
+            = kw("default")? charset_keyword() ("=" _)? !kw("default") value:charset_name() { Node { kind:Kind::Charset,..value } }
             / kw("default")? kw("collate") ("=" _)? value:collation_name() { Node { kind:Kind::Collation,..value } }
+            / kw("read") kind:(kw("only") { Kind::ReadOnly } / kw("write") { Kind::ReadWrite }) { Node::new(kind,vec![]) }
         rule index_method() -> Node = kw("using") value:(kw("btree") { Node::missing() } / kw("hash") { Node::new(Kind::UsingHash,vec![]) }) { value }
         rule index_column(fulltext: bool) -> Node = value:(name:ident() prefix:("(" _ value:type_size() ")" _ { value })? { (Node::name(name),Node::optional(prefix)) }
                 / "(" _ start:position!() value:expr(0) end:position!() ")" _ { (value.at(start,end),Node::missing()) })
@@ -1332,6 +1340,7 @@ peg::parser! {
             }
             / kw("storing") "(" _ names:(ident() ++ ("," _)) ")" _ { Node::new(Kind::StoringColumns,names.into_iter().map(Node::name).collect()) }
             / index_method()
+            / parallel_option()
             / kw("comment") value:string() { Node::new(Kind::ColumnComment,vec![value]) }
             / kw("block_size") ("=" _)? value:type_size() { Node::new(Kind::BlockSize,vec![value]) }
             / kw("with") value:vector_parameter_list() { value }
@@ -1436,6 +1445,12 @@ peg::parser! {
             / kw("drop") (kw("index") / kw("key")) name:ident() { Node::new(Kind::IndexDrop,vec![Node::name(name)]) }
             / kw("drop") kw("primary") kw("key") { Node::new(Kind::PrimaryKeyDrop,vec![]) }
             / kw("rename") (kw("index") / kw("key")) from:ident() kw("to") to:ident() { Node::new(Kind::IndexRename,vec![Node::name(from),Node::name(to)]) }
+            / keyword("alter") hint_slot() kw("index") name:ident() value:(
+                visibility:(kw("visible") { 0 } / kw("invisible") { 1 }) { Node::new(Kind::IndexVisibility,vec![]).value(visibility) }
+                / value:parallel_option() { Node::new(Kind::IndexParallel,value.children) }) {
+                let mut children=vec![Node::name(name)];children.extend(value.children);
+                Node::new(value.kind,children).value(value.value)
+            }
         rule partition_names() -> Node = names:(ident() ++ ("," _)) { Node::new(Kind::Names,names.into_iter().map(Node::name).collect()) }
         rule alter_partition() -> Node
             = value:partition_option() { Node::new(Kind::Repartition,value.children) }
@@ -1467,6 +1482,7 @@ peg::parser! {
             / kw("drop") kw("constraint") name:ident() { Node::new(Kind::DropConstraint,vec![Node::name(name)]) }
             / alter_index()
             / alter_column()
+            / kw("force") { Node::new(Kind::TableForce,vec![]) }
             / kw("convert") kw("to") (kw("character") / kw("char")) kw("set") !kw("default")
                 charset:charset_name() collation:(kw("collate") value:collation_name() { value })? {
                 Node::new(Kind::ConvertTableCharset,vec![charset,Node::optional(collation)])
@@ -1539,6 +1555,11 @@ peg::parser! {
             / kw("create") (kw("database") / kw("schema")) absent:if_not_exists()? name:ident() options:database_option()* {
                 Node::new(Kind::CreateDatabase, vec![Node::optional(absent), Node::name(name), Node::list(Kind::DatabaseOptions,options)])
             }
+            / keyword("alter") hint_slot() (kw("database") / kw("schema"))
+                name:(!(kw("default") / kw("charset") / kw("character") / kw("collate") / kw("read") / kw("set")) name:ident() { Node::name(name) })?
+                kw("set")? options:database_option()+ {
+                Node::new(Kind::AlterDatabase,vec![Node::optional(name),Node::new(Kind::DatabaseOptions,options)])
+            }
             / keyword("create") hint_slot() temporary:temporary()? kw("table") absent:if_not_exists()? name:name()
                 source:(kw("like") name:name() { name } / "(" _ kw("like") name:name() ")" _ { name }) {?
                 Ok(ddl::TableLike { relation:Node::relation(name)?, source:Node::relation(source)?,
@@ -1577,7 +1598,9 @@ peg::parser! {
                 Ok(Node::new(Kind::OptimizeTable,vec![Node::new(Kind::TableList,names.into_iter().map(Node::relation).collect::<Result<Vec<_>,_>>()?)]))
             }
             / kw("rename") kw("table") values:(rename_table() ++ ("," _)) { Node::new(Kind::RenameTables,values) }
-            / keyword("alter") hints:hint_slot() kw("table") name:name() actions:(alter_action() ++ ("," _)) {?
+            / keyword("alter") hints:hint_slot() kw("table") name:name() actions:(first:alter_action()? rest:("," _ value:alter_action() { value })* {
+                let mut actions=vec![];actions.extend(first);actions.extend(rest);actions
+            }) {?
                 Ok(Node::new(Kind::AlterTable,vec![Node::relation(name)?,Node::list(Kind::AlterTableActions,actions.into_iter().filter(|value| value.kind!=Kind::Missing).collect()),Node::missing(),Node::list(Kind::Hints,hints.unwrap_or_default())]))
             }
             / kw("use") name:ident() { Node::new(Kind::UseDatabase, vec![Node::name(name)]) }

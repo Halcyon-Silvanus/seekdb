@@ -357,6 +357,7 @@ pub(crate) mod ffi {
         Rollback,
         UseDatabase,
         CreateDatabase,
+        AlterDatabase,
         DatabaseOptions,
         DropDatabase,
         IfExists,
@@ -397,6 +398,7 @@ pub(crate) mod ffi {
         RenameTables,
         RenameTableAction,
         AlterTable,
+        TableForce,
         AlterCheckConstraint,
         AlterPartition,
         Repartition,
@@ -424,6 +426,8 @@ pub(crate) mod ffi {
         IndexAdd,
         IndexDrop,
         IndexRename,
+        IndexVisibility,
+        IndexParallel,
         PrimaryKeyDrop,
         ShowIndexes,
         TableList,
@@ -1806,6 +1810,8 @@ pub(crate) mod ffi {
         fn alter_table_options(node: &Node) -> &[Node];
         fn alter_index_name(node: &Node) -> &Node;
         fn alter_index_new_name(node: &Node) -> &Node;
+        fn alter_index_visible(node: &Node) -> bool;
+        fn alter_index_parallel(node: &Node) -> u64;
         fn statistics_clauses(node: &Node) -> &[Node];
         fn statistics_scope(node: &Node) -> StatisticsScope;
         fn statistics_columns(node: &Node) -> &[Node];
@@ -1913,6 +1919,7 @@ pub(crate) mod ffi {
         fn table_option_row_format(node: &Node) -> TableRowFormat;
         fn index_option_global(node: &Node) -> bool;
         fn database_name(node: &Node) -> &Node;
+        fn database_has_name(node: &Node) -> bool;
         fn database_options(node: &Node) -> &[Node];
         fn database_if_not_exists(node: &Node) -> bool;
         fn drop_if_exists(node: &Node) -> bool;
@@ -2484,7 +2491,7 @@ use crate::ddl::{
     check_constraint_name, column_attribute_expression, column_attribute_text, column_definition,
     column_generation_expression, column_position_name, column_skip_index, column_srid,
     database_if_not_exists,
-    database_name, database_options, drop_if_exists, drop_index_name, drop_index_relation,
+    database_name, database_has_name, database_options, drop_if_exists, drop_index_name, drop_index_relation,
     drop_relations, drop_temporary, foreign_key_definition, foreign_key_index_name,
     foreign_key_name, fork_destination, fork_source, index_column_descending,
     index_column_expression, index_column_has_prefix, index_column_prefix, index_definition,
@@ -2532,7 +2539,7 @@ use crate::statistics::{
 
 use crate::ddl::partition_element_values;
 
-use crate::ddl::{alter_index_name, alter_index_new_name, alter_table_options};
+use crate::ddl::{alter_index_name, alter_index_new_name, alter_index_visible, alter_index_parallel, alter_table_options};
 use crate::inspect::syntax_literals;
 use crate::lex::{decode_binary_literal, identifier_requires_quotes};
 use crate::embedded_sql::{embedded_sql_symbols, rewrite_embedded_sql};
