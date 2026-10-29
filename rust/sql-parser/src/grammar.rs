@@ -1853,7 +1853,9 @@ peg::parser! {
             / extended:kw("extended")? (kw("index") / kw("indexes") / kw("keys")) (kw("from") / kw("in")) table:name() database:show_database()? filter:(kw("where") value:expr(0) { value })? {?
                 Ok(Node::new(Kind::ShowIndexes,vec![Node::relation(table)?,Node::optional(database),Node::where_clause(filter),Node::new(Kind::HiddenInt,vec![]).value(u64::from(extended.is_some()))]))
             }
-            / (kw("databases") / kw("schemas")) condition:show_condition()? { Node::new(Kind::ShowDatabases,vec![Node::optional(condition),Node::missing()]) }
+            / (kw("databases") / kw("schemas")) status:kw("status")? condition:show_condition()? {
+                Node::new(Kind::ShowDatabases,vec![Node::optional(condition),Node::missing()]).value(u64::from(status.is_some()))
+            }
             / full:kw("full")? kw("tables") database:show_database()? condition:show_condition()? {
                 Node::new(Kind::ShowTables,vec![Node::optional(database),Node::optional(condition),Node::new(Kind::Int,vec![]).value(u64::from(full.is_some()))])
             }

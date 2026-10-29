@@ -207,11 +207,22 @@ int ObShowResolver::resolve(const peg::Node &statement)
       break;
     case peg::NodeKind::ShowDatabases: {
       show_resv_ctx.stmt_type_ = stmt::T_SHOW_DATABASES;
+      const bool with_status = peg::show_database_status(statement);
       if (peg::show_filter(statement) == peg::ShowFilter::Like) {
         const auto pattern = peg::expression_literal(peg::show_like_pattern(statement)).text;
-        GEN_SQL_STEP_1(ObShowSqlSet::SHOW_DATABASES_LIKE, int(pattern.size()), pattern.data());
-        GEN_SQL_STEP_2(ObShowSqlSet::SHOW_DATABASES_LIKE, OB_SYS_DATABASE_NAME, OB_ALL_DATABASE_TNAME,
-            OB_RECYCLEBIN_SCHEMA_NAME, OB_PUBLIC_SCHEMA_NAME, OB_PUBLIC_SCHEMA_NAME);
+        if (with_status) {
+          GEN_SQL_STEP_1(ObShowSqlSet::SHOW_DATABASES_STATUS_LIKE, int(pattern.size()), pattern.data());
+          GEN_SQL_STEP_2(ObShowSqlSet::SHOW_DATABASES_STATUS_LIKE,
+              OB_SYS_DATABASE_NAME, OB_ALL_VIRTUAL_DATABASE_STATUS_TNAME);
+        } else {
+          GEN_SQL_STEP_1(ObShowSqlSet::SHOW_DATABASES_LIKE, int(pattern.size()), pattern.data());
+          GEN_SQL_STEP_2(ObShowSqlSet::SHOW_DATABASES_LIKE, OB_SYS_DATABASE_NAME, OB_ALL_DATABASE_TNAME,
+              OB_RECYCLEBIN_SCHEMA_NAME, OB_PUBLIC_SCHEMA_NAME, OB_PUBLIC_SCHEMA_NAME);
+        }
+      } else if (with_status) {
+        GEN_SQL_STEP_1(ObShowSqlSet::SHOW_DATABASES_STATUS);
+        GEN_SQL_STEP_2(ObShowSqlSet::SHOW_DATABASES_STATUS,
+            OB_SYS_DATABASE_NAME, OB_ALL_VIRTUAL_DATABASE_STATUS_TNAME);
       } else {
         GEN_SQL_STEP_1(ObShowSqlSet::SHOW_DATABASES);
         GEN_SQL_STEP_2(ObShowSqlSet::SHOW_DATABASES, OB_SYS_DATABASE_NAME, OB_ALL_DATABASE_TNAME,

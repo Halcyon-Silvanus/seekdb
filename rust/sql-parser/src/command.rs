@@ -157,6 +157,9 @@ pub(crate) fn show_full(statement: &Node) -> bool {
         _ => false,
     }
 }
+pub(crate) fn show_database_status(statement: &Node) -> bool {
+    statement.value != 0
+}
 pub(crate) fn show_extended(statement: &Node) -> bool {
     statement.kind == Kind::ShowIndexes && statement.children[3].value != 0
 }
