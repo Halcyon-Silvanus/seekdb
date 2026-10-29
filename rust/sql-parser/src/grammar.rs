@@ -216,7 +216,7 @@ peg::parser! {
             }
         rule expression_name() -> Vec<Name>
             = name()
-            / &(reserved_word() _ ".") first:name_keyword() "." _ last:name_keyword() { vec![first,last] }
+            / first:name_keyword() "." _ last:name_keyword() { vec![first,last] }
             / start:position!() name:(kw("database") { "database" } / kw("schema") { "schema" }
                 / kw("replace") { "replace" } / kw("insert") { "insert" } / kw("values") { "values" }
                 / kw("left") { "left" } / kw("right") { "right" } / kw("mod") { "mod" }) &"("
