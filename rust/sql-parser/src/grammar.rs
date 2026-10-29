@@ -2320,6 +2320,8 @@ peg::parser! {
         rule routine_statement() -> Node
             = kw("create") definer:(kw("definer") "=" _ value:(kw("current_user") ("(" _ ")" _)? {
                 Node::new(Kind::UserHost,vec![Node::new(Kind::Ident,vec![]).text("CURRENT_USER".into()),Node::missing()])
+            } / name:account_name() start:position!() "@%" end:position!() _ {
+                Node::new(Kind::UserHost,vec![name,Node::new(Kind::UserVariable,vec![]).text("%".into()).at(start,end)])
             } / account()) { value })? mut_value:(routine_definition(false) / source:trigger_source() { Node::new(Kind::CreateTrigger,vec![Node::missing(),source]) }) {
                 let mut value=mut_value;value.children[0]=Node::optional(definer);value
             }
