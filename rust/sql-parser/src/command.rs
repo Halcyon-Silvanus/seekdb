@@ -15,10 +15,34 @@
 use crate::{
     bridge::ffi::{
         CacheFilter, CacheKind, ShowFilter, TransactionAccess, TransactionIsolation,
-        TransactionSetting, VariableScope,
+        TransactionSetting, TransactionOptions, VariableScope,
     },
     node::{Kind, Node},
 };
+
+pub(crate) fn prepared_source(node: &Node) -> &Node {
+    &node.children[0]
+}
+
+pub(crate) fn execution_arguments(node: &Node) -> &[Node] {
+    &node.children
+}
+
+pub(crate) fn transaction_options(node: &Node) -> TransactionOptions {
+    let mut options = TransactionOptions {
+        consistent_snapshot: false,
+        access: TransactionAccess::Default,
+    };
+    for option in &node.children {
+        match option.kind {
+            Kind::ConsistentSnapshot => options.consistent_snapshot = true,
+            Kind::ReadOnly => options.access = TransactionAccess::ReadOnly,
+            Kind::ReadWrite => options.access = TransactionAccess::ReadWrite,
+            _ => {}
+        }
+    }
+    options
+}
 
 pub(crate) fn transaction_setting(statement: &Node) -> TransactionSetting {
     let characteristics = &statement.children[1].children;

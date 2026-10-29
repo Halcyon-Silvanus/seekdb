@@ -44,31 +44,76 @@ use crate::{
     query::{child, list},
 };
 
+pub(crate) struct CreateTable {
+    pub relation: Node,
+    pub elements: Vec<Node>,
+    pub options: Vec<Node>,
+    pub partition: Option<Node>,
+    pub query: Option<TableQuery>,
+    pub temporary: bool,
+    pub if_not_exists: bool,
+}
+
+pub(crate) struct TableQuery {
+    pub query: Node,
+    pub modifier: Option<Kind>,
+    pub hints: Vec<Node>,
+}
+
+impl CreateTable {
+    pub fn into_node(self) -> Node {
+        let mut children = vec![self.relation];
+        if !self.elements.is_empty() {
+            children.push(Node::new(Kind::TableElements, self.elements));
+        }
+        if !self.options.is_empty() {
+            children.push(Node::new(Kind::TableOptions, self.options));
+        }
+        children.extend(self.partition);
+        if let Some(query) = self.query {
+            children.push(query.query);
+            if !query.hints.is_empty() {
+                children.push(Node::new(Kind::Hints, query.hints));
+            }
+            if let Some(modifier) = query.modifier {
+                children.push(Node::new(modifier, vec![]));
+            }
+        }
+        if self.temporary {
+            children.push(Node::new(Kind::Temporary, vec![]));
+        }
+        if self.if_not_exists {
+            children.push(Node::new(Kind::IfNotExists, vec![]));
+        }
+        Node::new(Kind::CreateTable, children)
+    }
+}
+
 pub(crate) fn table_definition(node: &Node) -> TableDefinition<'_> {
     TableDefinition {
-        relation: &node.children[2],
-        elements: &node.children[3].children,
-        options: &node.children[4].children,
+        relation: child(node, Kind::Relation).unwrap(),
+        elements: list(node, Kind::TableElements),
+        options: list(node, Kind::TableOptions),
         hints: list(node, Kind::Hints),
-        temporary: node.children[0].kind == Kind::Temporary,
-        if_not_exists: node.children[1].kind == Kind::IfNotExists,
-        select_mode: if node.children.len() == 8 {
+        temporary: child(node, Kind::Temporary).is_some(),
+        if_not_exists: child(node, Kind::IfNotExists).is_some(),
+        select_mode: if child(node, Kind::Select).is_none() {
             TableSelectMode::None
+        } else if child(node, Kind::Ignore).is_some() {
+            TableSelectMode::Ignore
+        } else if child(node, Kind::Replace).is_some() {
+            TableSelectMode::Replace
         } else {
-            match node.children[10].kind {
-                Kind::Ignore => TableSelectMode::Ignore,
-                Kind::Replace => TableSelectMode::Replace,
-                _ => TableSelectMode::Select,
-            }
+            TableSelectMode::Select
         },
-        has_partition: node.children[5].kind != Kind::Missing,
+        has_partition: child(node, Kind::PartitionOption).is_some(),
     }
 }
 pub(crate) fn table_definition_query(node: &Node) -> &Node {
-    &node.children[8]
+    child(node, Kind::Select).unwrap()
 }
 pub(crate) fn table_definition_partition(node: &Node) -> &Node {
-    &node.children[5].children[0]
+    &child(node, Kind::PartitionOption).unwrap().children[0]
 }
 pub(crate) fn table_like_relation(node: &Node) -> &Node {
     &node.children[2]
@@ -83,33 +128,92 @@ pub(crate) fn table_like_if_not_exists(node: &Node) -> bool {
     node.children[1].kind == Kind::IfNotExists
 }
 
+pub(crate) struct Column {
+    pub name: Node,
+    pub data_type: Node,
+    pub tail: ColumnTail,
+}
+
+#[derive(Default)]
+pub(crate) struct ColumnTail {
+    pub attributes: Vec<Node>,
+    pub generation: Option<GeneratedColumn>,
+    pub position: Option<Node>,
+    pub collation: Option<Node>,
+}
+
+pub(crate) struct GeneratedColumn {
+    pub expression: Node,
+    pub storage: Option<Node>,
+    pub always: bool,
+}
+
+impl Column {
+    pub fn into_node(self) -> Node {
+        let mut data_type = self.data_type;
+        data_type.children.extend(self.tail.collation);
+        let mut children = vec![self.name, data_type];
+        if !self.tail.attributes.is_empty() {
+            children.push(Node::new(Kind::ColumnAttributes, self.tail.attributes));
+        }
+        if let Some(generation) = self.tail.generation {
+            children.push(Node::new(
+                Kind::GeneratedColumn,
+                vec![generation.expression],
+            ));
+            children.extend(generation.storage);
+            if generation.always {
+                children.push(Node::new(Kind::Always, vec![]));
+            }
+        }
+        children.extend(self.tail.position);
+        Node::new(Kind::ColumnDefinition, children)
+    }
+}
+
+fn column_position(node: &Node) -> Option<&Node> {
+    node.children.iter().find(|child| {
+        matches!(
+            child.kind,
+            Kind::ColumnFirst | Kind::ColumnBefore | Kind::ColumnAfter
+        )
+    })
+}
+
 pub(crate) fn column_definition(node: &Node) -> ColumnDefinition<'_> {
-    let generated = node.children.len() == 7;
-    let position = &node.children[if generated { 5 } else { 3 }];
     ColumnDefinition {
-        name: &node.children[0],
-        data_type: &node.children[1],
-        attributes: &node.children[2].children,
-        generation: if !generated {
+        name: child(node, Kind::Column).unwrap(),
+        data_type: node
+            .children
+            .iter()
+            .find(|child| {
+                matches!(
+                    child.kind,
+                    Kind::DataType | Kind::CollectionType | Kind::EnumType | Kind::SetType
+                )
+            })
+            .unwrap(),
+        attributes: list(node, Kind::ColumnAttributes),
+        generation: if child(node, Kind::GeneratedColumn).is_none() {
             ColumnGeneration::None
-        } else if node.children[4].kind == Kind::StoredColumn {
+        } else if child(node, Kind::StoredColumn).is_some() {
             ColumnGeneration::Stored
         } else {
             ColumnGeneration::Virtual
         },
-        position: match position.kind {
-            Kind::ColumnFirst => ColumnPosition::First,
-            Kind::ColumnBefore => ColumnPosition::Before,
-            Kind::ColumnAfter => ColumnPosition::After,
+        position: match column_position(node).map(|position| position.kind) {
+            Some(Kind::ColumnFirst) => ColumnPosition::First,
+            Some(Kind::ColumnBefore) => ColumnPosition::Before,
+            Some(Kind::ColumnAfter) => ColumnPosition::After,
             _ => ColumnPosition::None,
         },
     }
 }
 pub(crate) fn column_generation_expression(node: &Node) -> &Node {
-    &node.children[3]
+    &child(node, Kind::GeneratedColumn).unwrap().children[0]
 }
 pub(crate) fn column_position_name(node: &Node) -> &Node {
-    &node.children[if node.children.len() == 7 { 5 } else { 3 }].children[0]
+    &column_position(node).unwrap().children[0]
 }
 pub(crate) fn column_attribute_expression(attribute: &Node) -> &Node {
     &attribute.children[0]

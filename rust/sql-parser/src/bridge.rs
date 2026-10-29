@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::{
-    node::{Kind, Node},
+    node::Node,
     SqlMode,
 };
 
@@ -2169,30 +2169,6 @@ use crate::fts::parse_search_query;
 use crate::inspect::inspect_expression;
 use crate::scan::{begin_scan, finish_scan, Scanner};
 
-fn prepared_source(node: &Node) -> &Node {
-    &node.children[0]
-}
-
-fn execution_arguments(node: &Node) -> &[Node] {
-    &node.children
-}
-
-fn transaction_options(node: &Node) -> ffi::TransactionOptions {
-    let mut options = ffi::TransactionOptions {
-        consistent_snapshot: false,
-        access: ffi::TransactionAccess::Default,
-    };
-    for option in &node.children {
-        match option.kind {
-            Kind::ConsistentSnapshot => options.consistent_snapshot = true,
-            Kind::ReadOnly => options.access = ffi::TransactionAccess::ReadOnly,
-            Kind::ReadWrite => options.access = ffi::TransactionAccess::ReadWrite,
-            _ => {}
-        }
-    }
-    options
-}
-
 pub struct ParseTree(Result<crate::parser::Parsed, crate::parser::ParseFailure>);
 
 impl ParseTree {
@@ -2275,6 +2251,7 @@ use crate::expression::{
 };
 
 use crate::command::{
+    prepared_source, execution_arguments, transaction_options,
     diagnostics_condition, diagnostics_has_condition, diagnostics_item_name, diagnostics_items,
     diagnostics_stacked, diagnostics_target, kill_query_only, kill_target, setting_assignments,
     setting_charset, setting_collation, setting_has_collation, setting_scope,

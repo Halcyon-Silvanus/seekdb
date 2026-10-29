@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::{access, lex::decode_string as decode, node::*, SqlMode};
+use crate::{access, ddl, lex::decode_string as decode, node::*, SqlMode};
 use std::borrow::Cow;
 
 const WEIGHT_STRING_PAD_WITH_SPACE: u64 = 0x40;
@@ -1154,18 +1154,19 @@ peg::parser! {
             }
         rule column_definition() -> Node = name:column() data_type:data_type() tail:(
                 collation:(kw("collate") value:collation_name() { Node { kind:Kind::Collation,..value } })?
-                generated:(kw("generated") kw("always") { Node::new(Kind::GeneratedColumn,vec![Node::new(Kind::Always,vec![])]) })?
+                generated:(kw("generated") kw("always"))?
                 kw("as") "(" _ start:position!() value:expr(0) end:position!() ")" _
                 storage:(kind:(kw("virtual") { Kind::VirtualColumn } / kw("stored") { Kind::StoredColumn }) { Node::new(kind,vec![]) })?
                 attributes:generated_column_attribute()* position:column_position()? {
-                    (vec![Node::list(Kind::ColumnAttributes,attributes),value.at(start,end),Node::optional(storage),Node::optional(position),Node::optional(generated)],collation)
+                    ddl::ColumnTail {
+                        attributes, position, collation,
+                        generation:Some(ddl::GeneratedColumn { expression:value.at(start,end), storage, always:generated.is_some() }),
+                    }
                 }
                 / attributes:column_attribute()* position:column_position()? {
-                    (vec![Node::list(Kind::ColumnAttributes,attributes),Node::optional(position)],None)
+                    ddl::ColumnTail { attributes, position, ..Default::default() }
                 }) {
-                let mut data_type=data_type; data_type.children.extend(tail.1);
-                let mut children=vec![name,data_type]; children.extend(tail.0);
-                Node::new(Kind::ColumnDefinition,children)
+                ddl::Column { name, data_type, tail }.into_node()
             }
         rule column_position() -> Node
             = kw("first") { Node::new(Kind::ColumnFirst,vec![]) }
@@ -1379,12 +1380,11 @@ peg::parser! {
                 options:((value:table_option() ("," _)? { value })*) partition:partition_option()?
                 query:(modifier:(kw("ignore") { Kind::Ignore } / kw("replace") { Kind::Replace })? kw("as")? query:select(0) { (modifier,query) })? {?
                 if elements.is_none() && query.is_none() { return Err("table columns or SELECT"); }
-                let mut children=vec![Node::optional(temporary), Node::optional(absent), Node::relation(name)?,
-                    Node::list(Kind::TableElements, elements.unwrap_or_default()), Node::list(Kind::TableOptions,options), Node::optional(partition), Node::missing(), Node::missing()];
-                if let Some((modifier,query))=query {
-                    children.extend([query,Node::list(Kind::Hints,hints.unwrap_or_default()),modifier.map(|kind| Node::new(kind,vec![])).unwrap_or_else(Node::missing)]);
-                }
-                Ok(Node::new(Kind::CreateTable,children))
+                Ok(ddl::CreateTable {
+                    relation:Node::relation(name)?, elements:elements.unwrap_or_default(), options, partition,
+                    query:query.map(|(modifier,query)| ddl::TableQuery { query, modifier, hints:hints.unwrap_or_default() }),
+                    temporary:temporary.is_some(), if_not_exists:absent.is_some(),
+                }.into_node())
             }
             / kw("create") hints:hints()? kind:index_kind()? kw("index") absent:if_not_exists()? name:name() method:index_method()? kw("on") table:name()
                 "(" _ columns:(index_column(kind==Some(3)) ++ ("," _)) ")" _ options:index_options(kind==Some(3)) partition:partition_option()? {?
