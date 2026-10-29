@@ -582,6 +582,9 @@ impl Node {
         } else {
             String::new()
         };
+        if matches!(function.as_str(), "any" | "some") {
+            return Err("quantified comparison");
+        }
         if function == "cast" && (arguments.len() != 2 || arguments[1].kind != Kind::CastType) {
             return Err("CAST requires an expression and AS type");
         }

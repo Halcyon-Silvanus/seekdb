@@ -204,6 +204,7 @@ enum Tail {
     Between(bool, Node, Node),
     In(bool, Node, usize),
     Member(Node, usize),
+    ArrayMember(Node, usize),
     Is(bool, Node),
 }
 
@@ -231,6 +232,7 @@ impl Tail {
             Tail::Between(negated, low, high) => { let end=high.end; Node::new(Kind::Between, vec![value, low, high]).value(u64::from(negated)).expression(start, end) },
             Tail::In(negated, right, end) => Node::new(Kind::In, vec![value, right]).value(u64::from(negated)).expression(start, end),
             Tail::Member(right,end) => Node::named_call(Kind::Function,Node::new(Kind::Ident,vec![]).text("JSON_MEMBER_OF".into()),vec![value,right]).expression(start,end),
+            Tail::ArrayMember(right,end) => Node::callable(Kind::ArrayMembership,vec![value,right]).expression(start,end),
             Tail::Is(negated, test) => { let end=test.end; Node::new(Kind::Is, vec![value, test]).value(u64::from(negated)).expression(start, end) },
         }
     }
@@ -672,9 +674,12 @@ peg::parser! {
             rest:(enabled(mode.pipes_as_concat) "||" _ right:unary(level) { ("concat".into(),right) })* {? chain(left,rest) }
         rule comparison_tail(level: usize) -> Tail
             = op:$("<=>" / "<=" / ">=" / "<>" / "!=" / "=" / "<" / ">") _
-                right:(enabled(op!="<=>") start:position!() kind:(kw("all") { Kind::All } / (kw("any") / kw("some")) { Kind::Any })
-                    "(" _ query:select(level+1) ")" end:position!() _ {? Node::new(kind,vec![query]).expression(start,end) }
-                    / predicate(level)) { Tail::Compare(op.into(), right) }
+                tail:(enabled(op!="<=>") start:position!() kind:(kw("all") { Kind::All } / (kw("any") / kw("some")) { Kind::Any })
+                    "(" _ query:select(level+1) ")" end:position!() _ {?
+                        Node::new(kind,vec![query]).expression(start,end).map(|right| Tail::Compare(op.into(),right))
+                    }
+                    / enabled(op=="=") (kw("any") / kw("some")) "(" _ value:expr(level+1) ")" end:position!() _ { Tail::ArrayMember(value,end) }
+                    / right:predicate(level) { Tail::Compare(op.into(),right) }) { tail }
             / kw("is") negated:kw("not")? test:null_literal() { Tail::Is(negated.is_some(), test) }
         rule predicate_tail(level: usize) -> Tail
             = kw("sounds") kw("like") right:simple_expr(level) { Tail::SoundsLike(right) }

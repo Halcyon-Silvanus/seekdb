@@ -242,6 +242,7 @@ pub(crate) mod ffi {
         StringConcat,
         CollectionType,
         ArrayLiteral,
+        ArrayMembership,
         MapLiteral,
         ArrayAgg,
         ArrayMap,

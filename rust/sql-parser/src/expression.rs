@@ -261,6 +261,7 @@ pub(crate) fn call_name(call: &Node) -> &str {
     match call.kind {
         Kind::GroupConcat => "group_concat",
         Kind::ArrayLiteral => "array",
+        Kind::ArrayMembership => "array_contains",
         Kind::MapLiteral => "map",
         Kind::ArrayAgg => "array_agg",
         Kind::ArrayMap => "array_map",

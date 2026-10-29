@@ -114,6 +114,7 @@ ObItemType callable_expression_type(peg::NodeKind kind)
     case peg::NodeKind::MultiPolygon: return T_FUN_SYS_MULTIPOLYGON;
     case peg::NodeKind::GeometryCollection: return T_FUN_SYS_GEOMCOLLECTION;
     case peg::NodeKind::ArrayLiteral: return T_FUN_SYS_ARRAY;
+    case peg::NodeKind::ArrayMembership: return T_FUNC_SYS_ARRAY_CONTAINS;
     case peg::NodeKind::MapLiteral: return T_FUN_SYS_MAP;
     case peg::NodeKind::ArrayMap: return T_FUNC_SYS_ARRAY_MAP;
     case peg::NodeKind::ArrayFilter: return T_FUNC_SYS_ARRAY_FILTER;
@@ -595,6 +596,7 @@ int ObRawExprResolverImpl::do_recursive_resolve(const peg::Node &node,
       case peg::NodeKind::IsNull: OZ (process_isnull_node(node, expr)); break;
       case peg::NodeKind::PartitionKeyFunction:
       case peg::NodeKind::PartitionHashFunction:
+      case peg::NodeKind::ArrayMembership:
       case peg::NodeKind::SetCollation:
         OZ (process_internal_sys_function_node(node, expr, callable_expression_type(node.kind())));
         break;
@@ -3563,6 +3565,9 @@ int ObRawExprResolverImpl::process_internal_sys_function_node(const peg::Node &n
     ObRawExpr *value = nullptr;
     OZ(SMART_CALL(recursive_resolve(argument, value)));
     OZ(function->add_param_expr(value));
+  }
+  if (node.kind() == peg::NodeKind::ArrayMembership) {
+    OX(function->set_reverse_param_order(true));
   }
   OX(expr = function);
   if (OB_SUCC(ret) && type == T_FUN_SYS_SET_COLLATION && ctx_.is_in_system_view_) {
