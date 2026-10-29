@@ -72,6 +72,18 @@ pub(crate) fn access_accounts(statement: &Node) -> &[Node] {
     list(statement, Kind::Users)
 }
 
+pub(crate) fn account_renames(statement: &Node) -> &[Node] {
+    &statement.children
+}
+
+pub(crate) fn account_rename_source(rename: &Node) -> &Node {
+    &rename.children[0]
+}
+
+pub(crate) fn account_rename_target(rename: &Node) -> &Node {
+    &rename.children[1]
+}
+
 pub(crate) fn access_roles(statement: &Node) -> &[Node] {
     list(role_selection(statement).unwrap_or(statement), Kind::Roles)
 }

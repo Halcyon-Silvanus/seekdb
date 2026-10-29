@@ -24,6 +24,7 @@
 #include "sql/resolver/dcl/ob_create_user_stmt.h"
 #include "sql/resolver/dcl/ob_drop_user_stmt.h"
 #include "sql/resolver/dcl/ob_lock_user_stmt.h"
+#include "sql/resolver/dcl/ob_rename_user_stmt.h"
 #include "sql/resolver/dcl/ob_set_password_stmt.h"
 #include "sql/engine/expr/ob_expr_validate_password_strength.h"
 #include "sql/ob_sql_utils.h"
@@ -283,6 +284,39 @@ int resolve_account_lock(const peg::Node &node, ObResolverParams &params, ObStmt
   return ret;
 }
 
+int resolve_account_rename(const peg::Node &node, ObResolverParams &params, ObStmt *&stmt)
+{
+  int ret = OB_SUCCESS;
+  ObRenameUserStmt *renamed = nullptr;
+  OZ (create_resolved_statement(params, renamed));
+  if (OB_SUCC(ret)) {
+    for (const auto &rename : peg::account_renames(node)) {
+      if (OB_FAIL(ret)) { break; }
+      ObString from_name;
+      ObString from_host;
+      ObString to_name;
+      ObString to_host;
+      OZ (resolve_account(peg::account_rename_source(rename), params, AccountNameMode::Verbatim,
+                          from_name, from_host));
+      OZ (resolve_account(peg::account_rename_target(rename), params, AccountNameMode::Verbatim,
+                          to_name, to_host));
+      if (OB_SUCC(ret)) {
+        if (from_name.case_compare(OB_RESTORE_USER_NAME) == 0
+            || to_name.case_compare(OB_RESTORE_USER_NAME) == 0) {
+          ret = OB_ERR_NO_PRIVILEGE;
+        } else if (from_name.length() > OB_MAX_USER_NAME_LENGTH
+                   || to_name.length() > OB_MAX_USER_NAME_LENGTH) {
+          ret = OB_INVALID_ARGUMENT;
+        }
+      }
+      OZ (check_reserved_account(params, from_name, from_host));
+      OZ (renamed->add_rename_info(from_name, from_host, to_name, to_host));
+    }
+  }
+  if (OB_SUCC(ret)) { stmt = renamed; }
+  return ret;
+}
+
 int resolve_password(const peg::Node &node, ObResolverParams &params, ObStmt *&stmt)
 {
   int ret = OB_SUCCESS;
@@ -347,6 +381,9 @@ int resolve_access_control(const peg::Node &node, ObResolverParams &params, ObSt
         break;
       case peg::NodeKind::LockUser:
         ret = access_control::resolve_account_lock(node, params, stmt);
+        break;
+      case peg::NodeKind::RenameUser:
+        ret = access_control::resolve_account_rename(node, params, stmt);
         break;
       case peg::NodeKind::SetPassword:
         ret = access_control::resolve_password(node, params, stmt);

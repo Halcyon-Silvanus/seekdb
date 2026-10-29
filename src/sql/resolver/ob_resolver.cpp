@@ -501,6 +501,7 @@ int ObResolver::resolve(const peg::Node &statement, ObStmt *&stmt)
       case peg::NodeKind::CreateUser:
       case peg::NodeKind::DropUser:
       case peg::NodeKind::LockUser:
+      case peg::NodeKind::RenameUser:
       case peg::NodeKind::SetPassword:
       case peg::NodeKind::CreateRole:
       case peg::NodeKind::DropRole:

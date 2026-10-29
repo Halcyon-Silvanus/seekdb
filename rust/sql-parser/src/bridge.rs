@@ -717,6 +717,8 @@ pub(crate) mod ffi {
         CreateUser,
         DropUser,
         LockUser,
+        RenameUser,
+        AccountRename,
         MaxConnectionsPerHour,
         MaxUserConnections,
         CreateRole,
@@ -2258,6 +2260,9 @@ pub(crate) mod ffi {
         fn access_options(statement: &Node) -> AccessOptions;
         fn account_limits(statement: &Node) -> AccountLimits;
         fn access_accounts(statement: &Node) -> &[Node];
+        fn account_renames(statement: &Node) -> &[Node];
+        fn account_rename_source(rename: &Node) -> &Node;
+        fn account_rename_target(rename: &Node) -> &Node;
         fn access_roles(statement: &Node) -> &[Node];
         fn access_privileges(statement: &Node) -> &[Node];
         fn access_role_selection(statement: &Node) -> RoleSelection;
@@ -2528,7 +2533,8 @@ use crate::access::{
     access_accounts, access_options, access_privileges, access_role_selection, access_roles,
     access_target, access_target_database, access_target_object, account_authentication,
     account_has_host, account_has_plugin, account_host, account_identity, account_kind, account_limits,
-    account_name, account_name_form, account_password, account_plugin, privilege_columns,
+    account_name, account_name_form, account_password, account_plugin, account_rename_source,
+    account_rename_target, account_renames, privilege_columns,
     privilege_name,
 };
 use crate::load_data::{load_data_definition, load_format_option};

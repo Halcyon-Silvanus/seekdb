@@ -2193,6 +2193,10 @@ peg::parser! {
                 children.extend(limits.into_iter().flatten());
                 Node::new(Kind::CreateUser,children)
             }
+            / kw("rename") kw("user") pairs:(
+                source:user_spec(false) kw("to") target:user_spec(false) {
+                    Node::new(Kind::AccountRename,vec![source,target])
+                }) ++ ("," _) { Node::new(Kind::RenameUser,pairs) }
             / kw("drop") kw("user") exists:if_exists()? users:accounts() {
                 let mut children=vec![users];
                 children.extend(exists);

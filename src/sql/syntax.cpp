@@ -67,6 +67,7 @@ std::optional<NativeStatementTraits> native_statement_traits(Kind kind)
     case Kind::CreateUser: return NativeStatementTraits{stmt::T_CREATE_USER, false, true};
     case Kind::DropUser: return NativeStatementTraits{stmt::T_DROP_USER, false, true};
     case Kind::LockUser: return NativeStatementTraits{stmt::T_LOCK_USER, false, true};
+    case Kind::RenameUser: return NativeStatementTraits{stmt::T_RENAME_USER, false, true};
     case Kind::SetPassword: return NativeStatementTraits{stmt::T_SET_PASSWORD, false, true};
     case Kind::CreateRole: return NativeStatementTraits{stmt::T_CREATE_ROLE, false, false};
     case Kind::DropRole: return NativeStatementTraits{stmt::T_DROP_ROLE, false, false};
