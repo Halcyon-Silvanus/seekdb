@@ -1032,9 +1032,10 @@ peg::parser! {
                     Node::new(Kind::UnionMerge,vec![Node::optional(qb),table,
                         Node::list(Kind::Names,names.into_iter().map(Node::name).collect())])
                 }
-            / kind:(kw("index") { Kind::IndexScan } / kw("index_asc") { Kind::IndexAsc } / kw("index_desc") { Kind::IndexDesc })
+            / kind:(kw("index") { Kind::IndexScan } / kw("no_index") { Kind::NoIndex }
+                / kw("index_asc") { Kind::IndexAsc } / kw("index_desc") { Kind::IndexDesc })
                 "(" _ qb:hint_qb()? table:hint_relation() ("," _)? index:hint_name()
-                prefix:(negative:("-" _)? value:type_size() {
+                prefix:(enabled(kind!=Kind::NoIndex) negative:("-" _)? value:type_size() {
                     let mut value=value;if negative.is_some() { value.value=value.value.wrapping_neg(); } value
                 })? ")" _ { Node::new(kind,vec![Node::optional(qb),table,Node::name(index),Node::optional(prefix)]) }
             / kind:(kw("use_nl") { Kind::UseNl } / kw("no_use_nl") { Kind::NoUseNl }

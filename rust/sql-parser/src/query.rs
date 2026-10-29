@@ -585,6 +585,7 @@ fn query_block(hint: &Node) -> Option<&Node> {
             | Kind::UseDas
             | Kind::NoUseDas
             | Kind::IndexScan
+            | Kind::NoIndex
             | Kind::IndexAsc
             | Kind::IndexDesc
             | Kind::UnionMerge

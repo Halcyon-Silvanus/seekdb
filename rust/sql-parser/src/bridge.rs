@@ -870,6 +870,7 @@ pub(crate) mod ffi {
         DbmsStats,
         FullScan,
         IndexScan,
+        NoIndex,
         IndexAsc,
         IndexDesc,
         UnionMerge,

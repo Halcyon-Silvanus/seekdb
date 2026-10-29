@@ -6798,6 +6798,7 @@ ObItemType semantic_hint_type(peg::NodeKind kind)
     case peg::NodeKind::IndexAsc: return T_INDEX_ASC_HINT;
     case peg::NodeKind::IndexDesc: return T_INDEX_DESC_HINT;
     case peg::NodeKind::IndexScan: return T_INDEX_HINT;
+    case peg::NodeKind::NoIndex: return T_NO_INDEX_HINT;
     case peg::NodeKind::UnionMerge: return T_UNION_MERGE_HINT;
     case peg::NodeKind::Inline: return T_INLINE;
     case peg::NodeKind::JoinFirstUnnest: return T_JOIN_FIRST_UNNEST;
@@ -7315,6 +7316,7 @@ int ObDMLResolver::resolve_optimize_hint(const peg::Node &hint_node,
     case peg::NodeKind::UseDas:
     case peg::NodeKind::NoUseDas:
     case peg::NodeKind::IndexScan:
+    case peg::NodeKind::NoIndex:
     case peg::NodeKind::IndexAsc:
     case peg::NodeKind::IndexDesc:
       OZ(resolve_index_hint(hint_node, opt_hint));
