@@ -33,6 +33,7 @@
 #include "sql/engine/expr/ob_obj_cast_runtime.h"
 #include "sql/pl/ob_pl_exception_handling.h"
 #include "sql/engine/ob_physical_plan.h"
+#include <vector>
 
 namespace oceanbase
 {
@@ -1845,6 +1846,36 @@ int ObSPIService::spi_prepare(common::ObIAllocator &allocator,
   return ret;
 }
 
+namespace {
+int bind_embedded_sql(const ParsedSql &parsed, const ObPLBlockNS &ns,
+                      ObIAllocator &allocator, ObString &sql,
+                      ObIArray<const peg::Node *> &bindings)
+{
+  int ret = OB_SUCCESS;
+  const auto source = parsed.source();
+  const rust::Str text(source.ptr(), source.length());
+  std::vector<peg::SqlSymbolBinding> symbols;
+  for (const auto &symbol : peg::embedded_sql_symbols(*parsed.statement(), text)) {
+    uint64_t parent = OB_INVALID_ID;
+    int64_t index = OB_INVALID_INDEX;
+    ObPLExternalNS::ExternalType type = ObPLExternalNS::INVALID_VAR;
+    ObPLDataType datatype;
+    const ObString name(symbol.name.size(), symbol.name.data());
+    if (OB_FAIL(ns.resolve_symbol(name, type, datatype, parent, index))) { return ret; }
+    if (type == ObPLExternalNS::LOCAL_VAR && !datatype.is_cursor_type()) {
+      symbols.push_back({symbol.node, index});
+    }
+  }
+  auto rewritten = peg::rewrite_embedded_sql(*parsed.statement(), text,
+      rust::Slice<const peg::SqlSymbolBinding>(symbols.data(), symbols.size()));
+  OZ (ob_write_string(allocator, ObString(rewritten.sql.size(), rewritten.sql.data()), sql));
+  for (const auto &binding : rewritten.bindings) {
+    OZ (bindings.push_back(&binding.node));
+  }
+  return ret;
+}
+}
+
 int ObSPIService::spi_parse_prepare(common::ObIAllocator &allocator,
                                     ObSQLSessionInfo &session,
                                     ObMySQLProxy &sql_proxy,
@@ -1862,9 +1893,9 @@ int ObSPIService::spi_parse_prepare(common::ObIAllocator &allocator,
     ObParser parser(allocator, session.get_sql_mode(), session.get_charsets4parser());
     ParsedSql parsed;
     ObSEArray<const peg::Node *, 8> bindings;
-    ParseResult &parse_result = parsed.metadata();
-    if (OB_FAIL(parser.prepare_parse(sql, static_cast<void*>(secondary_namespace), parsed, bindings))) {
-    } else if (OB_FAIL(ob_write_string(allocator, ObString(parse_result.no_param_sql_len_, parse_result.no_param_sql_), prepare_result.route_sql_))) {
+    if (OB_FAIL(parser.parse(sql, parsed))) {
+    } else if (OB_FAIL(bind_embedded_sql(parsed, *secondary_namespace, allocator,
+                                        prepare_result.route_sql_, bindings))) {
     } else {
       PLPrepareCtx pl_prepare_ctx(session, NULL, false, false, false);
       SMART_VAR(PLPrepareResult, pl_prepare_result) {

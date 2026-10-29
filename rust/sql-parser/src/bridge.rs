@@ -1320,6 +1320,18 @@ pub(crate) mod ffi {
         kind: SqlReferenceKind,
         node: &'a Node,
     }
+    struct SqlSymbol<'a> {
+        node: &'a Node,
+        name: String,
+    }
+    struct SqlSymbolBinding<'a> {
+        node: &'a Node,
+        parameter: i64,
+    }
+    struct EmbeddedSql<'a> {
+        sql: String,
+        bindings: Vec<SqlReference<'a>>,
+    }
     enum TableSelectMode {
         None,
         Select,
@@ -1615,6 +1627,12 @@ pub(crate) mod ffi {
         fn alter_charset_has_collation(node: &Node) -> bool;
         fn alter_charset_collation(node: &Node) -> &Node;
         unsafe fn embedded_sql_references<'a>(statement: &'a Node) -> Vec<SqlReference<'a>>;
+        unsafe fn embedded_sql_symbols<'a>(statement: &'a Node, sql: &str) -> Vec<SqlSymbol<'a>>;
+        unsafe fn rewrite_embedded_sql<'a>(
+            statement: &'a Node,
+            sql: &str,
+            symbols: &[SqlSymbolBinding],
+        ) -> EmbeddedSql<'a>;
         fn transaction_setting(statement: &Node) -> TransactionSetting;
         fn empty_query_has_comment(statement: &Node) -> bool;
         fn freeze_is_major(statement: &Node) -> bool;
@@ -2304,6 +2322,7 @@ use crate::ddl::partition_element_values;
 
 use crate::ddl::{alter_index_name, alter_index_new_name, alter_table_options};
 use crate::inspect::syntax_literals;
+use crate::embedded_sql::{embedded_sql_symbols, rewrite_embedded_sql};
 
 use crate::ddl::{
     index_column_has_direction, index_hints, primary_key_comment, primary_key_has_comment,

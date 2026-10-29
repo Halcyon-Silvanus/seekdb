@@ -110,8 +110,6 @@ public:
   virtual void free_result(ParseResult &parse_result);
   int parse_expression(const common::ObString &text, ParsedSql &parsed,
                        bool is_for_trigger = false);
-  int prepare_parse(const common::ObString &query, void *ns, ParsedSql &parsed,
-                    common::ObIArray<const peg::Node *> &bindings);
   static int pre_parse(const common::ObString &stmt,
                        PreParseResult &res);
 

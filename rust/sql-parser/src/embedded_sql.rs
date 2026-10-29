@@ -1,0 +1,142 @@
+// Copyright (c) 2026 OceanBase.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+use std::collections::HashMap;
+
+use crate::bridge::ffi::{
+    AliasForm, EmbeddedSql, SqlReference, SqlReferenceKind as Role, SqlSymbol, SqlSymbolBinding,
+};
+use crate::inspect::embedded_sql_references;
+use crate::node::{Kind, Node};
+use crate::query::{name_is_wildcard, name_parts, projection_alias_form, projection_expression};
+
+pub(crate) fn embedded_sql_symbols<'a>(statement: &'a Node, sql: &str) -> Vec<SqlSymbol<'a>> {
+    let mut symbols = Vec::new();
+    for reference in embedded_sql_references(statement) {
+        let node = reference.node;
+        if reference.kind == Role::Column && !name_is_wildcard(node) {
+            let names = name_parts(node);
+            if names.len() == 1 {
+                symbols.push(SqlSymbol {
+                    node,
+                    name: names[0].text.clone(),
+                });
+            }
+        } else if reference.kind == Role::Projection
+            && projection_alias_form(node) == AliasForm::Absent
+        {
+            let expression = projection_expression(node);
+            if expression.kind == Kind::Column && !name_is_wildcard(expression) {
+                symbols.push(SqlSymbol {
+                    node,
+                    name: sql[node.start..node.end].into(),
+                });
+            }
+        }
+    }
+    symbols
+}
+
+enum Replacement<'a> {
+    Parameter(&'a Node, i64),
+    TriggerColumn(&'a Node),
+    Alias(&'a Node),
+    Into,
+}
+
+pub(crate) fn rewrite_embedded_sql<'a>(
+    statement: &'a Node,
+    sql: &str,
+    symbols: &[SqlSymbolBinding<'_>],
+) -> EmbeddedSql<'a> {
+    let parameters: HashMap<*const Node, i64> = symbols
+        .iter()
+        .map(|binding| (binding.node as *const Node, binding.parameter))
+        .collect();
+    let mut replacements = Vec::new();
+    for reference in embedded_sql_references(statement) {
+        let node = reference.node;
+        match reference.kind {
+            Role::Into => replacements.push((node.start, node.end, Replacement::Into)),
+            Role::Column if !name_is_wildcard(node) => {
+                let names = name_parts(node);
+                if names.len() == 2
+                    && (names[0].text.eq_ignore_ascii_case("NEW")
+                        || names[0].text.eq_ignore_ascii_case("OLD"))
+                {
+                    replacements.push((node.start, node.end, Replacement::TriggerColumn(node)));
+                } else if let Some(&index) = parameters.get(&(node as *const Node)) {
+                    replacements.push((node.start, node.end, Replacement::Parameter(node, index)));
+                }
+            }
+            Role::Projection if projection_alias_form(node) == AliasForm::Absent => {
+                let expression = projection_expression(node);
+                let alias = match expression.kind {
+                    Kind::String | Kind::Star => false,
+                    Kind::Column => parameters.contains_key(&(node as *const Node)),
+                    _ => true,
+                };
+                if alias {
+                    replacements.push((node.end, node.end, Replacement::Alias(node)));
+                }
+            }
+            _ => {}
+        }
+    }
+    replacements.sort_by_key(|replacement| replacement.0);
+    let mut output = String::with_capacity(sql.len());
+    let mut bindings = Vec::new();
+    let mut offset = 0;
+    for (start, end, replacement) in replacements {
+        output.push_str(&sql[offset..start]);
+        match replacement {
+            Replacement::Parameter(node, index) => {
+                output.push(':');
+                output.push_str(&index.to_string());
+                bindings.push(SqlReference {
+                    kind: Role::Column,
+                    node,
+                });
+            }
+            Replacement::TriggerColumn(node) => {
+                let names = name_parts(node);
+                output.push(':');
+                output.push_str(&names[0].text);
+                output.push('.');
+                output.push_str(&names[1].text);
+                bindings.push(SqlReference {
+                    kind: Role::Column,
+                    node,
+                });
+            }
+            Replacement::Alias(node) => {
+                output.push_str(" AS `");
+                for ch in sql[node.start..node.end].chars() {
+                    output.push(ch);
+                    if ch == '`' {
+                        output.push('`');
+                    }
+                }
+                output.push_str("` ");
+            }
+            Replacement::Into => {}
+        }
+        offset = end;
+    }
+    output.push_str(&sql[offset..]);
+    EmbeddedSql {
+        sql: output,
+        bindings,
+    }
+}

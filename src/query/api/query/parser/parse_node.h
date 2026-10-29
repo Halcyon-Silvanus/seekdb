@@ -116,9 +116,6 @@ int64_t ob_parse_bit_string_len(int64_t len);
 
 extern int64_t get_question_mark(ObQuestionMarkCtx *ctx, void *malloc_pool, const char *name);
 
-// Find the interface for external pl variables, get the index of the variable in the external symbol table, defined in ob_pl_stmt.cpp
-int lookup_pl_symbol(const void *pl_ns, const char *symbol, size_t len, int64_t *find_idx);
-
 #ifdef __cplusplus
 }
 #endif

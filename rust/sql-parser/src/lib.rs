@@ -16,6 +16,7 @@ mod access;
 mod bridge;
 mod command;
 mod ddl;
+mod embedded_sql;
 mod expression;
 mod fts;
 mod grammar;
