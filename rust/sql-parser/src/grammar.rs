@@ -1934,6 +1934,9 @@ peg::parser! {
             match second { Some(second) => Node::new(Kind::ShowLimit,vec![first,second]),
                 None => Node::new(Kind::ShowLimit,vec![Node::missing(),first]) }
         }
+        rule show_modifiers() -> u64 = extended:kw("extended")? full:kw("full")? {
+            u64::from(full.is_some()) | (u64::from(extended.is_some()) << 1)
+        }
         rule show_body() -> Node
             = kw("grants") user:(kw("for") value:(kw("current_user") ("(" _ ")" _)? { Node::missing() } / account()) { value })? { Node::new(Kind::ShowGrants,vec![Node::optional(user),Node::missing()]) }
             / kw("parameters") condition:show_condition()? { Node::new(Kind::ShowParameters,vec![Node::optional(condition),Node::missing()]) }
@@ -1946,8 +1949,8 @@ peg::parser! {
             / (kw("databases") / kw("schemas")) status:kw("status")? condition:show_condition()? {
                 Node::new(Kind::ShowDatabases,vec![Node::optional(condition),Node::missing()]).value(u64::from(status.is_some()))
             }
-            / full:kw("full")? kw("tables") database:show_database()? condition:show_condition()? {
-                Node::new(Kind::ShowTables,vec![Node::optional(database),Node::optional(condition),Node::new(Kind::Int,vec![]).value(u64::from(full.is_some()))])
+            / modifiers:show_modifiers() kw("tables") database:show_database()? condition:show_condition()? {
+                Node::new(Kind::ShowTables,vec![Node::optional(database),Node::optional(condition),Node::new(Kind::Int,vec![]).value(modifiers)])
             }
             / kind:(kw("table") kw("status") { Kind::ShowTableStatus }
                 / kw("procedure") kw("status") { Kind::ShowProcedureStatus }
@@ -1964,8 +1967,8 @@ peg::parser! {
             / kw("open") kw("tables") show_database()? condition:show_condition()? {
                 Node::new(Kind::ShowOpenTables,vec![Node::optional(condition)])
             }
-            / full:kw("full")? (kw("columns") / kw("fields")) (kw("from") / kw("in")) table:name() database:show_database()? condition:show_condition()? {?
-                Ok(Node::new(Kind::ShowColumns,vec![Node::new(Kind::Int,vec![]).value(u64::from(full.is_some())),Node::relation(table)?,Node::optional(database),Node::optional(condition)]))
+            / modifiers:show_modifiers() (kw("columns") / kw("fields")) (kw("from") / kw("in")) table:name() database:show_database()? condition:show_condition()? {?
+                Ok(Node::new(Kind::ShowColumns,vec![Node::new(Kind::Int,vec![]).value(modifiers),Node::relation(table)?,Node::optional(database),Node::optional(condition)]))
             }
             / scope:scope()? kw("variables") condition:show_condition()? {
                 Node::new(Kind::ShowVariables,vec![Node::new(Kind::Int,vec![]).value(scope.unwrap_or(0)),Node::optional(condition)])

@@ -152,8 +152,8 @@ pub(crate) fn tracepoint_value(option: &Node) -> &Node {
 
 pub(crate) fn show_full(statement: &Node) -> bool {
     match statement.kind {
-        Kind::ShowTables => statement.children[2].value != 0,
-        Kind::ShowColumns | Kind::ShowProcesslist => statement.children[0].value != 0,
+        Kind::ShowTables => statement.children[2].value & 1 != 0,
+        Kind::ShowColumns | Kind::ShowProcesslist => statement.children[0].value & 1 != 0,
         _ => false,
     }
 }
@@ -164,7 +164,12 @@ pub(crate) fn show_count(statement: &Node) -> bool {
     matches!(statement.kind, Kind::ShowWarnings | Kind::ShowErrors) && statement.value != 0
 }
 pub(crate) fn show_extended(statement: &Node) -> bool {
-    statement.kind == Kind::ShowIndexes && statement.children[3].value != 0
+    match statement.kind {
+        Kind::ShowTables => statement.children[2].value & 2 != 0,
+        Kind::ShowColumns => statement.children[0].value & 2 != 0,
+        Kind::ShowIndexes => statement.children[3].value != 0,
+        _ => false,
+    }
 }
 pub(crate) fn show_global(statement: &Node) -> bool {
     matches!(statement.kind, Kind::ShowVariables | Kind::ShowStatus) && statement.children[0].value == 1

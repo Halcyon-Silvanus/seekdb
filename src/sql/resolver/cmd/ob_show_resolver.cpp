@@ -264,9 +264,15 @@ int ObShowResolver::resolve(const peg::Node &statement)
           statement.kind(), database, database_id, table, table_id, is_view));
       if (statement.kind() == peg::NodeKind::ShowColumns) {
         show_resv_ctx.stmt_type_ = stmt::T_SHOW_COLUMNS;
-        if (peg::show_full(statement)) {
+        if (peg::show_full(statement) && peg::show_extended(statement)) {
+          GEN_SQL_STEP_1(ObShowSqlSet::SHOW_EXTENDED_FULL_COLUMNS);
+          GEN_SQL_STEP_2(ObShowSqlSet::SHOW_EXTENDED_FULL_COLUMNS, OB_SYS_DATABASE_NAME, OB_ALL_VIRTUAL_TABLE_COLUMN_TNAME, table_id);
+        } else if (peg::show_full(statement)) {
           GEN_SQL_STEP_1(ObShowSqlSet::SHOW_FULL_COLUMNS);
           GEN_SQL_STEP_2(ObShowSqlSet::SHOW_FULL_COLUMNS, OB_SYS_DATABASE_NAME, OB_ALL_VIRTUAL_TABLE_COLUMN_TNAME, table_id);
+        } else if (peg::show_extended(statement)) {
+          GEN_SQL_STEP_1(ObShowSqlSet::SHOW_EXTENDED_COLUMNS);
+          GEN_SQL_STEP_2(ObShowSqlSet::SHOW_EXTENDED_COLUMNS, OB_SYS_DATABASE_NAME, OB_ALL_VIRTUAL_TABLE_COLUMN_TNAME, table_id);
         } else {
           GEN_SQL_STEP_1(ObShowSqlSet::SHOW_COLUMNS);
           GEN_SQL_STEP_2(ObShowSqlSet::SHOW_COLUMNS, OB_SYS_DATABASE_NAME, OB_ALL_VIRTUAL_TABLE_COLUMN_TNAME, table_id);
