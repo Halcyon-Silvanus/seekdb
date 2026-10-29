@@ -445,6 +445,8 @@ pub(crate) mod ffi {
         UniqueKey,
         AutoIncrement,
         ColumnDefault,
+        ColumnVisible,
+        ColumnInvisible,
         ColumnSkipIndex,
         SkipIndexMinMax,
         SkipIndexSum,

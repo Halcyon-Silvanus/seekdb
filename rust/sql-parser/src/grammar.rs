@@ -1224,6 +1224,8 @@ peg::parser! {
         rule generated_column_attribute() -> Node
             = kw("not") kw("null") { Node::new(Kind::NotNull, vec![]) }
             / kw("null") { Node::new(Kind::Nullable, vec![]) }
+            / kw("visible") { Node::new(Kind::ColumnVisible, vec![]) }
+            / kw("invisible") { Node::new(Kind::ColumnInvisible, vec![]) }
             / kw("primary")? kw("key") { Node::new(Kind::ColumnPrimaryKey, vec![]) }
             / kw("unique") kw("key")? { Node::new(Kind::UniqueKey, vec![]) }
             / kw("comment") value:string() { Node::new(Kind::ColumnComment, vec![value]) }

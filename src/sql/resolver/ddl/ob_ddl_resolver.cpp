@@ -1305,6 +1305,21 @@ int ObDDLResolver::resolve_column_definition(ObColumnSchemaV2 &column,
                                                          allow_has_default))) {
       }
     }
+    for (size_t i = 0; OB_SUCC(ret) && i < attributes.size(); ++i) {
+      const auto kind = attributes[i].kind();
+      if (kind == peg::NodeKind::ColumnVisible || kind == peg::NodeKind::ColumnInvisible) {
+        if (is_modify_column) { is_modify_column_visibility = true; }
+        if (kind == peg::NodeKind::ColumnInvisible) {
+          if (is_modify_column && is_sys_database_id(table_schema.get_database_id())) {
+            ret = OB_ERR_MODIFY_COL_VISIBILITY_BY_SYS_USER;
+          } else {
+            column.add_column_flag(INVISIBLE_COLUMN_FLAG);
+          }
+        } else {
+          column.del_column_flag(INVISIBLE_COLUMN_FLAG);
+        }
+      }
+    }
   }
   return ret;
 }
@@ -1580,6 +1595,9 @@ int ObDDLResolver::resolve_normal_column_attribute(ObColumnSchemaV2 &column,
         }
         break;
       }
+      case peg::NodeKind::ColumnVisible:
+      case peg::NodeKind::ColumnInvisible:
+        break;
       default:  // won't be here
         ret = OB_ERR_PARSER_SYNTAX;
         SQL_RESV_LOG(WARN, "Wrong column attribute", K(ret), "kind", static_cast<int>(attribute.kind()));
@@ -1727,6 +1745,9 @@ int ObDDLResolver::resolve_generated_column_attribute(ObColumnSchemaV2 &column,
       SQL_RESV_LOG(WARN, "Wrong column attribute", K(ret), "kind", static_cast<int>(attribute.kind()));
       break;
     }
+    case peg::NodeKind::ColumnVisible:
+    case peg::NodeKind::ColumnInvisible:
+      break;
     default:  // won't be here
       ret = OB_ERR_PARSER_SYNTAX;
       SQL_RESV_LOG(WARN, "Wrong column attribute", K(ret), "kind", static_cast<int>(attribute.kind()));
