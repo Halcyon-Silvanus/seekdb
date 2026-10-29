@@ -569,6 +569,10 @@ fn query_block(hint: &Node) -> Option<&Node> {
         Kind::QbName
             | Kind::Leading
             | Kind::PqDistribute
+            | Kind::JoinFilter
+            | Kind::NoJoinFilter
+            | Kind::PartJoinFilter
+            | Kind::NoPartJoinFilter
             | Kind::PqMap
             | Kind::PqSet
             | Kind::PqGroupBy
@@ -643,6 +647,18 @@ pub(crate) fn hint_table_has_query_block(table: &Node) -> bool {
 }
 pub(crate) fn hint_table_query_block(table: &Node) -> &Node {
     &table.children[1]
+}
+pub(crate) fn hint_filter_table(hint: &Node) -> &Node {
+    &hint.children[1]
+}
+pub(crate) fn hint_filter_left_tables(hint: &Node) -> &[Node] {
+    if hint.children[2].kind == Kind::Missing { &[] } else { &hint.children[2..3] }
+}
+pub(crate) fn hint_filter_has_pushdown_table(hint: &Node) -> bool {
+    hint.children[3].kind != Kind::Missing
+}
+pub(crate) fn hint_filter_pushdown_table(hint: &Node) -> &Node {
+    &hint.children[3]
 }
 pub(crate) fn hint_leading(hint: &Node) -> &Node {
     &hint.children[1]

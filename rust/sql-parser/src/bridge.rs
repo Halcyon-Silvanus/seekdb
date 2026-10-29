@@ -561,6 +561,10 @@ pub(crate) mod ffi {
         HashSet,
         NoHashSet,
         PqDistribute,
+        JoinFilter,
+        NoJoinFilter,
+        PartJoinFilter,
+        NoPartJoinFilter,
         PqMap,
         PqSet,
         DistributeMethods,
@@ -2399,6 +2403,10 @@ pub(crate) mod ffi {
         fn hint_table_relation(table: &Node) -> &Node;
         fn hint_table_has_query_block(table: &Node) -> bool;
         fn hint_table_query_block(table: &Node) -> &Node;
+        fn hint_filter_table(hint: &Node) -> &Node;
+        fn hint_filter_left_tables(hint: &Node) -> &[Node];
+        fn hint_filter_has_pushdown_table(hint: &Node) -> bool;
+        fn hint_filter_pushdown_table(hint: &Node) -> &Node;
         fn hint_leading(hint: &Node) -> &Node;
         fn hint_leading_group(group: &Node) -> &[Node];
         fn hint_query_block_groups(hint: &Node) -> &[Node];
@@ -2486,6 +2494,7 @@ fn parse_sql(sql: &[u8], mode: SqlMode, parse_mode: ffi::ParseMode) -> Box<Parse
 
 use crate::query::{
     hint_operator_ids,
+    hint_filter_table, hint_filter_left_tables, hint_filter_has_pushdown_table, hint_filter_pushdown_table,
     assignment_target, assignment_value, collection_table_expression, unnest_arguments, cte_columns, cte_name,
     cte_query, delete_targets, explain_display, explain_format, explain_has_into_table,
     explain_has_statement_id, explain_into_table, explain_statement, explain_statement_id,

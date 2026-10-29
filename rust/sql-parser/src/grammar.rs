@@ -880,6 +880,13 @@ peg::parser! {
                     let (outer,inner)=methods.unwrap_or_else(|| (Node::missing(),Node::missing()));
                     Node::new(Kind::PqDistribute,vec![Node::optional(qb),tables,outer,inner])
                 }
+            / kind:(kw("px_join_filter") { Kind::JoinFilter } / kw("no_px_join_filter") { Kind::NoJoinFilter }
+                / kw("px_part_join_filter") { Kind::PartJoinFilter } / kw("no_px_part_join_filter") { Kind::NoPartJoinFilter })
+                "(" _ qb:hint_qb()? table:hint_relation()
+                build:(tables:hint_join_item() target:hint_relation()? { (tables,target) })? ")" _ {
+                    let (tables,target)=build.map_or((None,None),|(tables,target)| (Some(tables),target));
+                    Node::new(kind,vec![Node::optional(qb),table,Node::optional(tables),Node::optional(target)])
+                }
             / kw("pq_map") "(" _ qb:hint_qb()? tables:hint_join_item() ")" _ { Node::new(Kind::PqMap,vec![Node::optional(qb),tables]) }
             / kw("pq_set") "(" _ qb:hint_qb() target:(!distribute_method() value:hint_qb_name() { value })?
                 methods:(distribute_method() ** (("," _)?)) ")" _ { Node::new(Kind::PqSet,vec![qb,Node::optional(target),Node::list(Kind::DistributeMethods,methods)]) }

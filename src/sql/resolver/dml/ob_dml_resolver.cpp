@@ -6849,6 +6849,10 @@ ObItemType semantic_hint_type(peg::NodeKind kind)
     case peg::NodeKind::PqDistinct: return T_PQ_DISTINCT_HINT;
     case peg::NodeKind::PqDistribute: return T_PQ_DISTRIBUTE;
     case peg::NodeKind::PqGroupBy: return T_PQ_GBY_HINT;
+    case peg::NodeKind::JoinFilter: return T_PX_JOIN_FILTER;
+    case peg::NodeKind::NoJoinFilter: return T_NO_PX_JOIN_FILTER;
+    case peg::NodeKind::PartJoinFilter: return T_PX_PART_JOIN_FILTER;
+    case peg::NodeKind::NoPartJoinFilter: return T_NO_PX_PART_JOIN_FILTER;
     case peg::NodeKind::PqMap: return T_PQ_MAP;
     case peg::NodeKind::PqSet: return T_PQ_SET;
     case peg::NodeKind::PredicateDeduce: return T_PRED_DEDUCE;
@@ -7309,6 +7313,12 @@ int ObDMLResolver::resolve_optimize_hint(const peg::Node &hint_node,
     case peg::NodeKind::Leading:
       OZ(resolve_join_order_hint(hint_node, opt_hint));
       break;
+    case peg::NodeKind::JoinFilter:
+    case peg::NodeKind::NoJoinFilter:
+    case peg::NodeKind::PartJoinFilter:
+    case peg::NodeKind::NoPartJoinFilter:
+      OZ(resolve_join_filter_hint(hint_node, opt_hint));
+      break;
     case peg::NodeKind::PqMap:
       OZ(resolve_pq_map_hint(hint_node, opt_hint));
       break;
@@ -7459,6 +7469,29 @@ int ObDMLResolver::resolve_join_hint(const peg::Node &hint_node, ObIArray<ObHint
         hint->set_qb_name(qb_name);
       }
     }
+  }
+  return ret;
+}
+
+int ObDMLResolver::resolve_join_filter_hint(const peg::Node &hint_node, ObOptHint *&opt_hint)
+{
+  int ret = OB_SUCCESS;
+  opt_hint = nullptr;
+  ObJoinFilterHint *hint = nullptr;
+  ObString qb_name;
+  OZ(resolve_qb_name_node(query_block_in_hint(hint_node), qb_name));
+  OZ(ObQueryHint::create_hint(allocator_, semantic_hint_type(hint_node.kind()), hint));
+  OZ(resolve_table_relation_in_hint(peg::hint_filter_table(hint_node), hint->get_filter_table()));
+  for (const auto &tables : peg::hint_filter_left_tables(hint_node)) {
+    OZ(resolve_simple_table_list_in_hint(tables, hint->get_left_tables()));
+  }
+  if (OB_SUCC(ret) && peg::hint_filter_has_pushdown_table(hint_node)) {
+    OZ(resolve_table_relation_in_hint(peg::hint_filter_pushdown_table(hint_node),
+                                    hint->get_pushdown_filter_table()));
+  }
+  if (OB_SUCC(ret)) {
+    hint->set_qb_name(qb_name);
+    opt_hint = hint;
   }
   return ret;
 }
