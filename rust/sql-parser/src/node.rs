@@ -485,11 +485,11 @@ impl Node {
         while self.kind == Kind::Parenthesized {
             self = self.children.pop().unwrap();
         }
-        if self.kind == Kind::Function
+        let unquoted = self.kind == Kind::Function
             && crate::expression::call_qualifiers(&self).is_empty()
             && crate::expression::call_name(&self).eq_ignore_ascii_case("json_unquote")
-            && crate::expression::call_arguments(&self).len() == 1
-        {
+            && crate::expression::call_arguments(&self).len() == 1;
+        if unquoted {
             self = self
                 .children
                 .into_iter()
@@ -502,8 +502,10 @@ impl Node {
                 self = self.children.pop().unwrap();
             }
         }
-        let mut children = if self.kind == Kind::Column {
+        let mut children = if self.kind == Kind::Column && !unquoted {
             vec![self, Self::new(Kind::HiddenString, vec![])]
+        } else if self.kind == Kind::JsonValue {
+            self.children.into_iter().take(2).collect()
         } else if self.kind == Kind::Function
             && crate::expression::call_qualifiers(&self).is_empty()
             && crate::expression::call_name(&self).eq_ignore_ascii_case("json_extract")
