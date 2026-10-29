@@ -4087,6 +4087,7 @@ int ObResolverUtils::resolve_data_type(const peg::Node &type_node,
                                        const bool convert_real_type_to_decimal /*false*/)
 {
   int ret = OB_SUCCESS;
+  ObCStringHelper identifier_text;
   const auto syntax = peg::type_syntax(type_node);
   const ObObjType object_type = type_object_type(syntax);
   if (OB_UNLIKELY(!ob_is_valid_obj_type(object_type))) {
@@ -4121,7 +4122,7 @@ int ObResolverUtils::resolve_data_type(const peg::Node &type_node,
       }
       if (precision > OB_MAX_INTEGER_DISPLAY_WIDTH) {
         ret = OB_ERR_TOO_BIG_DISPLAYWIDTH;
-        LOG_USER_ERROR(OB_ERR_TOO_BIG_DISPLAYWIDTH, ident_name.ptr(), OB_MAX_INTEGER_DISPLAY_WIDTH);
+        LOG_USER_ERROR(OB_ERR_TOO_BIG_DISPLAYWIDTH, identifier_text.convert(ident_name), OB_MAX_INTEGER_DISPLAY_WIDTH);
       } else {
         data_type.set_precision(precision);
         data_type.set_scale(0);
@@ -4134,7 +4135,7 @@ int ObResolverUtils::resolve_data_type(const peg::Node &type_node,
       {
         if (OB_UNLIKELY(scale > OB_MAX_DOUBLE_FLOAT_SCALE)) {
           ret = OB_ERR_TOO_BIG_SCALE;
-          LOG_USER_ERROR(OB_ERR_TOO_BIG_SCALE, scale, ident_name.ptr(), OB_MAX_DOUBLE_FLOAT_SCALE);
+          LOG_USER_ERROR(OB_ERR_TOO_BIG_SCALE, scale, identifier_text.convert(ident_name), OB_MAX_DOUBLE_FLOAT_SCALE);
         } else if (OB_UNLIKELY(OB_DECIMAL_NOT_SPECIFIED == scale &&
                               precision > OB_MAX_DOUBLE_FLOAT_PRECISION)) {
           ret = OB_ERR_COLUMN_SPEC;
@@ -4144,12 +4145,11 @@ int ObResolverUtils::resolve_data_type(const peg::Node &type_node,
                   (0 == scale && 0 == precision))) {
           ret = OB_ERR_TOO_BIG_DISPLAYWIDTH;
           LOG_USER_ERROR(OB_ERR_TOO_BIG_DISPLAYWIDTH,
-                        ident_name.ptr(),
+                        identifier_text.convert(ident_name),
                         OB_MAX_INTEGER_DISPLAY_WIDTH);
         } else if (OB_UNLIKELY(precision < scale)) {
           ret = OB_ERR_M_BIGGER_THAN_D;
-          ObCStringHelper helper;
-          LOG_USER_ERROR(OB_ERR_M_BIGGER_THAN_D, helper.convert(ident_name));
+          LOG_USER_ERROR(OB_ERR_M_BIGGER_THAN_D, identifier_text.convert(ident_name));
         } else {
           // mysql> create table t1(a decimal(0, 0));
           // mysql> desc t1;
@@ -4179,14 +4179,13 @@ int ObResolverUtils::resolve_data_type(const peg::Node &type_node,
     case ObNumberTC: {
       if (OB_UNLIKELY(precision > OB_MAX_DECIMAL_PRECISION)) {
         ret = OB_ERR_TOO_BIG_PRECISION;
-        LOG_USER_ERROR(OB_ERR_TOO_BIG_PRECISION, precision, ident_name.ptr(), OB_MAX_DECIMAL_PRECISION);
+        LOG_USER_ERROR(OB_ERR_TOO_BIG_PRECISION, precision, identifier_text.convert(ident_name), OB_MAX_DECIMAL_PRECISION);
       } else if (OB_UNLIKELY(scale > OB_MAX_DECIMAL_SCALE)) {
         ret = OB_ERR_TOO_BIG_SCALE;
-        LOG_USER_ERROR(OB_ERR_TOO_BIG_SCALE, scale, ident_name.ptr(), OB_MAX_DECIMAL_SCALE);
+        LOG_USER_ERROR(OB_ERR_TOO_BIG_SCALE, scale, identifier_text.convert(ident_name), OB_MAX_DECIMAL_SCALE);
       } else if (OB_UNLIKELY(precision < scale)) {
         ret = OB_ERR_M_BIGGER_THAN_D;
-        ObCStringHelper helper;
-        LOG_USER_ERROR(OB_ERR_M_BIGGER_THAN_D, helper.convert(ident_name));
+        LOG_USER_ERROR(OB_ERR_M_BIGGER_THAN_D, identifier_text.convert(ident_name));
       } else {
         // mysql> create table t1(a decimal(0, 0));
         // mysql> desc t1;
@@ -4227,7 +4226,7 @@ int ObResolverUtils::resolve_data_type(const peg::Node &type_node,
     case ObDateTimeTC:
       if (scale > OB_MAX_DATETIME_PRECISION) {
         ret = OB_ERR_TOO_BIG_PRECISION;
-        LOG_USER_ERROR(OB_ERR_TOO_BIG_PRECISION, scale, ident_name.ptr(), OB_MAX_DATETIME_PRECISION);
+        LOG_USER_ERROR(OB_ERR_TOO_BIG_PRECISION, scale, identifier_text.convert(ident_name), OB_MAX_DATETIME_PRECISION);
       } else {
         // TODO@nijia.nj Here precision should include one digit after the decimal point, ob_schema_macro_define.h also needs to be modified accordingly
         data_type.set_precision(static_cast<int16_t>(default_accuracy.get_precision() + scale));
@@ -4250,7 +4249,7 @@ int ObResolverUtils::resolve_data_type(const peg::Node &type_node,
     case ObTimeTC:
       if (scale > OB_MAX_DATETIME_PRECISION) {
         ret = OB_ERR_TOO_BIG_PRECISION;
-        LOG_USER_ERROR(OB_ERR_TOO_BIG_PRECISION, scale, ident_name.ptr(), OB_MAX_DATETIME_PRECISION);
+        LOG_USER_ERROR(OB_ERR_TOO_BIG_PRECISION, scale, identifier_text.convert(ident_name), OB_MAX_DATETIME_PRECISION);
       } else {
         if (scale < 0) {
           scale = default_accuracy.get_scale();
@@ -4269,7 +4268,7 @@ int ObResolverUtils::resolve_data_type(const peg::Node &type_node,
       data_type.set_length(length);
       if (length < -1) { // length is more than 32 bit
         ret = OB_ERR_TOO_LONG_COLUMN_LENGTH;
-        LOG_USER_ERROR(OB_ERR_TOO_LONG_COLUMN_LENGTH, ident_name.ptr(),
+        LOG_USER_ERROR(OB_ERR_TOO_LONG_COLUMN_LENGTH, identifier_text.convert(ident_name),
             static_cast<int>((ObVarcharType == data_type.get_obj_type())
                 ? OB_MAX_EXTENDED_VARCHAR_LENGTH :
                 (is_for_pl_type ? OB_MAX_EXTENDED_PL_CHAR_LENGTH_BYTE : OB_MAX_EXTENDED_CHAR_LENGTH_BYTE)));
@@ -4281,7 +4280,7 @@ int ObResolverUtils::resolve_data_type(const peg::Node &type_node,
         if (is_for_pl_type && ObVarcharType == data_type.get_obj_type()
                           && OB_MAX_MYSQL_VARCHAR_LENGTH < length) {
           ret = OB_ERR_TOO_LONG_COLUMN_LENGTH;
-          LOG_USER_ERROR(OB_ERR_TOO_LONG_COLUMN_LENGTH, ident_name.ptr(),
+          LOG_USER_ERROR(OB_ERR_TOO_LONG_COLUMN_LENGTH, identifier_text.convert(ident_name),
                         static_cast<int>(OB_MAX_MYSQL_VARCHAR_LENGTH));
         } else {
           data_type.set_charset_type(CHARSET_BINARY);
@@ -4292,7 +4291,7 @@ int ObResolverUtils::resolve_data_type(const peg::Node &type_node,
                                 && OB_MAX_CHAR_LENGTH < length) {
         // varchar length check , TODO:
         ret = OB_ERR_TOO_LONG_COLUMN_LENGTH;
-        LOG_USER_ERROR(OB_ERR_TOO_LONG_COLUMN_LENGTH, ident_name.ptr(),
+        LOG_USER_ERROR(OB_ERR_TOO_LONG_COLUMN_LENGTH, identifier_text.convert(ident_name),
                       static_cast<int>(OB_MAX_CHAR_LENGTH));
       } else {}
       break;
@@ -4333,7 +4332,7 @@ int ObResolverUtils::resolve_data_type(const peg::Node &type_node,
         ret = OB_ERR_UNEXPECTED;
       } else if (precision > OB_MAX_BIT_LENGTH) {
         ret = OB_ERR_TOO_BIG_DISPLAYWIDTH;
-        LOG_USER_ERROR(OB_ERR_TOO_BIG_DISPLAYWIDTH, ident_name.ptr(), OB_MAX_BIT_LENGTH);
+        LOG_USER_ERROR(OB_ERR_TOO_BIG_DISPLAYWIDTH, identifier_text.convert(ident_name), OB_MAX_BIT_LENGTH);
       } else if (0 == precision ) {//temporarily compatible with 5.6, will error in 5.7}
         data_type.set_precision(default_accuracy.get_precision());
         data_type.set_scale(default_accuracy.get_scale());
