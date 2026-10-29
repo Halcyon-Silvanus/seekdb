@@ -48,7 +48,8 @@ struct StatementLocation {
 StatementLocation statement_location(const ObString &source, const peg::Node &node)
 {
   StatementLocation location{};
-  for (uint64_t i = 0; i < node.start; ++i) {
+  const auto span = node.span();
+  for (uint64_t i = 0; i < span.start; ++i) {
     if (source.ptr()[i] == '\n') {
       ++location.first_line_;
       location.first_column_ = 0;
@@ -206,7 +207,7 @@ int ObPLResolver::init_default_expr(ObPLFunctionAST &func_ast,
     if (OB_FAIL(stmt_factory_.allocate(type, current_block_, stmt))) { \
       LOG_WARN("failed to alloc stmt", K(ret)); \
     } else if (OB_FAIL(SMART_CALL(resolve_func(parse_tree, static_cast<stmt_def*>(stmt), func)))) { \
-      LOG_WARN("failed to resolve pl stmt", K(parse_tree->kind), K(parse_tree), K(stmt), K(ret)); \
+      LOG_WARN("failed to resolve pl stmt", K(parse_tree->kind()), K(parse_tree), K(stmt), K(ret)); \
     } else if (type != PL_SQL) { \
       func.set_is_all_sql_stmt(false); \
     } \
@@ -246,8 +247,8 @@ int ObPLResolver::resolve(const ParsedSql &syntax, ObPLPackageAST &unit)
   source_ = syntax.source();
   resolve_ctx_.params_.syntax_ = &syntax;
   const peg::Node *definition = syntax.statement();
-  if (definition != nullptr && (definition->kind == peg::NodeKind::CreatePackage
-      || definition->kind == peg::NodeKind::CreatePackageBody)) {
+  if (definition != nullptr && (definition->kind() == peg::NodeKind::CreatePackage
+      || definition->kind() == peg::NodeKind::CreatePackageBody)) {
     definition = &peg::package_definition(*definition);
   }
   return resolve(definition, unit);
@@ -265,8 +266,8 @@ int ObPLResolver::resolve(const peg::Node *parse_tree, ObPLFunctionAST &func)
     ObString end_label;
     ObPLLabelTable *pl_label = NULL;
     int64_t label_idx = OB_INVALID_INDEX;
-    if (parse_tree->kind == peg::NodeKind::PlLabeledBlock
-        || parse_tree->kind == peg::NodeKind::PlLabeledControl) {
+    if (parse_tree->kind() == peg::NodeKind::PlLabeledBlock
+        || parse_tree->kind() == peg::NodeKind::PlLabeledControl) {
       OZ (resolve_ident(&peg::block_label(*parse_tree), label));
       OZ (labels.push_back(label));
       if (OB_SUCC(ret) && peg::block_has_end_label(*parse_tree)) {
@@ -277,7 +278,7 @@ int ObPLResolver::resolve(const peg::Node *parse_tree, ObPLFunctionAST &func)
         }
       }
       if (OB_SUCC(ret) && current_block_ != nullptr) {
-        const auto type = parse_tree->kind == peg::NodeKind::PlLabeledBlock
+        const auto type = parse_tree->kind() == peg::NodeKind::PlLabeledBlock
             ? ObPLLabelTable::LABEL_BLOCK : ObPLLabelTable::LABEL_CONTROL;
         OZ (current_block_->get_namespace().add_label(label, type, nullptr));
         pl_label = current_block_->get_namespace().get_label_table();
@@ -286,7 +287,7 @@ int ObPLResolver::resolve(const peg::Node *parse_tree, ObPLFunctionAST &func)
       parse_tree = &peg::labeled_body(*parse_tree);
     }
     if (OB_SUCC(ret)) {
-      switch (parse_tree->kind) {
+      switch (parse_tree->kind()) {
       case peg::NodeKind::PlBlock:
       case peg::NodeKind::PlStatements: {
         ObPLStmtBlock *block = nullptr;
@@ -656,7 +657,7 @@ int ObPLResolver::resolve(const peg::Node *parse_tree, ObPLPackageAST &package_a
   if (OB_ISNULL(parse_tree)) {
     ret = OB_INVALID_ARGUMENT;
   } else {
-    switch (parse_tree->kind) {
+    switch (parse_tree->kind()) {
     case peg::NodeKind::Package:
     case peg::NodeKind::PackageBody: {
       const auto declarations = peg::package_declarations(*parse_tree);
@@ -1657,7 +1658,7 @@ int ObPLResolver::resolve_sp_data_type(const peg::Node *sp_data_type_node,
   CK (OB_NOT_NULL(sp_data_type_node));
   CK (OB_NOT_NULL(current_block_));
   if (OB_SUCC(ret)) {
-    if (sp_data_type_node->kind == peg::NodeKind::RowType) {
+    if (sp_data_type_node->kind() == peg::NodeKind::RowType) {
       OZ (resolve_sp_row_type(sp_data_type_node, func, data_type, extern_type_info, with_rowid));
     } else {
       OX (data_type.set_enum_set_ctx(resolve_ctx_.enum_set_ctx_));
@@ -1755,10 +1756,10 @@ int ObPLResolver::resolve_declare_var_comm(const peg::Node *parse_tree,
     if (OB_SUCC(ret)) {
       if (OB_NOT_NULL(default_node)) { // The not null check for the default value is done at runtime, here we only parse the default value expression
 
-        if (OB_SUCC(ret) && not_null && peg::NodeKind::Null == default_node->kind) {
+        if (OB_SUCC(ret) && not_null && peg::NodeKind::Null == default_node->kind()) {
 	        ret = OB_ERR_EXPRESSION_WRONG_TYPE;
         }
-        if (OB_SUCC(ret) && not_null && peg::NodeKind::Parameter == default_node->kind) {
+        if (OB_SUCC(ret) && not_null && peg::NodeKind::Parameter == default_node->kind()) {
           int64_t idx = peg::placeholder_index(*default_node);
           const ObPLVar* var = current_block_->get_symbol_table()->get_symbol(idx);
           if (NULL != var &&
@@ -1821,13 +1822,14 @@ int ObPLResolver::resolve_declare_var_comm(const peg::Node *parse_tree,
       ObString name;
       for (int64_t i = 0; OB_SUCC(ret) && i < names.size(); ++i) {
         name.reset();
-        if (OB_UNLIKELY(names[i].text.size() >
+        const auto name_text = names[i].text();
+        if (OB_UNLIKELY(name_text.size() >
           (OB_MAX_MYSQL_PL_IDENT_LENGTH))) {
           ret = OB_ERR_IDENTIFIER_TOO_LONG;
           LOG_USER_ERROR(OB_ERR_IDENTIFIER_TOO_LONG,
-                         static_cast<int32_t>(names[i].text.size()),
-                         names[i].text.data());
-          LOG_WARN("identifier too long", K(names[i].text.data()));
+                         static_cast<int32_t>(name_text.size()),
+                         name_text.data());
+          LOG_WARN("identifier too long", K(name_text.data()));
         }
         OZ (resolve_ident(&names[i], name));
         if (OB_SUCC(ret) && OB_NOT_NULL(stmt)) {
@@ -1978,7 +1980,7 @@ int ObPLResolver::resolve_assign(const peg::Node *parse_tree, ObPLAssignStmt *st
         const peg::Node *into_node = &peg::assignment_target(assignments[i]);
         ObQualifiedName q_name;
         bool need_expect_type = true;
-        if (into_node->kind == peg::NodeKind::Parameter) {
+        if (into_node->kind() == peg::NodeKind::Parameter) {
           OZ (resolve_question_mark_node(into_node, into_expr));
         } else if (resolve_ctx_.session_info_.is_for_trigger_package()
                    && ObRawExprUtils::is_new_old_column_ref(*into_node)) {
@@ -1988,11 +1990,11 @@ int ObPLResolver::resolve_assign(const peg::Node *parse_tree, ObPLAssignStmt *st
                   *into_node, q_name, resolve_ctx_.session_info_));
         }
         if (OB_SUCC(ret)) {
-          if (peg::NodeKind::SystemVariable == into_node->kind) {
+          if (peg::NodeKind::SystemVariable == into_node->kind()) {
             q_name.access_idents_.at(0).access_index_ =
                 peg::VariableScope::Global == peg::setting_scope(assignments[i])
                 ? pl::ObPLExternalNS::GLOBAL_VAR : pl::ObPLExternalNS::SESSION_VAR;
-          } else if (peg::NodeKind::UserVariable == into_node->kind) {
+          } else if (peg::NodeKind::UserVariable == into_node->kind()) {
             q_name.access_idents_.at(0).access_index_ = pl::ObPLExternalNS::USER_VAR;
           }
         }
@@ -2090,7 +2092,7 @@ int ObPLResolver::resolve_assign(const peg::Node *parse_tree, ObPLAssignStmt *st
                               combine_line_and_col(*value_node),
                               false, need_expect_type ? expected_type : NULL));
               if (OB_SUCC(ret)
-                  && peg::NodeKind::Default == value_node->kind
+                  && peg::NodeKind::Default == value_node->kind()
                   && into_expr->get_expr_type() != T_OP_GET_SYS_VAR) {
                 ret = OB_NOT_SUPPORTED;
                 LOG_WARN("default value only used by system variables");
@@ -2315,7 +2317,7 @@ int ObPLResolver::resolve_then(const peg::Node *parse_tree,
       const peg::Node *then_node = &peg::control_body(*parse_tree);
       if (NULL == then_node) {
         ret = OB_ERR_UNEXPECTED;
-      } else if (peg::NodeKind::PlStatements != then_node->kind) {
+      } else if (peg::NodeKind::PlStatements != then_node->kind()) {
         ret = OB_ERR_UNEXPECTED;
       } else if (OB_FAIL(resolve_stmt_list(then_node, then_block, func))) {
       } else { /*do nothing*/ }
@@ -2519,13 +2521,13 @@ int ObPLResolver::resolve_static_sql(const peg::Node *parse_tree, ObPLSql &stati
   } else {
     pl::ObRecordType *record_type = NULL;
     const auto &statement = peg::routine_sql_statement(*parse_tree);
-    if (statement.kind == peg::NodeKind::Select
+    if (statement.kind() == peg::NodeKind::Select
         && (peg::query_into_variables(statement).empty() || is_cursor)) {
       record_type = OB_NEWx(ObRecordType, (&resolve_ctx_.allocator_));
       if (record_type == nullptr) { ret = OB_ALLOCATE_MEMORY_FAILED; }
       else { record_type->set_type_from(PL_TYPE_ATTR_ROWTYPE); }
     }
-    if (OB_SUCC(ret) && statement.kind == peg::NodeKind::Diagnostics
+    if (OB_SUCC(ret) && statement.kind() == peg::NodeKind::Diagnostics
         && peg::diagnostics_stacked(statement) && !current_block_->in_handler()) {
       ret = OB_ERR_GET_STACKED_DIAGNOSTICS;
     }
@@ -2557,7 +2559,7 @@ int ObPLResolver::resolve_static_sql(const peg::Node *parse_tree, ObPLSql &stati
       } else if (OB_FAIL(check_and_record_stmt_type(func, prepare_result))) {
       } else if (stmt::T_SET_PASSWORD == prepare_result.type_) {
           ret = OB_ERR_STMT_NOT_ALLOW_IN_MYSQL_PROCEDRUE;
-          LOG_WARN("set password in PL not allow", K(ret), K(statement.kind));
+          LOG_WARN("set password in PL not allow", K(ret), K(statement.kind()));
           LOG_USER_ERROR(OB_ERR_STMT_NOT_ALLOW_IN_MYSQL_PROCEDRUE, 12, "set PASSWORD");
       } else if (stmt::T_LOAD_DATA == prepare_result.type_) {
         name.assign_ptr("LOAD DATA", 9);
@@ -2695,7 +2697,8 @@ int ObPLResolver::resolve_interface_pragma(const peg::Node *parse_tree, ObPLPack
   }
   // resolve interface name
   if (OB_SUCC(ret)) {
-    OZ (ob_write_string(resolve_ctx_.allocator_, ObString(name_node.text.size(), name_node.text.data()), interface_name));
+    const auto name_node_text = name_node.text();
+    OZ (ob_write_string(resolve_ctx_.allocator_, ObString(name_node_text.size(), name_node_text.data()), interface_name));
     CK (!interface_name.empty());
   }
 
@@ -2761,7 +2764,8 @@ int ObPLResolver::resolve_interface(const peg::Node *parse_tree,
 
   // resolve interface name
   if (OB_SUCC(ret)) {
-    OZ (ob_write_string(resolve_ctx_.allocator_, ObString(name_node.text.size(), name_node.text.data()), interface_name));
+    const auto name_node_text = name_node.text();
+    OZ (ob_write_string(resolve_ctx_.allocator_, ObString(name_node_text.size(), name_node_text.data()), interface_name));
     CK (!interface_name.empty());
   }
 
@@ -2943,7 +2947,7 @@ int ObPLResolver::resolve_signal(const peg::Node *node, ObPLSignalStmt *stmt, Ob
   if (peg::signal_has_condition(*node)) {
     const auto &syntax = peg::signal_condition(*node);
     ObPLConditionValue condition;
-    if (syntax.kind == peg::NodeKind::Ident) {
+    if (syntax.kind() == peg::NodeKind::Ident) {
       const ObPLConditionValue *value = nullptr;
       OZ (resolve_condition(&syntax, current_block_->get_namespace(), &value, func));
       if (OB_SUCC(ret)) { condition = *value; }
@@ -2958,7 +2962,7 @@ int ObPLResolver::resolve_signal(const peg::Node *node, ObPLSignalStmt *stmt, Ob
         LOG_USER_ERROR(OB_ER_SP_BAD_SQLSTATE, static_cast<int>(condition.str_len_), condition.sql_state_);
       } else {
         stmt->set_value(condition);
-        if (syntax.kind == peg::NodeKind::Ident) { stmt->set_ob_error_code(condition.error_code_); }
+        if (syntax.kind() == peg::NodeKind::Ident) { stmt->set_ob_error_code(condition.error_code_); }
       }
     }
   }
@@ -2985,11 +2989,11 @@ int ObPLResolver::resolve_signal(const peg::Node *node, ObPLSignalStmt *stmt, Ob
     else if (name == "MYSQL_ERRNO") { item_type = SignalCondInfoItem::DIAG_MYSQL_ERRNO; }
     const auto &value = peg::signal_item_expression(item);
     ObRawExpr *expr = nullptr;
-    if (value.kind == peg::NodeKind::UserVariable || value.kind == peg::NodeKind::SystemVariable) {
+    if (value.kind() == peg::NodeKind::UserVariable || value.kind() == peg::NodeKind::SystemVariable) {
       ObQualifiedName name;
       OZ (ObResolverUtils::resolve_obj_access_ref_node(expr_factory_, value, name, resolve_ctx_.session_info_));
       if (OB_SUCC(ret)) {
-        name.access_idents_.at(0).access_index_ = value.kind == peg::NodeKind::UserVariable
+        name.access_idents_.at(0).access_index_ = value.kind() == peg::NodeKind::UserVariable
             ? pl::ObPLExternalNS::USER_VAR
             : peg::variable_scope(value) == peg::VariableScope::Global
                 ? pl::ObPLExternalNS::GLOBAL_VAR : pl::ObPLExternalNS::SESSION_VAR;
@@ -4074,10 +4078,11 @@ int ObPLResolver::resolve_close(
 int ObPLResolver::resolve_ident(const peg::Node *node, ObString &ident)
 {
   int ret = OB_SUCCESS;
-  if (node == nullptr || node->kind != peg::NodeKind::Ident) {
+  if (node == nullptr || node->kind() != peg::NodeKind::Ident) {
     ret = OB_ERR_UNEXPECTED;
-  } else if (OB_FAIL(ob_write_string(resolve_ctx_.allocator_,
-                ObString(node->text.size(), node->text.data()), ident))) {
+  } else if (const auto node_text = node->text();
+             OB_FAIL(ob_write_string(resolve_ctx_.allocator_,
+                ObString(node_text.size(), node_text.data()), ident))) {
   } else if (ident.length() > OB_MAX_MYSQL_PL_IDENT_LENGTH) {
     ret = OB_ERR_IDENTIFIER_TOO_LONG;
     LOG_USER_ERROR(OB_ERR_IDENTIFIER_TOO_LONG, ident.length(), ident.ptr());
@@ -5488,12 +5493,13 @@ int ObPLResolver::resolve_obj_access_idents(const peg::Node &node,
                                             ObSQLSessionInfo &session_info)
 {
   int ret = OB_SUCCESS;
-  const auto parts = node.kind == peg::NodeKind::RowType
+  const auto parts = node.kind() == peg::NodeKind::RowType
       ? peg::row_type_names(node) : peg::name_parts(node);
   for (const auto &part : parts) {
     if (OB_FAIL(ret)) { break; }
     ObString name;
-    OZ (ob_write_string(expr_factory.get_allocator(), ObString(part.text.size(), part.text.data()), name));
+    const auto part_text = part.text();
+    OZ (ob_write_string(expr_factory.get_allocator(), ObString(part_text.size(), part_text.data()), name));
     OZ (idents.push_back(ObObjAccessIdent(name)));
   }
   return ret;
@@ -6270,17 +6276,17 @@ int ObPLResolver::resolve_sf_clause(
   for (int64_t i = 0; OB_SUCC(ret) && i < clauses.size(); ++i) {
     const peg::Node *child = &clauses[i];
     if (OB_NOT_NULL(child)) {
-      if (peg::NodeKind::Deterministic == child->kind) {
+      if (peg::NodeKind::Deterministic == child->kind()) {
         if (routine_info->is_deterministic()) {
           ret = OB_ERR_PARSER_SYNTAX;
         } else {
           routine_info->set_deterministic();
         }
-      } else if (peg::NodeKind::InvokeRights == child->kind) {
+      } else if (peg::NodeKind::InvokeRights == child->kind()) {
         if (has_invoker_clause) {
           ret = OB_ERR_PARSER_SYNTAX;
           LOG_WARN("at most one declaration for 'AUTHID' is permitted",
-                   K(ret), K(child->kind));
+                   K(ret), K(child->kind()));
         } else if (ObProcType::STANDALONE_FUNCTION != routine_type
                    && ObProcType::STANDALONE_PROCEDURE != routine_type) {
           ret = OB_ERR_PARSER_SYNTAX;
@@ -6291,14 +6297,15 @@ int ObPLResolver::resolve_sf_clause(
             routine_info->set_invoker_right();
           }
         }
-      } else if (peg::NodeKind::ColumnComment == child->kind) {
+      } else if (peg::NodeKind::ColumnComment == child->kind()) {
         {
           ObString routine_comment;
           CK (OB_NOT_NULL(dynamic_cast<ObRoutineInfo*>(routine_info)));
-          OX (routine_comment = ObString(child->text.size(), child->text.data()));
+          const auto child_text = child->text();
+          OX (routine_comment = ObString(child_text.size(), child_text.data()));
           OZ (dynamic_cast<ObRoutineInfo*>(routine_info)->set_comment(routine_comment));
         }
-      } else if (peg::NodeKind::DataAccess == child->kind) {
+      } else if (peg::NodeKind::DataAccess == child->kind()) {
         {
           if (peg::RoutineDataAccess::NoSql == peg::routine_data_access(*child)) {
             routine_info->set_no_sql();
@@ -7584,7 +7591,7 @@ int ObPLResolver::resolve_into(rust::Slice<const peg::Node> targets, ObPLInto &i
       if (OB_FAIL(ret)) { break; }
       ObQualifiedName q_name;
       ObRawExpr* expr = NULL;
-      if (target.kind == peg::NodeKind::Parameter) {
+      if (target.kind() == peg::NodeKind::Parameter) {
         OZ (resolve_question_mark_node(&target, expr));
         ObString name;
         OZ (ob_write_string(resolve_ctx_.allocator_, source(target), name));
@@ -7623,7 +7630,8 @@ int ObPLResolver::resolve_into(rust::Slice<const peg::Node> targets, ObPLInto &i
 int ObPLResolver::resolve_condition(const peg::Node *node, const ObPLBlockNS &ns,
                                       const ObPLConditionValue **value, ObPLAstUnit &func)
 {
-  return resolve_condition(ObString(node->text.size(), node->text.data()), ns, value);
+  const auto node_text = node->text();
+  return resolve_condition(ObString(node_text.size(), node_text.data()), ns, value);
 }
 
 int ObPLResolver::resolve_condition(const ObString &name, const ObPLBlockNS &ns, const ObPLConditionValue **value)
@@ -7670,7 +7678,7 @@ int ObPLResolver::resolve_handler_condition(const peg::Node *node,
                                             ObPLConditionValue &condition, ObPLAstUnit &func)
 {
   int ret = OB_SUCCESS;
-  switch (node->kind) {
+  switch (node->kind()) {
   case peg::NodeKind::SqlException: condition.type_ = SQL_EXCEPTION; break;
   case peg::NodeKind::SqlWarning: condition.type_ = SQL_WARNING; break;
   case peg::NodeKind::SqlNotFound: condition.type_ = NOT_FOUND; break;
@@ -7995,7 +8003,8 @@ int ObPLResolver::add_external_cursor(ObPLBlockNS &ns,
 int ObPLResolver::resolve_cursor(const peg::Node *name, const ObPLBlockNS &ns,
                                   int64_t &index, ObPLAstUnit &func)
 {
-  return resolve_local_cursor(ObString(name->text.size(), name->text.data()),
+  const auto name_text = name->text();
+  return resolve_local_cursor(ObString(name_text.size(), name_text.data()),
                                ns, index, func, false, false);
 }
 
@@ -8156,7 +8165,7 @@ int ObPLResolver::resolve_cond_loop(const peg::Node *expr_node, const peg::Node 
     }
     //Parse body
     if (OB_SUCC(ret)) {
-      if (peg::NodeKind::PlStatements != body_node->kind) {
+      if (peg::NodeKind::PlStatements != body_node->kind()) {
         ret = OB_ERR_UNEXPECTED;
       } else {
         ObPLStmtBlock *body_block = NULL;
@@ -8182,7 +8191,7 @@ int ObPLResolver::resolve_stmt_list(const peg::Node *node,
   if (OB_ISNULL(node)) {
     ret = OB_ERR_UNEXPECTED;
   } else if (OB_ISNULL(block)
-            && OB_FAIL(make_block(func, parent, block, peg::NodeKind::PlBlock == node->kind))) {
+            && OB_FAIL(make_block(func, parent, block, peg::NodeKind::PlBlock == node->kind()))) {
   } else if (OB_ISNULL(block)) {
     ret = OB_ERR_UNEXPECTED;
   } else if (stop_search_label) {
@@ -8194,7 +8203,7 @@ int ObPLResolver::resolve_stmt_list(const peg::Node *node,
 
   if (OB_SUCC(ret)) {
     set_current(*block);
-    if (node->kind == peg::NodeKind::PlBlock) {
+    if (node->kind() == peg::NodeKind::PlBlock) {
       RESOLVE_STATEMENTS(peg::block_declarations(*node), func);
     }
     RESOLVE_STATEMENTS(peg::block_statements(*node), func);
@@ -8586,8 +8595,8 @@ int ObPLResolver::resolve_routine_decl(const peg::Node *parse_tree,
     /* A subprogram created inside a package is a packaged subprogram .
      *  A subprogram created inside a PL/SQL block is a nested subprogram */
     ObProcType routine_type = unit_ast.is_package()
-        ? ((peg::NodeKind::SubProcedureDeclaration == parse_tree->kind) ? PACKAGE_PROCEDURE : PACKAGE_FUNCTION)
-            : ((peg::NodeKind::SubProcedureDeclaration == parse_tree->kind) ? NESTED_PROCEDURE : NESTED_FUNCTION);
+        ? ((peg::NodeKind::SubProcedureDeclaration == parse_tree->kind()) ? PACKAGE_PROCEDURE : PACKAGE_FUNCTION)
+            : ((peg::NodeKind::SubProcedureDeclaration == parse_tree->kind()) ? NESTED_PROCEDURE : NESTED_FUNCTION);
     const ObPLRoutineTable *routine_table = NULL;
     ObString routine_decl_str = source(*parse_tree);
     OZ (resolve_ident(&peg::subprogram_name(*parse_tree), routine_name));

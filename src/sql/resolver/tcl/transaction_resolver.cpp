@@ -66,7 +66,8 @@ int resolve_savepoint(const peg::Node &node, ObResolverParams &params, ObStmt *&
   int ret = OB_SUCCESS;
   Statement *savepoint_stmt = nullptr;
   ObString name;
-  const ObString source_name(static_cast<int32_t>(node.text.size()), node.text.data());
+  const auto node_text = node.text();
+  const ObString source_name(static_cast<int32_t>(node_text.size()), node_text.data());
   if (OB_FAIL(create_resolved_statement(params, savepoint_stmt))) {
   } else if (OB_FAIL(ob_write_string(*params.allocator_, source_name, name))) {
   } else if (OB_FAIL(savepoint_stmt->set_sp_name(name.ptr(), name.length()))) {
@@ -86,7 +87,7 @@ int resolve_transaction(const peg::Node &node, ObResolverParams &params, ObStmt 
       || OB_ISNULL(params.stmt_factory_->get_query_ctx())) {
     ret = OB_ERR_UNEXPECTED;
   } else {
-    switch (node.kind) {
+    switch (node.kind()) {
       case peg::NodeKind::Begin:
         ret = resolve_begin(node, params, stmt);
         break;
@@ -95,7 +96,7 @@ int resolve_transaction(const peg::Node &node, ObResolverParams &params, ObStmt 
         ObEndTransStmt *end_stmt = nullptr;
         if (OB_FAIL(create_resolved_statement(params, end_stmt))) {
         } else {
-          end_stmt->set_is_rollback(node.kind == peg::NodeKind::Rollback);
+          end_stmt->set_is_rollback(node.kind() == peg::NodeKind::Rollback);
           stmt = end_stmt;
         }
         break;

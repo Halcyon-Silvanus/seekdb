@@ -38,7 +38,7 @@ int ObCreateTableLikeResolver::resolve(const peg::Node &parse_tree)
   if (OB_ISNULL(session_info_)) {
     ret = OB_ERR_UNEXPECTED;
     SQL_RESV_LOG(WARN, "session info should not be null", K(ret));
-  } else if (peg::NodeKind::CreateTableLike != parse_tree.kind) {
+  } else if (peg::NodeKind::CreateTableLike != parse_tree.kind()) {
     ret = OB_ERR_UNEXPECTED;
     SQL_RESV_LOG(WARN, "invalid parse tree", K(ret));
   } else {

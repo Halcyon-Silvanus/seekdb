@@ -35,7 +35,7 @@ namespace {
 const peg::Node &unparenthesized(const peg::Node &node)
 {
   const peg::Node *result = &node;
-  while (result->kind == peg::NodeKind::Parenthesized) result = &peg::parenthesized_expression(*result);
+  while (result->kind() == peg::NodeKind::Parenthesized) result = &peg::parenthesized_expression(*result);
   return *result;
 }
 
@@ -47,7 +47,7 @@ const peg::Node &membership_element(const peg::Node &row, int64_t columns, int64
 
 bool membership_row(const peg::Node &node)
 {
-  const auto kind = unparenthesized(node).kind;
+  const auto kind = unparenthesized(node).kind();
   return kind == peg::NodeKind::ExprList || kind == peg::NodeKind::ValueVector;
 }
 
@@ -248,7 +248,7 @@ int ObInListResolver::get_inlist_rewrite_info(const InListRows &rows,
               ? nullptr : helper.parameterization_->find(node);
           if (OB_ISNULL(node)) {
             ret = OB_ERR_UNEXPECTED;
-          } else if (FALSE_IT(rewrite_info.is_question_mark_ = binding != nullptr || node->kind == peg::NodeKind::Parameter)) {
+          } else if (FALSE_IT(rewrite_info.is_question_mark_ = binding != nullptr || node->kind() == peg::NodeKind::Parameter)) {
           } else if (rewrite_info.is_question_mark_) {
             const int64_t parameter_index = binding != nullptr ? binding->parameter_index : peg::placeholder_index(*node);
             // check if param indexes are continuous for values table
@@ -263,7 +263,7 @@ int ObInListResolver::get_inlist_rewrite_info(const InListRows &rows,
           if (OB_FAIL(ret) || !rewrite_info.is_valid_as_values_table_) {
           } else if (helper.is_prepare_stmt_ && rewrite_info.is_question_mark_) {
             // skip getting types for question marks in prepare stmt, because they have no type
-          } else if (!((binding != nullptr || node->kind == peg::NodeKind::Parameter) && rewrite_info.is_question_mark_) &&
+          } else if (!((binding != nullptr || node->kind() == peg::NodeKind::Parameter) && rewrite_info.is_question_mark_) &&
                      !(peg::is_literal(*node) && !rewrite_info.is_question_mark_)) {
             // not const type
             rewrite_info.is_valid_as_values_table_ = false;
@@ -638,7 +638,7 @@ int ObInListResolver::group_inlists(ObExprResolveContext &resolve_ctx,
       if (OB_FAIL(ret)) break;
       const peg::Node *operand = &unparenthesized(*written_operand);
       bool can_merge = false;
-      const bool is_membership = enabled && operand->kind == peg::NodeKind::In
+      const bool is_membership = enabled && operand->kind() == peg::NodeKind::In
           && peg::membership_source(*operand) == peg::MembershipSource::Expressions
           && ((logical_operator == peg::BinaryOperator::LogicalOr && !peg::predicate_negated(*operand))
               || (logical_operator == peg::BinaryOperator::LogicalAnd && peg::predicate_negated(*operand)));

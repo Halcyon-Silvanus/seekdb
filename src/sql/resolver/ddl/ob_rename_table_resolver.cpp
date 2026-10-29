@@ -40,9 +40,9 @@ int ObRenameTableResolver::resolve(const peg::Node &parser_tree)
   ObRenameTableStmt *rename_table_stmt = NULL;
   if (OB_ISNULL(session_info_) || OB_ISNULL(schema_checker_)) {
     ret = OB_ERR_UNEXPECTED;
-  } else if (peg::NodeKind::RenameTables != parser_tree.kind) {
+  } else if (peg::NodeKind::RenameTables != parser_tree.kind()) {
     ret = OB_ERR_UNEXPECTED;
-    LOG_WARN("invalid parse tree",  K(parser_tree.kind));
+    LOG_WARN("invalid parse tree",  K(parser_tree.kind()));
   }
   //create rename table stmt
   if (OB_SUCC(ret)) {

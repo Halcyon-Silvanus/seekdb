@@ -30,7 +30,7 @@ int ObPurgeTableResolver::resolve(const peg::Node &parser_tree)
 {
   int ret = OB_SUCCESS;
   ObPurgeTableStmt *purge_table_stmt = NULL;
-  if (OB_ISNULL(session_info_) || peg::NodeKind::PurgeTable != parser_tree.kind) {
+  if (OB_ISNULL(session_info_) || peg::NodeKind::PurgeTable != parser_tree.kind()) {
     ret = OB_ERR_UNEXPECTED;
   }
   //create Purge table stmt
@@ -74,9 +74,9 @@ int ObPurgeIndexResolver::resolve(const peg::Node &parser_tree)
   ObPurgeIndexStmt *purge_index_stmt = NULL;
   if (OB_ISNULL(session_info_) || OB_ISNULL(schema_checker_)) {
     ret = OB_ERR_UNEXPECTED;
-  } else if (peg::NodeKind::PurgeIndex != parser_tree.kind) {
+  } else if (peg::NodeKind::PurgeIndex != parser_tree.kind()) {
     ret = OB_ERR_UNEXPECTED;
-    LOG_WARN("invalid parse tree",  K(parser_tree.kind));
+    LOG_WARN("invalid parse tree",  K(parser_tree.kind()));
   }
   //create Purge table stmt
   if (OB_SUCC(ret)) {
@@ -128,7 +128,7 @@ int ObPurgeDatabaseResolver::resolve(const peg::Node &parser_tree)
 {
   int ret = OB_SUCCESS;
   ObPurgeDatabaseStmt *purge_database_stmt = NULL;
-  if (OB_ISNULL(session_info_) || peg::NodeKind::PurgeDatabase != parser_tree.kind) {
+  if (OB_ISNULL(session_info_) || peg::NodeKind::PurgeDatabase != parser_tree.kind()) {
     ret = OB_ERR_UNEXPECTED;
   }
   //create Purge table stmt
@@ -144,10 +144,11 @@ int ObPurgeDatabaseResolver::resolve(const peg::Node &parser_tree)
     
     ObString db_name;
     const auto &name = peg::database_name(parser_tree);
-    if (name.text.size() > OB_MAX_DATABASE_NAME_LENGTH) {
+    const auto name_text = name.text();
+    if (name_text.size() > OB_MAX_DATABASE_NAME_LENGTH) {
       ret = OB_ERR_TOO_LONG_IDENT;
-      LOG_USER_ERROR(OB_ERR_TOO_LONG_IDENT, static_cast<int>(name.text.size()), name.text.data());
-    } else if (OB_FAIL(ob_write_string(*allocator_, ObString(name.text.size(), name.text.data()), db_name))) {
+      LOG_USER_ERROR(OB_ERR_TOO_LONG_IDENT, static_cast<int>(name_text.size()), name_text.data());
+    } else if (OB_FAIL(ob_write_string(*allocator_, ObString(name_text.size(), name_text.data()), db_name))) {
     } else {
       if (db_name.empty()) {
         ret = OB_INVALID_ARGUMENT;
@@ -166,7 +167,7 @@ int ObPurgeRecycleBinResolver::resolve(const peg::Node &parser_tree)
 {
   int ret = OB_SUCCESS;
   ObPurgeRecycleBinStmt *purge_recyclebin_stmt = NULL;
-  if (OB_ISNULL(session_info_) || peg::NodeKind::PurgeRecyclebin != parser_tree.kind) {
+  if (OB_ISNULL(session_info_) || peg::NodeKind::PurgeRecyclebin != parser_tree.kind()) {
     ret = OB_ERR_UNEXPECTED;
   }
   //create Purge table stmt

@@ -153,7 +153,7 @@ int ObCreateTableResolver::set_default_micro_index_clustered_(share::schema::ObT
 int ObCreateTableResolver::resolve(const peg::Node &parse_tree)
 {
   int ret = OB_SUCCESS;
-  if (parse_tree.kind != peg::NodeKind::CreateTable) {
+  if (parse_tree.kind() != peg::NodeKind::CreateTable) {
     ret = OB_INVALID_ARGUMENT;
   } else {
     const auto definition = peg::table_definition(parse_tree);
@@ -394,11 +394,12 @@ int ObCreateTableResolver::check_column_name_duplicate(rust::Slice<const peg::No
   for (const auto &element : elements) {
     if (OB_FAIL(ret)) {
       break;
-    } else if (element.kind == peg::NodeKind::ColumnDefinition) {
+    } else if (element.kind() == peg::NodeKind::ColumnDefinition) {
       const auto &name_node = peg::column_definition(element).name;
       const auto names = peg::name_parts(name_node);
       const auto &name_part = names[names.size() - 1];
-      const ObString spelling(name_part.text.size(), name_part.text.data());
+      const auto name_part_text = name_part.text();
+      const ObString spelling(name_part_text.size(), name_part_text.data());
       ObString name;
       ObCollationType cs_type = CS_TYPE_INVALID;
       if (OB_USER_ROW_MAX_COLUMNS_COUNT < column_name_set_.count()) {
@@ -433,7 +434,8 @@ int ObCreateTableResolver::resolve_primary_key_node(const peg::Node &pk_node,
   for (const auto &column : peg::primary_key_columns(pk_node)) {
     if (OB_FAIL(ret)) {
       break;
-    } else if (OB_FAIL(add_primary_key_part(ObString(column.text.size(), column.text.data()),
+    } else if (const auto column_text = column.text();
+               OB_FAIL(add_primary_key_part(ObString(column_text.size(), column_text.data()),
                                            stats, pk_data_length))) {
     }
   }
@@ -443,8 +445,9 @@ int ObCreateTableResolver::resolve_primary_key_node(const peg::Node &pk_node,
         ? share::schema::USING_HASH : share::schema::USING_BTREE);
     if (peg::primary_key_has_comment(pk_node)) {
       const auto &comment = peg::primary_key_comment(pk_node);
+      const auto comment_text = comment.text();
       ret = create_table_stmt->get_create_table_arg().schema_.set_pk_comment(
-          ObString(comment.text.size(), comment.text.data()));
+          ObString(comment_text.size(), comment_text.data()));
     }
   }
   return ret;
@@ -517,10 +520,10 @@ int ObCreateTableResolver::resolve_table_elements(rust::Slice<const peg::Node> e
       const peg::Node *element = &elements[i];
       CK (OB_NOT_NULL(element));
       if (OB_FAIL(ret)) {
-      } else if ((RESOLVE_NON_COL == resolve_rule && peg::NodeKind::ColumnDefinition == element->kind)
-                 || (RESOLVE_COL_ONLY == resolve_rule && peg::NodeKind::ColumnDefinition != element->kind)) {
+      } else if ((RESOLVE_NON_COL == resolve_rule && peg::NodeKind::ColumnDefinition == element->kind())
+                 || (RESOLVE_COL_ONLY == resolve_rule && peg::NodeKind::ColumnDefinition != element->kind())) {
         //continue
-      } else if (OB_LIKELY(peg::NodeKind::ColumnDefinition == element->kind)) {
+      } else if (OB_LIKELY(peg::NodeKind::ColumnDefinition == element->kind())) {
         ObColumnSchemaV2 column;
         
         ObColumnResolveStat stat;
@@ -545,10 +548,10 @@ int ObCreateTableResolver::resolve_table_elements(rust::Slice<const peg::Node> e
       const peg::Node *element = &elements[i];
       CK (OB_NOT_NULL(element));
       if (OB_FAIL(ret)) {
-      } else if ((RESOLVE_NON_COL == resolve_rule && peg::NodeKind::ColumnDefinition == element->kind)
-                 || (RESOLVE_COL_ONLY == resolve_rule && peg::NodeKind::ColumnDefinition != element->kind)) {
+      } else if ((RESOLVE_NON_COL == resolve_rule && peg::NodeKind::ColumnDefinition == element->kind())
+                 || (RESOLVE_COL_ONLY == resolve_rule && peg::NodeKind::ColumnDefinition != element->kind())) {
         continue;
-      } else if (OB_LIKELY(peg::NodeKind::ColumnDefinition == element->kind)) {
+      } else if (OB_LIKELY(peg::NodeKind::ColumnDefinition == element->kind())) {
         bool is_modify_column_visibility = false;
         const bool is_create_table_as = (RESOLVE_COL_ONLY == resolve_rule);
         CK (ele_pos >= 0 && ele_pos < resolved_cols_count);
@@ -712,7 +715,7 @@ int ObCreateTableResolver::resolve_table_elements(rust::Slice<const peg::Node> e
             }
           }
         }
-      } else if (peg::NodeKind::PrimaryKey == element->kind) {
+      } else if (peg::NodeKind::PrimaryKey == element->kind()) {
         if (primary_key_set_in_heap_table) {
           ret = OB_ERR_PRIMARY_KEY_DUPLICATE;
           SQL_RESV_LOG(WARN, "multiple primary key defined");
@@ -728,20 +731,20 @@ int ObCreateTableResolver::resolve_table_elements(rust::Slice<const peg::Node> e
           ret = OB_ERR_PRIMARY_KEY_DUPLICATE;
           SQL_RESV_LOG(WARN, "multiple primary key defined");
         }
-      } else if(peg::NodeKind::Index == element->kind) {
+      } else if(peg::NodeKind::Index == element->kind()) {
         if (OB_MAX_INDEX_PER_TABLE == index_node_position_list.count()) {
           ret = OB_ERR_TOO_MANY_KEYS;
           LOG_USER_ERROR(OB_ERR_TOO_MANY_KEYS, OB_MAX_INDEX_PER_TABLE);
         } else if (OB_FAIL(index_node_position_list.push_back(i))){
         } else { /*do nothing*/ }
-      } else if (peg::NodeKind::ForeignKey == element->kind) {
+      } else if (peg::NodeKind::ForeignKey == element->kind()) {
         // FIXME: foreign key maximum quantity limit is the same as index quantity
         if (OB_MAX_INDEX_PER_TABLE == foreign_key_node_position_list.count()) {
           ret = OB_ERR_TOO_MANY_KEYS;
           LOG_USER_ERROR(OB_ERR_TOO_MANY_KEYS, OB_MAX_INDEX_PER_TABLE);
         } else if (OB_FAIL(foreign_key_node_position_list.push_back(i))){
         } else { /*do nothing*/ }
-      } else if (peg::NodeKind::CheckConstraint == element->kind) {
+      } else if (peg::NodeKind::CheckConstraint == element->kind()) {
         if (OB_FAIL(table_level_constraint_list.push_back(i))) {
         }
       } else {
@@ -1352,7 +1355,7 @@ int ObCreateTableResolver::resolve_index_node(const peg::Node &node)
     ObTableSchema &tbl_schema = create_table_stmt->get_create_table_arg().schema_;
     int64_t vec_index_col_id = 0;
     bool process_heap_table_primary_key = false;
-    if (peg::NodeKind::Index == node.kind) {
+    if (peg::NodeKind::Index == node.kind()) {
       const auto definition = peg::index_definition(node);
       const auto columns = definition.columns;
       int64_t index_data_length = 0;
@@ -1375,11 +1378,12 @@ int ObCreateTableResolver::resolve_index_node(const peg::Node &node)
         const auto &index_column = columns[i];
         const auto &expression = peg::index_column_expression(index_column);
         ObString &column_name = sort_item.column_name_;
-        sort_item.is_func_index_ = expression.kind != peg::NodeKind::Ident;
+        sort_item.is_func_index_ = expression.kind() != peg::NodeKind::Ident;
         cnt_func_index_mysql |= sort_item.is_func_index_;
+        const auto expression_text = expression.text();
         const ObString spelling = sort_item.is_func_index_
             ? params_.syntax_->source(expression)
-            : ObString(expression.text.size(), expression.text.data());
+            : ObString(expression_text.size(), expression_text.data());
         if (OB_FAIL(ob_write_string(*allocator_, spelling, column_name))) {
         } else if (OB_FAIL(ObMulValueIndexBuilderUtil::adjust_index_type(column_name,
                              is_multi_value_index, reinterpret_cast<int *>(&index_keyname_)))) {
@@ -1558,7 +1562,7 @@ int ObCreateTableResolver::resolve_index_node(const peg::Node &node)
       if (OB_SUCC(ret) && cnt_func_index_mysql) {
         first_column_name = ObString::make_string("functional_index");
       }
-    } else if (is_organization_set_to_heap() && peg::NodeKind::PrimaryKey == node.kind) {
+    } else if (is_organization_set_to_heap() && peg::NodeKind::PrimaryKey == node.kind()) {
       if (OB_FAIL(resolve_single_column_primary_key_node(peg::primary_key_columns(node), tbl_schema, process_heap_table_primary_key, first_column_name))) {
       }
     } else {
@@ -1567,7 +1571,8 @@ int ObCreateTableResolver::resolve_index_node(const peg::Node &node)
       const auto names = peg::name_parts(definition.name);
       const auto &name = names[names.size() - 1];
       ObString &column_name = sort_item.column_name_;
-      if (OB_FAIL(ob_write_string(*allocator_, ObString(name.text.size(), name.text.data()), column_name))) {
+      const auto name_text = name.text();
+      if (OB_FAIL(ob_write_string(*allocator_, ObString(name_text.size(), name_text.data()), column_name))) {
         return ret;
       }
       if (NULL == (column_schema = tbl_schema.get_column_schema(column_name))) {
@@ -1601,7 +1606,7 @@ int ObCreateTableResolver::resolve_index_node(const peg::Node &node)
         } else if (!has_pk) {
           for (int64_t i = 0; OB_SUCC(ret) && i < attributes.size(); ++i) {
             const auto &attribute = attributes[i];
-            if (peg::NodeKind::ColumnPrimaryKey == attribute.kind) {
+            if (peg::NodeKind::ColumnPrimaryKey == attribute.kind()) {
               process_heap_table_primary_key = true;
             }
           }
@@ -1618,14 +1623,14 @@ int ObCreateTableResolver::resolve_index_node(const peg::Node &node)
     if (OB_SUCC(ret)) {
       has_index_using_type_ = false;
       if (OB_FAIL(resolve_index_name(
-          peg::NodeKind::Index == node.kind && peg::index_definition(node).has_name
+          peg::NodeKind::Index == node.kind() && peg::index_definition(node).has_name
               ? &peg::index_definition_name(node) : nullptr,
           first_column_name))) {
-      } else if (peg::NodeKind::Index == node.kind && OB_FAIL(resolve_table_options(peg::index_definition(node).options, true))) {
+      } else if (peg::NodeKind::Index == node.kind() && OB_FAIL(resolve_table_options(peg::index_definition(node).options, true))) {
         SQL_RESV_LOG(WARN, "resolve index options failed", K(ret));
       }
       if (OB_SUCC(ret)) {
-        if (peg::NodeKind::Index == node.kind && peg::index_definition(node).has_partition) {
+        if (peg::NodeKind::Index == node.kind() && peg::index_definition(node).has_partition) {
           if (LOCAL_INDEX == index_scope_) {
             ret = OB_NOT_SUPPORTED;
             LOG_USER_ERROR(OB_NOT_SUPPORTED, "specify partition option of local index");
@@ -1733,8 +1738,9 @@ int ObCreateTableResolver::resolve_index_name(
     } else {
       name_generated_type_ = GENERATED_TYPE_SYSTEM;
     }
-  } else if (OB_FAIL(ob_write_string(*allocator_,
-      ObString(node->text.size(), node->text.data()), index_name_))) {
+  } else if (const auto node_text = node->text();
+             OB_FAIL(ob_write_string(*allocator_,
+      ObString(node_text.size(), node_text.data()), index_name_))) {
   } else {
     //check duplicate for index_name
     ObIndexNameHashWrapper index_key(index_name_);
@@ -1774,7 +1780,7 @@ int ObCreateTableResolver::resolve_table_charset_info(rust::Slice<const peg::Nod
   for (const auto &option : options) {
     if (OB_FAIL(ret)) {
       break;
-    } else if ((option.kind == peg::NodeKind::TableCharset || option.kind == peg::NodeKind::Collation)
+    } else if ((option.kind() == peg::NodeKind::TableCharset || option.kind() == peg::NodeKind::Collation)
                && OB_FAIL(resolve_table_option(option, false))) {
     }
   }
@@ -1900,7 +1906,8 @@ int ObCreateTableResolver::resolve_primary_key_node_in_heap_table(const peg::Nod
     if (OB_FAIL(ret)) {
       break;
     }
-    const ObString column_name(column.text.size(), column.text.data());
+    const auto column_text = column.text();
+    const ObString column_name(column_text.size(), column_text.data());
     ObColumnSchemaV2 *col = NULL;
     ObCreateTableStmt *create_table_stmt = static_cast<ObCreateTableStmt*>(stmt_);
     ObTableSchema &table_schema = create_table_stmt->get_create_table_arg().schema_;
@@ -1958,8 +1965,9 @@ int ObCreateTableResolver::resolve_primary_key_node_in_heap_table(const peg::Nod
         ? share::schema::USING_HASH : share::schema::USING_BTREE);
     if (peg::primary_key_has_comment(element)) {
       const auto &comment = peg::primary_key_comment(element);
+      const auto comment_text = comment.text();
       ret = create_table_stmt->get_create_table_arg().schema_.set_pk_comment(
-          ObString(comment.text.size(), comment.text.data()));
+          ObString(comment_text.size(), comment_text.data()));
     }
   }
   return ret;
@@ -1975,8 +1983,9 @@ int ObCreateTableResolver::resolve_single_column_primary_key_node(rust::Slice<co
   for (size_t i = 0; OB_SUCC(ret) && i < columns.size(); ++i) {
     ObColumnSortItem sort_item;
     ObString &column_name = sort_item.column_name_;
+    const auto column_text = columns[i].text();
     if (OB_FAIL(ob_write_string(*allocator_,
-        ObString(columns[i].text.size(), columns[i].text.data()), column_name))) {
+        ObString(column_text.size(), column_text.data()), column_name))) {
       break;
     }
     if (NULL == (column_schema = tbl_schema.get_column_schema(column_name))) {

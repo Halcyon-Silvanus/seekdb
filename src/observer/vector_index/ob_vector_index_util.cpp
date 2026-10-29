@@ -2939,9 +2939,10 @@ int ObVectorIndexUtil::check_index_param(
       }
       const auto &value = sql::peg::vector_parameter_value(parameter);
       parser_value = sql::peg::is_literal(value) ? sql::peg::expression_literal(value).integer : 0;
-      data_parser_name.assign_ptr(value.text.data(), value.text.size());
+      const auto value_text = value.text();
+      data_parser_name.assign_ptr(value_text.data(), value_text.size());
       new_parser_name = data_parser_name;
-      if (OB_SUCC(ret) && value.kind != sql::peg::NodeKind::Number) {
+      if (OB_SUCC(ret) && value.kind() != sql::peg::NodeKind::Number) {
         OZ (ob_simple_low_to_up(allocator, data_parser_name, new_parser_name));
       }
       if (OB_FAIL(ret)) {

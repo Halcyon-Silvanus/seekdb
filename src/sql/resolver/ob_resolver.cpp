@@ -136,7 +136,7 @@ int ObResolver::resolve(const peg::Node &statement, ObStmt *&stmt)
     if (exec_ctx != nullptr && exec_ctx->get_sql_ctx() != nullptr) {
       exec_ctx->get_sql_ctx()->stmt_type_ = type;
     }
-    switch (statement.kind) {
+    switch (statement.kind()) {
       case peg::NodeKind::PlBlock:
       case peg::NodeKind::PlLabeledBlock:
         params_.resolver_scope_stmt_type_ = T_SP_ANONYMOUS_BLOCK;

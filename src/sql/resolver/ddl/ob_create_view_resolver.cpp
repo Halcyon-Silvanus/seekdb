@@ -121,8 +121,9 @@ int ObCreateViewResolver::resolve(const peg::Node &statement)
       view_table_resolver.set_is_create_view(true);
       const auto view_columns = view.columns;
       const bool has_column = !view_columns.empty();
-      view_define = ObString(view.query.end - view.query.start,
-                             params_.syntax_->original_source().ptr() + view.query.start);
+      const auto span = view.query.span();
+      view_define = ObString(span.end - span.start,
+                             params_.syntax_->original_source().ptr() + span.start);
       if (OB_FAIL(ret)) {
       } else if (OB_FAIL(ObSQLUtils::convert_sql_text_to_schema_for_storing(
                           *allocator_, session_info_->get_dtc_params(), view_define,
@@ -289,7 +290,8 @@ int ObCreateViewResolver::check_view_columns(ObSelectStmt &select_stmt,
     int64_t col_cnt_from_node = 0;
     for (size_t i = 0; OB_SUCC(ret) && !is_col_dup && i < view_columns.size(); ++i) {
       const auto &column = view_columns[i];
-      if (FALSE_IT(dup_col_name = ObString(column.text.size(), column.text.data()))) {
+      const auto column_text = column.text();
+      if (FALSE_IT(dup_col_name = ObString(column_text.size(), column_text.data()))) {
       } else if (OB_FAIL(ObCharset::tolower(cs_type, dup_col_name, dup_col_name, *allocator_))) {
       } else if (OB_HASH_EXIST == (ret = view_col_names.set_refactored(dup_col_name, 0))) {
         ++col_cnt_from_node;

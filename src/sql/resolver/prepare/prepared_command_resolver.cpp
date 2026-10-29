@@ -37,13 +37,14 @@ int resolve_command_value(const peg::Node &source, ObResolverParams &params, ObR
 {
   int ret = OB_SUCCESS;
   ObString text;
-  const ObString source_text(static_cast<int32_t>(source.text.size()), source.text.data());
+  const auto source_spelling = source.text();
+  const ObString source_text(static_cast<int32_t>(source_spelling.size()), source_spelling.data());
   if (OB_FAIL(ob_write_string(*params.allocator_, source_text, text))) {
-  } else if (source.kind == peg::NodeKind::UserVariable) {
+  } else if (source.kind() == peg::NodeKind::UserVariable) {
     // The expression helper normalizes its owned name in place.
     ret = ObRawExprUtils::build_get_user_var(*params.expr_factory_, text, expr,
                                             params.session_info_, params.query_ctx_);
-  } else if (source.kind == peg::NodeKind::String) {
+  } else if (source.kind() == peg::NodeKind::String) {
     ObCollationType collation = CS_TYPE_INVALID;
     ObObjParam value;
     ObString prefix;
@@ -75,12 +76,13 @@ int resolve_command_value(const peg::Node &source, ObResolverParams &params, ObR
 int resolve_prepare(const peg::Node &node, ObResolverParams &params, ObStmt *&stmt)
 {
   int ret = OB_SUCCESS;
+  const auto node_text = node.text();
   ObPrepareStmt *prepared = nullptr;
   ObString name;
   ObRawExpr *source = nullptr;
   if (OB_FAIL(create_resolved_statement(params, prepared))) {
   } else if (OB_FAIL(ob_write_string(*params.allocator_,
-              ObString(static_cast<int32_t>(node.text.size()), node.text.data()), name))) {
+              ObString(static_cast<int32_t>(node_text.size()), node_text.data()), name))) {
   } else if (OB_FAIL(resolve_command_value(peg::prepared_source(node), params, source))) {
   } else {
     prepared->set_prepare_name(name);
@@ -93,13 +95,14 @@ int resolve_prepare(const peg::Node &node, ObResolverParams &params, ObStmt *&st
 int resolve_execute(const peg::Node &node, ObResolverParams &params, ObStmt *&stmt)
 {
   int ret = OB_SUCCESS;
+  const auto node_text = node.text();
   ObExecuteStmt *execute = nullptr;
   ObString name;
   ObPsStmtId id = OB_INVALID_ID;
   ObPsSessionInfo *prepared = nullptr;
   if (OB_FAIL(create_resolved_statement(params, execute))) {
   } else if (OB_FAIL(ob_simple_low_to_up(*params.allocator_,
-              ObString(static_cast<int32_t>(node.text.size()), node.text.data()), name))) {
+              ObString(static_cast<int32_t>(node_text.size()), node_text.data()), name))) {
   } else if (OB_FAIL(params.session_info_->get_prepare_id(name, id))) {
   } else if (OB_FAIL(params.session_info_->get_ps_session_info(id, prepared))) {
   } else if (OB_ISNULL(prepared)) {
@@ -123,13 +126,14 @@ int resolve_execute(const peg::Node &node, ObResolverParams &params, ObStmt *&st
 int resolve_deallocate(const peg::Node &node, ObResolverParams &params, ObStmt *&stmt)
 {
   int ret = OB_SUCCESS;
+  const auto node_text = node.text();
   ObDeallocateStmt *deallocate = nullptr;
   ObString name;
   ObPsStmtId id = OB_INVALID_ID;
   if (OB_FAIL(create_resolved_statement(params, deallocate))) {
     if (ret == OB_SQL_RESOLVER_NO_MEMORY) ret = OB_ALLOCATE_MEMORY_FAILED;
   } else if (OB_FAIL(ob_simple_low_to_up(*params.allocator_,
-              ObString(static_cast<int32_t>(node.text.size()), node.text.data()), name))) {
+              ObString(static_cast<int32_t>(node_text.size()), node_text.data()), name))) {
   } else if (OB_FAIL(params.session_info_->get_prepare_id(name, id))) {
   } else {
     deallocate->set_prepare_id(id);
@@ -149,7 +153,7 @@ int resolve_prepared_command(const peg::Node &node, ObResolverParams &params, Ob
       || OB_ISNULL(params.expr_factory_) || OB_ISNULL(params.stmt_factory_->get_query_ctx())) {
     return OB_ERR_UNEXPECTED;
   }
-  switch (node.kind) {
+  switch (node.kind()) {
     case peg::NodeKind::Prepare: return resolve_prepare(node, params, stmt);
     case peg::NodeKind::Execute: return resolve_execute(node, params, stmt);
     case peg::NodeKind::Deallocate: return resolve_deallocate(node, params, stmt);

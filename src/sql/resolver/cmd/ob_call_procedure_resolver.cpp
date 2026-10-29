@@ -62,7 +62,7 @@ int ObCallProcedureResolver::resolve_cparams(rust::Slice<const peg::Node> argume
   }
   for (int64_t i = 0; OB_SUCC(ret) && i < arguments.size(); ++i) {
     const auto &argument = arguments[i];
-    if (argument.kind == peg::NodeKind::PlNamedArgument) {
+    if (argument.kind() == peg::NodeKind::PlNamedArgument) {
       has_assign_param = true;
       OZ (resolve_cparam_with_assign(&argument, routine_info, params, deps));
     } else if (has_assign_param) {
@@ -146,9 +146,9 @@ int ObCallProcedureResolver::resolve_cparam_with_assign(const peg::Node *argumen
   if (OB_SUCC(ret)) {
     const peg::Node &name = peg::named_argument_name(*argument);
     const peg::Node *identifier = nullptr;
-    if (name.kind == peg::NodeKind::Ident) {
+    if (name.kind() == peg::NodeKind::Ident) {
       identifier = &name;
-    } else if (name.kind == peg::NodeKind::Column && peg::name_parts(name).size() == 1) {
+    } else if (name.kind() == peg::NodeKind::Column && peg::name_parts(name).size() == 1) {
       identifier = &peg::name_parts(name)[0];
     } else {
       ret = OB_ERR_CALL_WRONG_ARG;
@@ -156,7 +156,8 @@ int ObCallProcedureResolver::resolve_cparam_with_assign(const peg::Node *argumen
                      routine_info->get_routine_name().ptr());
     }
     if (OB_SUCC(ret)) {
-      ObString parameter_name(identifier->text.size(), identifier->text.data());
+      const auto identifier_text = identifier->text();
+      ObString parameter_name(identifier_text.size(), identifier_text.data());
       int64_t position = -1;
       OZ (routine_info->find_param_by_name(parameter_name, position));
       CK (position != -1);
@@ -275,7 +276,7 @@ int ObCallProcedureResolver::resolve(const peg::Node &parse_tree)
   ObPlanCache *plan_cache = params_.plan_cache_;
   if (OB_ISNULL(schema_checker_) || OB_ISNULL(session_info_) || OB_ISNULL(plan_cache)) {
     ret = OB_ERR_UNEXPECTED;
-  } else if (OB_UNLIKELY(peg::NodeKind::PlCall != parse_tree.kind)) {
+  } else if (OB_UNLIKELY(peg::NodeKind::PlCall != parse_tree.kind())) {
     ret = OB_ERR_UNEXPECTED;
   } else if (OB_ISNULL(stmt = create_stmt<ObCallProcedureStmt>())) {
     ret = OB_ALLOCATE_MEMORY_FAILED;

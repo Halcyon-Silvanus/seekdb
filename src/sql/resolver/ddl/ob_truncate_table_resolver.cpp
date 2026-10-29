@@ -39,7 +39,7 @@ int ObTruncateTableResolver::resolve(const peg::Node &parser_tree)
 {
   int ret = OB_SUCCESS;
   ObTruncateTableStmt *truncate_table_stmt = NULL;
-  if (OB_ISNULL(session_info_) || peg::NodeKind::TruncateTable != parser_tree.kind) {
+  if (OB_ISNULL(session_info_) || peg::NodeKind::TruncateTable != parser_tree.kind()) {
     ret = OB_ERR_UNEXPECTED;
   }
   //create alter table stmt

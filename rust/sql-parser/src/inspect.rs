@@ -20,28 +20,34 @@ use crate::node::{Kind, Node};
 use crate::SqlMode;
 
 pub(crate) fn inspect_expression(sql: &[u8], mode: SqlMode) -> ExpressionInfo {
-    let parsed = bridge::parse_sql(sql, mode, ParseMode::Expression);
-    let mut root = &parsed.root;
+    let parsed = match crate::parse(sql, mode, ParseMode::Expression) {
+        Ok(parsed) => parsed,
+        Err(error) => return ExpressionInfo {
+            root_kind: Kind::Missing,
+            function_name: String::new(),
+            qualified_function: false,
+            columns: Vec::new(),
+            error: error.message,
+            error_offset: error.offset,
+        },
+    };
+    let mut root = parsed.root();
     while root.kind == Kind::Parenthesized {
         root = &root.children[0];
     }
     let function_name = match root.kind {
-        Kind::Function | Kind::Cast | Kind::StringConcat => {
-            crate::expression::call_name(root).into()
-        }
+        Kind::Function | Kind::Cast | Kind::StringConcat => crate::expression::call_name(root).into(),
         _ => String::new(),
     };
     let mut columns = Vec::new();
-    if parsed.error.is_empty() {
-        collect_columns(root, &mut columns);
-    }
+    collect_columns(root, &mut columns);
     ExpressionInfo {
         root_kind: root.kind,
         function_name,
         qualified_function: !crate::expression::call_qualifiers(root).is_empty(),
         columns,
-        error: parsed.error,
-        error_offset: parsed.error_offset,
+        error: String::new(),
+        error_offset: 0,
     }
 }
 
@@ -154,7 +160,7 @@ pub(crate) fn query_has_mixed_string_array(node: &Node) -> bool {
     node.children.iter().any(query_has_mixed_string_array)
 }
 
-pub(crate) fn syntax_literals(syntax: &Node) -> Vec<bridge::ffi::LiteralReference<'_>> {
+pub fn syntax_literals(syntax: &Node) -> Vec<bridge::ffi::LiteralReference<'_>> {
     fn collect<'a>(node: &'a Node, literals: &mut Vec<bridge::ffi::LiteralReference<'a>>) {
         if crate::expression::is_literal(node) {
             literals.push(bridge::ffi::LiteralReference { node });

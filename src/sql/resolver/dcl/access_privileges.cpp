@@ -198,7 +198,7 @@ int resolve_privilege_set(const peg::Node &node, ObResolverParams &params, State
         for (const auto &column : peg::privilege_columns(privilege)) {
           if (OB_FAIL(ret)) { break; }
           ObString name;
-          OZ (copy_text(column.text, params, name));
+          OZ (copy_text(column.text(), params, name));
           OZ (stmt.add_column_privs(name, type));
         }
       } else {
@@ -307,7 +307,7 @@ int resolve_revoke(const peg::Node &node, ObResolverParams &params, ObStmt *&stm
   OZ (create_resolved_statement(params, revoked));
   if (OB_SUCC(ret)) {
     revoked->set_stmt_type(stmt::T_REVOKE);
-    if (node.kind == peg::NodeKind::RevokeAll) {
+    if (node.kind() == peg::NodeKind::RevokeAll) {
       revoked->set_revoke_all(true);
       revoked->set_grant_level(OB_PRIV_USER_LEVEL);
       OZ (check_revoke_all_privilege(params));
@@ -353,7 +353,7 @@ int resolve_revoke(const peg::Node &node, ObResolverParams &params, ObStmt *&stm
 
 int resolve_privileges(const peg::Node &node, ObResolverParams &params, ObStmt *&stmt)
 {
-  return node.kind == peg::NodeKind::Grant ? resolve_grant(node, params, stmt)
+  return node.kind() == peg::NodeKind::Grant ? resolve_grant(node, params, stmt)
                                            : resolve_revoke(node, params, stmt);
 }
 }

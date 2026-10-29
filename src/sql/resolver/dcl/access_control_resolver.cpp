@@ -301,7 +301,7 @@ int resolve_access_control(const peg::Node &node, ObResolverParams &params, ObSt
       || OB_ISNULL(params.query_ctx_)) {
     ret = OB_NOT_INIT;
   } else {
-    switch (node.kind) {
+    switch (node.kind()) {
       case peg::NodeKind::CreateUser:
         ret = access_control::resolve_create_user(node, params, stmt);
         break;

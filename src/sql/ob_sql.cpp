@@ -3742,7 +3742,7 @@ void ObSql::generate_sql_id(ObPlanCacheCtx &pc_ctx,
   if (OB_SUCCESS == err_code
       && PC_TEXT_MODE == pc_ctx.mode_
       && parsed.statement() != nullptr
-      && parsed.statement()->kind == peg::NodeKind::PlCall) {
+      && parsed.statement()->kind() == peg::NodeKind::PlCall) {
     signature_sql = pc_ctx.fp_result_.pc_key_.name_;
   } else if (add_plan_to_pc == false
             || PC_PS_MODE == pc_ctx.mode_

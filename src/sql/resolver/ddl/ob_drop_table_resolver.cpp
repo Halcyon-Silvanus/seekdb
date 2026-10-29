@@ -37,7 +37,7 @@ int ObDropTableResolver::resolve(const peg::Node &parse_tree)
   ObDropTableStmt *drop_table_stmt = NULL;
   const auto relations = peg::drop_relations(parse_tree);
   if (OB_ISNULL(session_info_) || OB_ISNULL(allocator_) ||
-                (peg::NodeKind::DropTable != parse_tree.kind && peg::NodeKind::DropView != parse_tree.kind)) {
+                (peg::NodeKind::DropTable != parse_tree.kind() && peg::NodeKind::DropView != parse_tree.kind())) {
     ret = OB_ERR_UNEXPECTED;
     SQL_RESV_LOG(WARN, "invalid parse tree!", K(ret));
   } else if (OB_ISNULL(drop_table_stmt = create_stmt<ObDropTableStmt>())) {
@@ -45,7 +45,7 @@ int ObDropTableResolver::resolve(const peg::Node &parse_tree)
     SQL_RESV_LOG(ERROR, "create drop table stmt failed");
   } else {
     stmt_ = drop_table_stmt;
-    drop_table_stmt->set_is_view_stmt(peg::NodeKind::DropView == parse_tree.kind);
+    drop_table_stmt->set_is_view_stmt(peg::NodeKind::DropView == parse_tree.kind());
   }
   if (OB_SUCC(ret)) {
     obcall::ObDropTableArg &drop_table_arg = drop_table_stmt->get_drop_table_arg();
@@ -61,18 +61,18 @@ int ObDropTableResolver::resolve(const peg::Node &parse_tree)
     }
 
     if (OB_FAIL(ret)) {
-    } else if (peg::NodeKind::DropTable == parse_tree.kind) {
+    } else if (peg::NodeKind::DropTable == parse_tree.kind()) {
       if (peg::drop_temporary(parse_tree)) {
         // mysql temporary table special usage
         drop_table_arg.table_type_ = share::schema::TMP_TABLE;
       } else {
         drop_table_arg.table_type_ = share::schema::USER_TABLE; //xiyu@TODO: SYSTEM_TABLE???
       }
-    } else if (peg::NodeKind::DropView == parse_tree.kind) {
+    } else if (peg::NodeKind::DropView == parse_tree.kind()) {
       drop_table_arg.table_type_ = share::schema::USER_VIEW; //xiyu@TODO: SYSTEM_VIEW???
     } else {
       ret = OB_ERR_UNEXPECTED;
-      SQL_RESV_LOG(WARN, "Unknown parse tree type", K(parse_tree.kind), K(ret));
+      SQL_RESV_LOG(WARN, "Unknown parse tree type", K(parse_tree.kind()), K(ret));
     }
 
     ObPlacementHashSet<ObTableItem> *tmp_ptr = NULL;

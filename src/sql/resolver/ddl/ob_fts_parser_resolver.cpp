@@ -46,7 +46,7 @@ int ObFTParserResolverHelper::resolve_fts_index_parser_properties(
     storage::ObFTParserJsonProps &property)
 {
   int ret = OB_SUCCESS;
-  switch (node.kind) {
+  switch (node.kind()) {
     case peg::NodeKind::ParserMinTokenSize: {
       const int64_t value = peg::table_option_number(node);
       if (!property.is_valid_min_token_size(value)) {

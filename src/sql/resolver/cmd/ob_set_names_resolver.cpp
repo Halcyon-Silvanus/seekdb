@@ -35,13 +35,14 @@ int ObSetNamesResolver::resolve(const peg::Node &statement)
   int ret = OB_SUCCESS;
   ObSetNamesStmt *names = create_stmt<ObSetNamesStmt>();
   if (names == nullptr) return OB_ALLOCATE_MEMORY_FAILED;
-  names->set_is_set_names(statement.kind == peg::NodeKind::SetNames);
+  names->set_is_set_names(statement.kind() == peg::NodeKind::SetNames);
   const auto &charset = peg::setting_charset(statement);
-  if (charset.kind == peg::NodeKind::Default) {
+  if (charset.kind() == peg::NodeKind::Default) {
     names->set_is_default_charset(true);
   } else {
     ObString name;
-    OZ (ob_write_string(*allocator_, ObString(charset.text.size(), charset.text.data()), name));
+    const auto charset_text = charset.text();
+    OZ (ob_write_string(*allocator_, ObString(charset_text.size(), charset_text.data()), name));
     if (OB_SUCC(ret) && names->is_set_names()) {
       const auto collation = ObCharset::get_default_collation(ObCharset::charset_type(name));
       if (!ObCharset::is_valid_collation(collation)) {
@@ -56,11 +57,12 @@ int ObSetNamesResolver::resolve(const peg::Node &statement)
   }
   if (OB_SUCC(ret) && peg::setting_has_collation(statement)) {
     const auto &collation = peg::setting_collation(statement);
-    if (collation.kind == peg::NodeKind::Default) {
+    if (collation.kind() == peg::NodeKind::Default) {
       names->set_is_default_collation(true);
     } else {
       ObString name;
-      OZ (ob_write_string(*allocator_, ObString(collation.text.size(), collation.text.data()), name));
+      const auto collation_text = collation.text();
+      OZ (ob_write_string(*allocator_, ObString(collation_text.size(), collation_text.data()), name));
       if (OB_SUCC(ret)) names->set_collation(name);
     }
   }

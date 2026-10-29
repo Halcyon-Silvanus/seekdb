@@ -82,7 +82,7 @@ int ObFlushCacheResolver::resolve(const peg::Node &statement)
           if (text.size() > OB_MAX_SQL_ID_LENGTH + 1) ret = OB_INVALID_ARGUMENT;
           else OZ(ob_write_string(*allocator_, ObString(text.size(), text.data()), argument.sql_id_));
         } else {
-          argument.schema_id_ = value.kind == peg::NodeKind::Parameter
+          argument.schema_id_ = value.kind() == peg::NodeKind::Parameter
               ? peg::placeholder_index(value) : peg::integer_literal_value(value);
         }
         OX(argument.is_fine_grained_ = true);
@@ -209,14 +209,17 @@ int ObSetTPResolver::resolve(const peg::Node &statement)
     for (const auto &option : peg::tracepoint_options(statement)) {
       if (OB_FAIL(ret)) break;
       const auto &value = peg::tracepoint_value(option);
-      if (option.kind == peg::NodeKind::TracepointName) {
+      if (option.kind() == peg::NodeKind::TracepointName) {
         if (parameter.event_no_ != 0) {
           ret = OB_NOT_SUPPORTED;
           LOG_USER_ERROR(OB_NOT_SUPPORTED, "Setting tp_no and tp_name simultaneously is");
-        } else OZ(ob_write_string(*allocator_, ObString(value.text.size(), value.text.data()), parameter.event_name_));
+        } else {
+          const auto value_text = value.text();
+          OZ(ob_write_string(*allocator_, ObString(value_text.size(), value_text.data()), parameter.event_name_));
+        }
       } else {
         const int64_t number = static_cast<int64_t>(peg::integer_literal_value(value));
-        switch (option.kind) {
+        switch (option.kind()) {
           case peg::NodeKind::TracepointNumber:
             if (!parameter.event_name_.empty()) {
               ret = OB_NOT_SUPPORTED;
@@ -228,7 +231,7 @@ int ObSetTPResolver::resolve(const peg::Node &statement)
             else ret = OB_INVALID_ARGUMENT;
             break;
           case peg::NodeKind::TracepointFrequency:
-            if (value.kind == peg::NodeKind::Int) {
+            if (value.kind() == peg::NodeKind::Int) {
               if (number < 0) ret = OB_INVALID_ARGUMENT;
               else parameter.trigger_freq_ = number;
             }

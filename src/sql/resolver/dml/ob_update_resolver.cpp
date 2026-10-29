@@ -39,7 +39,7 @@ int ObUpdateResolver::resolve(const peg::Node &query)
   int ret = OB_SUCCESS;
   ObUpdateStmt *update_stmt = NULL;
   ObSEArray<ObTableAssignment, 2> tables_assign;
-  if (query.kind != peg::NodeKind::Update || OB_ISNULL(session_info_)) {
+  if (query.kind() != peg::NodeKind::Update || OB_ISNULL(session_info_)) {
     ret = OB_ERR_UNEXPECTED;
   } else if (OB_ISNULL(update_stmt = create_stmt<ObUpdateStmt>())) {
     ret = OB_ALLOCATE_MEMORY_FAILED;

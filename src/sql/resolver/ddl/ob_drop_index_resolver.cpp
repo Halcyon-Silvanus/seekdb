@@ -39,7 +39,7 @@ int ObDropIndexResolver::resolve(const peg::Node &parse_tree)
   int ret = OB_SUCCESS;
   const auto &index_node = peg::drop_index_name(parse_tree);
 
-  if (parse_tree.kind != peg::NodeKind::DropIndex) { // mysql mode
+  if (parse_tree.kind() != peg::NodeKind::DropIndex) { // mysql mode
     ret = OB_ERR_UNEXPECTED;
   }
   
@@ -73,7 +73,8 @@ int ObDropIndexResolver::resolve(const peg::Node &parse_tree)
     if (OB_SUCC(ret)) {
       {
         ObString index_name;
-        OZ (ob_write_string(*allocator_, ObString(index_node.text.size(), index_node.text.data()), index_name));
+        const auto index_node_text = index_node.text();
+        OZ (ob_write_string(*allocator_, ObString(index_node_text.size(), index_node_text.data()), index_name));
         // Check if the index is created on a foreign key column, if so, then do not allow the index to be deleted
         const ObTableSchema *table_schema = NULL;
         if (OB_FAIL(ret)) {

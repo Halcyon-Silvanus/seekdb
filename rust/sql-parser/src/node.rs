@@ -13,7 +13,17 @@
 // limitations under the License.
 
 use crate::bridge::ffi;
-pub(crate) use ffi::{Node, NodeKind as Kind};
+pub(crate) use ffi::NodeKind as Kind;
+
+pub struct Node {
+    pub(crate) kind: Kind,
+    pub(crate) children: Vec<Node>,
+    pub(crate) text: String,
+    pub(crate) start: usize,
+    pub(crate) end: usize,
+    pub(crate) value: u64,
+    pub(crate) depth: usize,
+}
 
 pub(crate) const MAX_DEPTH: usize = 128;
 
@@ -139,12 +149,16 @@ impl Select {
 }
 
 impl Node {
+    pub fn kind(&self) -> Kind { self.kind }
+    pub fn as_text(&self) -> &str { &self.text }
+    pub fn span(&self) -> ffi::Span { ffi::Span { start: self.start, end: self.end } }
+
     fn contains_user_variable(&self) -> bool {
         matches!(self.kind, Kind::GetUserVariable | Kind::UserAssignment)
             || self.children.iter().any(Self::contains_user_variable)
     }
 
-    pub fn pl_expression(self) -> Result<Self, &'static str> {
+    pub(crate) fn pl_expression(self) -> Result<Self, &'static str> {
         if !self.contains_user_variable() {
             return Ok(self);
         }
@@ -162,7 +176,7 @@ impl Node {
         Ok(query.at(start, end))
     }
 
-    pub fn setting_value(variable: &Self, mut value: Self) -> Self {
+    pub(crate) fn setting_value(variable: &Self, mut value: Self) -> Self {
         if variable.kind != Kind::UserVariable
             && value.kind == Kind::Column
             && crate::query::name_parts(&value).len() == 1
@@ -176,11 +190,11 @@ impl Node {
         value
     }
 
-    pub fn optional(node: Option<Self>) -> Self {
+    pub(crate) fn optional(node: Option<Self>) -> Self {
         node.unwrap_or_else(Self::missing)
     }
 
-    pub fn list(kind: Kind, children: Vec<Self>) -> Self {
+    pub(crate) fn list(kind: Kind, children: Vec<Self>) -> Self {
         if children.is_empty() {
             Self::missing()
         } else {
@@ -188,11 +202,11 @@ impl Node {
         }
     }
 
-    pub fn where_clause(value: Option<Self>) -> Self {
+    pub(crate) fn where_clause(value: Option<Self>) -> Self {
         Self::optional(value.map(|value| Self::new(Kind::Where, vec![value])))
     }
 
-    pub fn insert(
+    pub(crate) fn insert(
         replace: bool,
         ignore: bool,
         table: Self,
@@ -226,7 +240,7 @@ impl Node {
         Self::new(Kind::Insert, children)
     }
 
-    pub fn data_type(
+    pub(crate) fn data_type(
         name: &str,
         parameters: Vec<Self>,
         unsigned: bool,
@@ -277,7 +291,7 @@ impl Node {
             .at(start, end))
     }
 
-    pub fn new(kind: Kind, children: Vec<Self>) -> Self {
+    pub(crate) fn new(kind: Kind, children: Vec<Self>) -> Self {
         let depth = children.iter().map(|child| child.depth).max().unwrap_or(0);
         Self {
             kind,
@@ -290,25 +304,25 @@ impl Node {
         }
     }
 
-    pub fn missing() -> Self {
+    pub(crate) fn missing() -> Self {
         Self::new(Kind::Missing, vec![])
     }
 
-    pub fn text(mut self, text: String) -> Self {
+    pub(crate) fn text(mut self, text: String) -> Self {
         self.text = text;
         self
     }
-    pub fn value(mut self, value: u64) -> Self {
+    pub(crate) fn value(mut self, value: u64) -> Self {
         self.value = value;
         self
     }
-    pub fn at(mut self, start: usize, end: usize) -> Self {
+    pub(crate) fn at(mut self, start: usize, end: usize) -> Self {
         self.start = start;
         self.end = end;
         self
     }
 
-    pub fn expression(mut self, start: usize, end: usize) -> Result<Self, &'static str> {
+    pub(crate) fn expression(mut self, start: usize, end: usize) -> Result<Self, &'static str> {
         if self.depth >= MAX_DEPTH {
             return Err("expression depth below 128 levels");
         }
@@ -323,7 +337,7 @@ impl Node {
             .at(name.start, name.end)
     }
 
-    pub fn number(text: &str, start: usize, end: usize) -> Result<Self, &'static str> {
+    pub(crate) fn number(text: &str, start: usize, end: usize) -> Result<Self, &'static str> {
         let mut value = 0;
         let kind = if text.contains(['e', 'E']) {
             Kind::Double
@@ -360,7 +374,7 @@ impl Node {
         Self::new(Kind::Column, children).expression(start, end)
     }
 
-    pub fn unary(op: &str, value: Self, start: usize) -> Result<Self, &'static str> {
+    pub(crate) fn unary(op: &str, value: Self, start: usize) -> Result<Self, &'static str> {
         let end = value.end;
         if op == "binary" {
             let target = Self::new(Kind::CastType, vec![])
@@ -385,14 +399,14 @@ impl Node {
             .expression(start, end)
     }
 
-    pub fn binary(op: String, left: Self, right: Self) -> Result<Self, &'static str> {
+    pub(crate) fn binary(op: String, left: Self, right: Self) -> Result<Self, &'static str> {
         let (start, end) = (left.start, right.end);
         Self::new(Kind::Binary, vec![left, right])
             .text(op)
             .expression(start, end)
     }
 
-    pub fn is_wildcard(&self) -> bool {
+    pub(crate) fn is_wildcard(&self) -> bool {
         self.kind == Kind::Star
             || (self.kind == Kind::Column
                 && self
@@ -401,7 +415,7 @@ impl Node {
                     .is_some_and(|child| child.kind == Kind::Star))
     }
 
-    pub fn cast_array(
+    pub(crate) fn cast_array(
         mut self,
         target: Self,
         start: usize,
@@ -709,11 +723,11 @@ impl Node {
         .expression(start, end)
     }
 
-    pub fn callable(kind: Kind, arguments: Vec<Self>) -> Self {
+    pub(crate) fn callable(kind: Kind, arguments: Vec<Self>) -> Self {
         Self::new(kind, vec![Self::new(Kind::CallArguments, arguments)])
     }
 
-    pub fn named_call(kind: Kind, name: Self, arguments: Vec<Self>) -> Self {
+    pub(crate) fn named_call(kind: Kind, name: Self, arguments: Vec<Self>) -> Self {
         Self::new(
             kind,
             vec![
@@ -741,7 +755,7 @@ impl Node {
         Ok(Self::new(Kind::Table, children))
     }
 
-    pub fn projection(mut value: Self, alias: Option<Self>) -> Self {
+    pub(crate) fn projection(mut value: Self, alias: Option<Self>) -> Self {
         let (start, end) = (value.start, value.end);
         if let Some(mut alias) = alias {
             let text = alias.text.clone();

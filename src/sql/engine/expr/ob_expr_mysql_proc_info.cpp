@@ -308,7 +308,7 @@ int ObExprMysqlProcInfo::get_returns_info(const ObExpr &expr,
     OZ (exec_env.init(exec_env_str));
     OZ (sql::ObParser(calc_alloc, exec_env.get_sql_mode()).parse_routine_definition(routine_body, syntax));
     if (OB_SUCC(ret)) {
-      CK (syntax.statement()->kind == peg::NodeKind::CreateFunction);
+      CK (syntax.statement()->kind() == peg::NodeKind::CreateFunction);
       if (OB_SUCC(ret)) {
         const auto &return_type = peg::routine_return_type(*syntax.statement());
         if (ob_is_geometry_tc(static_cast<ObObjType>(param_type))) {

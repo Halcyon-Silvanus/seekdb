@@ -96,7 +96,7 @@ int ObShowResolver::resolve(const peg::Node &statement)
   ObArenaAllocator privilege_allocator;
   ObStmtNeedPrivs required;
   required.need_privs_.set_allocator(&privilege_allocator);
-  switch (statement.kind) {
+  switch (statement.kind()) {
     case peg::NodeKind::ShowTables: {
       show_resv_ctx.stmt_type_ = stmt::T_SHOW_TABLES;
       uint64_t database_id = OB_INVALID_ID;
@@ -164,8 +164,8 @@ int ObShowResolver::resolve(const peg::Node &statement)
       bool is_view = false;
       OZ(resolve_show_from_table(peg::show_object(statement),
           peg::show_has_database(statement) ? &peg::show_database(statement) : nullptr,
-          statement.kind, database, database_id, table, table_id, is_view));
-      if (statement.kind == peg::NodeKind::ShowColumns) {
+          statement.kind(), database, database_id, table, table_id, is_view));
+      if (statement.kind() == peg::NodeKind::ShowColumns) {
         show_resv_ctx.stmt_type_ = stmt::T_SHOW_COLUMNS;
         if (peg::show_full(statement)) {
           GEN_SQL_STEP_1(ObShowSqlSet::SHOW_FULL_COLUMNS);
@@ -174,7 +174,7 @@ int ObShowResolver::resolve(const peg::Node &statement)
           GEN_SQL_STEP_1(ObShowSqlSet::SHOW_COLUMNS);
           GEN_SQL_STEP_2(ObShowSqlSet::SHOW_COLUMNS, OB_SYS_DATABASE_NAME, OB_ALL_VIRTUAL_TABLE_COLUMN_TNAME, table_id);
         }
-      } else if (statement.kind == peg::NodeKind::ShowIndexes) {
+      } else if (statement.kind() == peg::NodeKind::ShowIndexes) {
         show_resv_ctx.stmt_type_ = stmt::T_SHOW_INDEXES;
         OZ(required.need_privs_.init(3));
         ObNeedPriv privilege;
@@ -208,8 +208,8 @@ int ObShowResolver::resolve(const peg::Node &statement)
           GEN_SQL_STEP_2(ObShowSqlSet::SHOW_INDEXES, OB_SYS_DATABASE_NAME, OB_ALL_VIRTUAL_TABLE_INDEX_TNAME, table_id);
         }
       } else {
-        show_resv_ctx.stmt_type_ = statement.kind == peg::NodeKind::ShowCreateTable ? stmt::T_SHOW_CREATE_TABLE : stmt::T_SHOW_CREATE_VIEW;
-        if (statement.kind == peg::NodeKind::ShowCreateView || is_view) {
+        show_resv_ctx.stmt_type_ = statement.kind() == peg::NodeKind::ShowCreateTable ? stmt::T_SHOW_CREATE_TABLE : stmt::T_SHOW_CREATE_VIEW;
+        if (statement.kind() == peg::NodeKind::ShowCreateView || is_view) {
           ObNeedPriv privilege;
           privilege.db_ = database;
           privilege.table_ = table;
@@ -250,7 +250,7 @@ int ObShowResolver::resolve(const peg::Node &statement)
     }
     case peg::NodeKind::ShowCreateProcedure:
     case peg::NodeKind::ShowCreateFunction: {
-      const bool procedure = statement.kind == peg::NodeKind::ShowCreateProcedure;
+      const bool procedure = statement.kind() == peg::NodeKind::ShowCreateProcedure;
       show_resv_ctx.stmt_type_ = procedure ? stmt::T_SHOW_CREATE_PROCEDURE : stmt::T_SHOW_CREATE_FUNCTION;
       ObString database, routine;
       uint64_t database_id = OB_INVALID_ID, routine_id = OB_INVALID_ID;
@@ -326,8 +326,8 @@ int ObShowResolver::resolve(const peg::Node &statement)
       break;
     case peg::NodeKind::ShowWarnings:
     case peg::NodeKind::ShowErrors:
-      show_resv_ctx.stmt_type_ = statement.kind == peg::NodeKind::ShowWarnings ? stmt::T_SHOW_WARNINGS : stmt::T_SHOW_ERRORS;
-      if (statement.kind == peg::NodeKind::ShowWarnings) {
+      show_resv_ctx.stmt_type_ = statement.kind() == peg::NodeKind::ShowWarnings ? stmt::T_SHOW_WARNINGS : stmt::T_SHOW_ERRORS;
+      if (statement.kind() == peg::NodeKind::ShowWarnings) {
         GEN_SQL_STEP_1(ObShowSqlSet::SHOW_WARNINGS);
         GEN_SQL_STEP_2(ObShowSqlSet::SHOW_WARNINGS, OB_SYS_DATABASE_NAME, OB_ALL_VIRTUAL_WARNING_TNAME);
       } else {
@@ -410,7 +410,8 @@ int ObShowResolver::resolve_show_from_table(const peg::Node &object, const peg::
     }
   } else {
     const auto &name = peg::relation_name(object);
-    OZ(ob_write_string(*allocator_, ObString(name.text.size(), name.text.data()), table_name));
+    const auto name_text = name.text();
+    OZ(ob_write_string(*allocator_, ObString(name_text.size(), name_text.data()), table_name));
     if (OB_SUCC(ret) && table_name.empty()) ret = OB_WRONG_TABLE_NAME;
     OZ(resolve_show_from_database(*database, database_id, database_name));
   }
@@ -446,10 +447,12 @@ int ObShowResolver::resolve_schema_object_name(const peg::Node &object, ObString
 {
   int ret = OB_SUCCESS;
   const auto &identifier = peg::relation_name(object);
-  OZ(ob_write_string(*allocator_, ObString(identifier.text.size(), identifier.text.data()), name));
+  const auto identifier_text = identifier.text();
+  OZ(ob_write_string(*allocator_, ObString(identifier_text.size(), identifier_text.data()), name));
   if (peg::relation_has_database(object)) {
     const auto &qualifier = peg::relation_database(object);
-    OZ(ob_write_string(*allocator_, ObString(qualifier.text.size(), qualifier.text.data()), database));
+    const auto qualifier_text = qualifier.text();
+    OZ(ob_write_string(*allocator_, ObString(qualifier_text.size(), qualifier_text.data()), database));
   } else database = session_info_->get_database_name();
   if (OB_SUCC(ret) && database.empty()) ret = OB_ERR_NO_DB_SELECTED;
   OZ(schema_checker_->get_database_id(database, database_id));

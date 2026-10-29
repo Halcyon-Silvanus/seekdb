@@ -66,7 +66,7 @@ int ObVariableSetResolver::resolve(const peg::Node &statement)
   } else {
     for (const auto &setting : peg::setting_assignments(statement)) {
       if (OB_FAIL(ret)) break;
-      if (setting.kind == peg::NodeKind::SetNames || setting.kind == peg::NodeKind::SetCharset) {
+      if (setting.kind() == peg::NodeKind::SetNames || setting.kind() == peg::NodeKind::SetCharset) {
         OZ (resolve_set_names(setting));
       } else {
         const auto &target = peg::assignment_target(setting);
@@ -76,10 +76,10 @@ int ObVariableSetResolver::resolve(const peg::Node &statement)
         variable.set_scope_ = peg::setting_scope(setting) == peg::VariableScope::Global
             ? ObSetVar::SET_SCOPE_GLOBAL : ObSetVar::SET_SCOPE_SESSION;
         if (variable.set_scope_ == ObSetVar::SET_SCOPE_GLOBAL) variable_set_stmt->set_has_global_variable(true);
-        variable.is_system_variable_ = target.kind != peg::NodeKind::UserVariable;
+        variable.is_system_variable_ = target.kind() != peg::NodeKind::UserVariable;
         OZ (ob_write_string(*allocator_, ObString(name.size(), name.data()), variable.variable_name_));
         if (OB_SUCC(ret)) ObCharset::casedn(CS_TYPE_UTF8MB4_GENERAL_CI, variable.variable_name_);
-        if (value.kind == peg::NodeKind::Default) {
+        if (value.kind() == peg::NodeKind::Default) {
           variable.is_set_default_ = true;
         } else if (variable.is_system_variable_) {
           OZ (resolve_value_expr(value, variable.value_expr_));
@@ -191,9 +191,9 @@ int ObVariableSetResolver::resolve_subquery_info(const ObIArray<ObSubQueryInfo> 
     if (OB_ISNULL(info.sub_query_) || OB_ISNULL(info.ref_expr_)) {
       ret = OB_ERR_UNEXPECTED;
       LOG_WARN("subquery info is invalid", K_(info.sub_query), K_(info.ref_expr));
-    } else if (OB_UNLIKELY(peg::NodeKind::Select != info.sub_query_->kind)) {
+    } else if (OB_UNLIKELY(peg::NodeKind::Select != info.sub_query_->kind())) {
       ret = OB_ERR_ILLEGAL_TYPE;
-      LOG_WARN("Unknown statement type in subquery", "kind", static_cast<int>(info.sub_query_->kind));
+      LOG_WARN("Unknown statement type in subquery", "kind", static_cast<int>(info.sub_query_->kind()));
     }
 
     if (OB_FAIL(ret)) {

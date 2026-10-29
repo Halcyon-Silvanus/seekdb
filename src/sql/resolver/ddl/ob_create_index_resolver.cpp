@@ -48,7 +48,8 @@ int ObCreateIndexResolver::resolve_index_name_node(
     uint64_t database_id = OB_INVALID_ID;
     uint64_t spec_database_id = OB_INVALID_ID;
     const auto &database = peg::relation_database(name);
-    const ObString spec_database_name(database.text.size(), database.text.data());
+    const auto database_text = database.text();
+    const ObString spec_database_name(database_text.size(), database_text.data());
     if (OB_FAIL(schema_checker_->get_database_id(crt_idx_stmt->get_database_name(), database_id))) {
     } else if (OB_FAIL(schema_checker_->get_database_id(spec_database_name, spec_database_id))) {
     } else if (spec_database_id != database_id) {
@@ -58,10 +59,11 @@ int ObCreateIndexResolver::resolve_index_name_node(
   }
   if (OB_SUCC(ret)) {
     const auto &identifier = peg::relation_name(name);
+    const auto identifier_text = identifier.text();
     ObString index_name;
     ObCollationType cs_type = CS_TYPE_INVALID;
     if (OB_FAIL(ob_write_string(*allocator_,
-        ObString(identifier.text.size(), identifier.text.data()), index_name))) {
+        ObString(identifier_text.size(), identifier_text.data()), index_name))) {
     } else if (OB_FAIL(session_info_->get_collation_connection(cs_type))) {
     } else if (OB_FAIL(ObSQLUtils::check_index_name(cs_type, index_name))) {
     } else {
@@ -117,10 +119,11 @@ int ObCreateIndexResolver::resolve_index_column_node(
       const auto &expression = peg::index_column_expression(column);
       ObColumnSortItem sort_item;
       {
-        sort_item.is_func_index_ = expression.kind != peg::NodeKind::Ident;
+        sort_item.is_func_index_ = expression.kind() != peg::NodeKind::Ident;
         cnt_func_index |= sort_item.is_func_index_;
+        const auto expression_text = expression.text();
         const ObString spelling = sort_item.is_func_index_ ? params_.syntax_->source(expression)
-            : ObString(expression.text.size(), expression.text.data());
+            : ObString(expression_text.size(), expression_text.data());
         if (OB_FAIL(ob_write_string(*allocator_, spelling, sort_item.column_name_))) {
         }
         bool is_multi_value_index = false;
@@ -240,7 +243,7 @@ int ObCreateIndexResolver::resolve_index_option_node(
     } else {
       crt_idx_stmt->set_index_dop(table_dop_);
       for (const auto &option : options) {
-        if (option.kind == peg::NodeKind::BlockSize) {
+        if (option.kind() == peg::NodeKind::BlockSize) {
           is_spec_block_size = true;
           break;
         }
@@ -296,7 +299,7 @@ int ObCreateIndexResolver::fill_session_info_into_arg(const sql::ObSQLSessionInf
 
 int ObCreateIndexResolver::resolve(const peg::Node &statement)
 {
-  if (statement.kind != peg::NodeKind::CreateIndex) { return OB_ERR_UNEXPECTED; }
+  if (statement.kind() != peg::NodeKind::CreateIndex) { return OB_ERR_UNEXPECTED; }
   int ret = OB_SUCCESS;
   ObCreateIndexStmt *crt_idx_stmt = NULL;
   const auto definition = peg::index_definition(statement);

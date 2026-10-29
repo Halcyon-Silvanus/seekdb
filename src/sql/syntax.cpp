@@ -163,21 +163,23 @@ int ObParser::parse_entry(const ObString &sql, ParsedSql &owner, peg::ParseMode 
 {
   owner.reset();
   auto parsed = peg::parse_sql(sql_bytes(sql), parser_mode(sql_mode_), mode);
-  if (!parsed.error.empty()) {
-    const ObString source = parsed.expanded_sql.empty() ? sql
-        : ObString(parsed.expanded_sql.size(), parsed.expanded_sql.data());
-    return report_parse_error(source, parsed.error_offset);
+  if (!parsed->error().empty()) {
+    const auto expanded_sql = parsed->expanded_sql();
+    const ObString source = expanded_sql.empty() ? sql
+        : ObString(expanded_sql.size(), expanded_sql.data());
+    return report_parse_error(source, parsed->error_offset());
   }
   ParseResult &result = owner.metadata_;
   result.input_sql_ = sql.ptr();
   result.input_sql_len_ = sql.length();
   result.is_dynamic_sql_ = dynamic_sql;
-  result.contain_sensitive_data_ = parsed.root.kind == Kind::SetConfig
-      || parsed.root.kind == Kind::CreateUser || parsed.root.kind == Kind::SetPassword
-      || parsed.root.kind == Kind::Grant;
-  result.question_mark_ctx_.count_ = parsed.parameters;
-  result.question_mark_ctx_.by_ordinal_ = parsed.parameter_names.empty() && parsed.parameters != 0;
-  result.question_mark_ctx_.by_name_ = parsed.named_parameters;
+  const auto kind = parsed->root().kind();
+  result.contain_sensitive_data_ = kind == Kind::SetConfig
+      || kind == Kind::CreateUser || kind == Kind::SetPassword || kind == Kind::Grant;
+  const auto parameters = parsed->parameters();
+  result.question_mark_ctx_.count_ = parameters;
+  result.question_mark_ctx_.by_ordinal_ = !parsed->has_parameter_names() && parameters != 0;
+  result.question_mark_ctx_.by_name_ = parsed->named_parameters();
   if (dynamic_sql) {
     ObString owned;
     const int ret = ob_write_string(allocator_, sql, owned, true);
@@ -263,7 +265,7 @@ int ParsedSql::preserve_source(common::ObIAllocator &allocator)
 
 int statement_type(const peg::Node &statement, stmt::StmtType &type)
 {
-  const auto traits = native_statement_traits(statement.kind);
+  const auto traits = native_statement_traits(statement.kind());
   if (!traits) return common::OB_ERR_UNEXPECTED;
   type = traits->type;
   return common::OB_SUCCESS;
@@ -271,32 +273,35 @@ int statement_type(const peg::Node &statement, stmt::StmtType &type)
 
 int ParsedSql::statement_type(stmt::StmtType &type) const
 {
-  return syntax_ ? sql::statement_type(syntax_->root, type)
+  return syntax_ ? sql::statement_type((*syntax_)->root(), type)
                  : common::OB_ERR_UNEXPECTED;
 }
 
 bool ParsedSql::is_end_transaction() const
 {
-  return syntax_ && (syntax_->root.kind == peg::NodeKind::Commit
-      || syntax_->root.kind == peg::NodeKind::Rollback);
+  if (!syntax_) return false;
+  const auto kind = (*syntax_)->root().kind();
+  return kind == peg::NodeKind::Commit || kind == peg::NodeKind::Rollback;
 }
 
 void ParsedSql::sql_traits(ObSqlTraits &traits)
 {
   statement_type(traits.stmt_type_);
   if (syntax_) {
-    const auto syntax_traits = *native_statement_traits(syntax_->root.kind);
+    const auto &root = (*syntax_)->root();
+    const auto kind = root.kind();
+    const auto syntax_traits = *native_statement_traits(kind);
     traits.is_readonly_stmt_ = syntax_traits.readonly;
-    if (syntax_->root.kind == Kind::Select) {
-      traits.is_readonly_stmt_ = !peg::query_has_lock(syntax_->root);
-    } else if (syntax_->root.kind == Kind::Explain) {
-      const auto &statement = peg::explain_statement(syntax_->root);
-      traits.is_readonly_stmt_ = statement.kind == Kind::Select && !peg::query_has_lock(statement);
+    if (kind == Kind::Select) {
+      traits.is_readonly_stmt_ = !peg::query_has_lock(root);
+    } else if (kind == Kind::Explain) {
+      const auto &statement = peg::explain_statement(root);
+      traits.is_readonly_stmt_ = statement.kind() == Kind::Select && !peg::query_has_lock(statement);
     }
     traits.is_cause_implicit_commit_ = syntax_traits.implicit_commit;
-    traits.is_commit_stmt_ = syntax_->root.kind == peg::NodeKind::Commit;
-    traits.allowed_on_standby_ = syntax_->root.kind == Kind::SetConfig
-        || syntax_->root.kind == Kind::ResetConfig || syntax_->root.kind == Kind::SetTracepoint;
+    traits.is_commit_stmt_ = kind == peg::NodeKind::Commit;
+    traits.allowed_on_standby_ = kind == Kind::SetConfig
+        || kind == Kind::ResetConfig || kind == Kind::SetTracepoint;
   }
 }
 

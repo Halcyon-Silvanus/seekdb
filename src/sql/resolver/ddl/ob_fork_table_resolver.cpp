@@ -45,7 +45,7 @@ int ObForkTableResolver::resolve(const peg::Node &parse_tree)
 
   if (OB_ISNULL(session_info_) ||
       OB_ISNULL(allocator_) ||
-      peg::NodeKind::ForkTable != parse_tree.kind) {
+      peg::NodeKind::ForkTable != parse_tree.kind()) {
     ret = OB_ERR_UNEXPECTED;
     SQL_RESV_LOG(WARN, "invalid parse tree!", K(ret));
   } else if (OB_ISNULL(fork_table_stmt = create_stmt<ObForkTableStmt>())) {

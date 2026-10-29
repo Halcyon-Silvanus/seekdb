@@ -3957,7 +3957,7 @@ int ObDbmsStats::parse_method_opt(sql::ObExecContext &ctx,
     ParsedSql syntax;
     if (OB_FAIL(parser.parse(method_opt, syntax, parse_mode))) {
     } else if (OB_ISNULL(syntax.statement()) ||
-               syntax.statement()->kind != peg::NodeKind::StatsOptions) {
+               syntax.statement()->kind() != peg::NodeKind::StatsOptions) {
       ret = OB_ERR_UNEXPECTED;
     } else {
       ObSEArray<ObString, 4> all_for_col;

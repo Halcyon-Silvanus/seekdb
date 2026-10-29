@@ -254,7 +254,7 @@ int ObSPIResultSet::is_set_global_var(ObSQLSessionInfo &session,
   ObParser parser(allocator, session.get_sql_mode());
   if (sql.empty()) {
   } else if (OB_FAIL(parser.parse(sql, parsed))) {
-  } else if (parsed.statement() != nullptr && parsed.statement()->kind == peg::NodeKind::VariableSet) {
+  } else if (parsed.statement() != nullptr && parsed.statement()->kind() == peg::NodeKind::VariableSet) {
     for (const auto &assignment : peg::setting_assignments(*parsed.statement())) {
       if (OB_FAIL(ret) || has_global_variable) { break; }
       const auto &variable = peg::assignment_target(assignment);
@@ -263,19 +263,20 @@ int ObSPIResultSet::is_set_global_var(ObSQLSessionInfo &session,
         has_sys_var = true;
       } else {
         ObString name;
-        if (variable.kind == peg::NodeKind::Column || variable.kind == peg::NodeKind::Ident) {
+        if (variable.kind() == peg::NodeKind::Column || variable.kind() == peg::NodeKind::Ident) {
           const auto names = peg::name_parts(variable);
           if (names.size() != 1) {
             ret = OB_ERR_UNEXPECTED;
           } else {
-            name.assign_ptr(names[0].text.data(), names[0].text.size());
+            const auto name_text = names[0].text();
+            name.assign_ptr(name_text.data(), name_text.size());
             ObBasicSysVar *sys_var = nullptr;
             if (OB_FAIL(session.get_sys_variable_by_name(name, sys_var))) {
             } else if (sys_var != nullptr) {
               has_sys_var = true;
             }
           }
-        } else if (variable.kind == peg::NodeKind::SystemVariable) {
+        } else if (variable.kind() == peg::NodeKind::SystemVariable) {
           const auto spelling = peg::variable_name(variable);
           name.assign_ptr(spelling.data(), spelling.size());
           has_sys_var = true;
@@ -5826,7 +5827,7 @@ int ObSPIService::resolve_exec_params(const ObIArray<const peg::Node *> &binding
       const auto names = peg::name_parts(*binding);
       CK (names.size() == 1);
       if (OB_SUCC(ret)) {
-        const auto &name = names[0].text;
+        const auto name = names[0].text();
         OZ (ObPLResolver::resolve_local_var(ObString(name.size(), name.data()),
             secondary_namespace, expr_factory, &session, &schema_guard, expr));
       }
@@ -5876,7 +5877,7 @@ int ObSPIService::resolve_into_params(const peg::Node &statement,
 {
   int ret = OB_SUCCESS;
   rust::Slice<const peg::Node> variables;
-  if (statement.kind == peg::NodeKind::CreateView) {
+  if (statement.kind() == peg::NodeKind::CreateView) {
     OZ (ObResolverUtils::get_select_into_variables(peg::view_definition(statement).query, variables, true));
     if (OB_SUCC(ret) && !variables.empty()) { ret = OB_ERR_VIEW_SELECT_CONTAIN_INTO; }
   } else {
@@ -5884,10 +5885,11 @@ int ObSPIService::resolve_into_params(const peg::Node &statement,
     for (const auto &variable : variables) {
       if (OB_FAIL(ret)) { break; }
       ObRawExpr *expr = nullptr;
-      if (variable.kind == peg::NodeKind::Ident) {
-        OZ (ObPLResolver::resolve_local_var(ObString(variable.text.size(), variable.text.data()),
+      if (variable.kind() == peg::NodeKind::Ident) {
+        const auto variable_text = variable.text();
+        OZ (ObPLResolver::resolve_local_var(ObString(variable_text.size(), variable_text.data()),
             secondary_namespace, expr_factory, &session, &schema_guard, expr));
-      } else if (variable.kind == peg::NodeKind::UserVariable) {
+      } else if (variable.kind() == peg::NodeKind::UserVariable) {
         const auto name = peg::variable_name(variable);
         OZ (ObRawExprUtils::build_get_user_var(expr_factory, ObString(name.size(), name.data()), expr, &session));
       } else {
@@ -5927,8 +5929,14 @@ int ObSPIService::resolve_ref_objects(const peg::Node &statement,
       if (qualifiers.empty() && IS_FUN_SYS_TYPE(ObExprOperatorFactory::get_type_by_name(name))) { continue; }
       ObString database;
       ObString package;
-      if (qualifiers.size() > 0) { database.assign_ptr(qualifiers[0].text.data(), qualifiers[0].text.size()); }
-      if (qualifiers.size() > 1) { package.assign_ptr(qualifiers[1].text.data(), qualifiers[1].text.size()); }
+      if (qualifiers.size() > 0) {
+        const auto database_text = qualifiers[0].text();
+        database.assign_ptr(database_text.data(), database_text.size());
+      }
+      if (qualifiers.size() > 1) {
+        const auto package_text = qualifiers[1].text();
+        package.assign_ptr(package_text.data(), package_text.size());
+      }
       ObUDFInfo udf_info;
       ObNameCaseMode case_mode = OB_NAME_CASE_INVALID;
       OZ (session.get_name_case_mode(case_mode));

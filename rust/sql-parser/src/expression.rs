@@ -21,6 +21,37 @@ use crate::bridge::ffi::{
 use crate::node::{Kind, Node};
 use crate::query::{child, list};
 
+#[derive(Clone, Copy)]
+pub struct Binary<'a>(&'a Node);
+
+#[derive(Clone, Copy)]
+pub struct Unary<'a>(&'a Node);
+
+impl Node {
+    pub fn as_binary(&self) -> Option<Binary<'_>> {
+        (self.kind == Kind::Binary).then_some(Binary(self))
+    }
+
+    pub fn as_unary(&self) -> Option<Unary<'_>> {
+        (self.kind == Kind::Unary).then_some(Unary(self))
+    }
+
+    pub fn as_literal(&self) -> Option<ExpressionLiteral<'_>> {
+        is_literal(self).then(|| expression_literal(self))
+    }
+}
+
+impl<'a> Binary<'a> {
+    pub fn operator(self) -> BinaryOperator { binary_operator(self.0) }
+    pub fn left(self) -> &'a Node { binary_left(self.0) }
+    pub fn right(self) -> &'a Node { binary_right(self.0) }
+}
+
+impl<'a> Unary<'a> {
+    pub fn operator(self) -> UnaryOperator { unary_operator(self.0) }
+    pub fn operand(self) -> &'a Node { unary_operand(self.0) }
+}
+
 pub(crate) fn is_literal(expression: &Node) -> bool {
     matches!(
         expression.kind,

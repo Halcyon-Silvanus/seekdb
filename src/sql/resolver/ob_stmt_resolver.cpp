@@ -69,13 +69,14 @@ int ObStmtResolver::resolve_table_relation_node_v2(const peg::Node *node,
   int ret = OB_SUCCESS;
   is_db_explicit = false;
   const peg::Node &relation = peg::relation_name(*node);
+  const auto relation_text = relation.text();
   const bool has_database = peg::relation_has_database(*node);
   ObNameCaseMode mode = OB_NAME_CASE_INVALID;
   ObCollationType cs_type = CS_TYPE_INVALID;
   if (OB_ISNULL(session_info_) || OB_ISNULL(allocator_)) {
     ret = OB_ERR_UNEXPECTED;
   } else if (OB_FAIL(ob_write_string(*allocator_,
-      ObString(relation.text.size(), relation.text.data()), table_name))) {
+      ObString(relation_text.size(), relation_text.data()), table_name))) {
   } else if (OB_FAIL(session_info_->get_name_case_mode(mode))) {
   } else if (OB_FAIL(session_info_->get_collation_connection(cs_type))) {
   } else {
@@ -97,8 +98,9 @@ int ObStmtResolver::resolve_table_relation_node_v2(const peg::Node *node,
       } else {
         is_db_explicit = true;
         const peg::Node &database = peg::relation_database(*node);
+        const auto database_text = database.text();
         if (OB_FAIL(ob_write_string(*allocator_,
-            ObString(database.text.size(), database.text.data()), db_name))) {
+            ObString(database_text.size(), database_text.data()), db_name))) {
         } else if (OB_FAIL(ObSQLUtils::check_and_convert_db_name(cs_type, perserve_lettercase, db_name))) {
         } else {
           CK (OB_NOT_NULL(schema_checker_->get_schema_guard()));
@@ -143,10 +145,11 @@ int ObStmtResolver::resolve_ref_factor(const peg::Node *node,
     ret = OB_ERR_UNEXPECTED;
   } else {
     const peg::Node &relation = peg::relation_name(*node);
+    const auto relation_text = relation.text();
     const bool has_database = peg::relation_has_database(*node);
     ObCollationType cs_type = CS_TYPE_INVALID;
     if (OB_FAIL(ob_write_string(allocator,
-        ObString(relation.text.size(), relation.text.data()), table_name))) {
+        ObString(relation_text.size(), relation_text.data()), table_name))) {
     } else if (OB_FAIL(session_info->get_name_case_mode(mode))) {
     } else if (OB_FAIL(session_info->get_collation_connection(cs_type))) {
     } else {
@@ -162,8 +165,9 @@ int ObStmtResolver::resolve_ref_factor(const peg::Node *node,
           }
         } else {
           const peg::Node &database = peg::relation_database(*node);
+          const auto database_text = database.text();
           if (OB_FAIL(ob_write_string(allocator,
-              ObString(database.text.size(), database.text.data()), db_name))) {
+              ObString(database_text.size(), database_text.data()), db_name))) {
           } else if (OB_FAIL(ObSQLUtils::check_and_convert_db_name(cs_type, perserve_lettercase, db_name))) {
           }
         }
@@ -182,8 +186,9 @@ int ObStmtResolver::resolve_database_factor(const peg::Node *node,
   database_id = OB_INVALID_ID;
   if (OB_ISNULL(node)) {
     ret = OB_INVALID_ARGUMENT;
-  } else if (OB_FAIL(ob_write_string(*allocator_,
-      ObString(node->text.size(), node->text.data()), db_name))) {
+  } else if (const auto node_text = node->text();
+             OB_FAIL(ob_write_string(*allocator_,
+      ObString(node_text.size(), node_text.data()), db_name))) {
   } else if (OB_FAIL(schema_checker_->get_database_id(db_name, database_id))) {
     LOG_USER_ERROR(OB_ERR_BAD_DATABASE, db_name.length(), db_name.ptr());
   }

@@ -360,7 +360,7 @@ int ObAlterTableResolver::resolve_action_list(rust::Slice<const peg::Node> actio
         SQL_RESV_LOG(WARN, "invalid parse tree!", K(ret));
       } else if (FALSE_IT(alter_table_stmt->inc_alter_table_action_count())) {
       } else {
-        switch (action_node->kind) {
+        switch (action_node->kind()) {
         //deal with alter table option
         case peg::NodeKind::TableRename: {
             alter_table_stmt->set_alter_table_option();
@@ -472,7 +472,8 @@ int ObAlterTableResolver::resolve_action_list(rust::Slice<const peg::Node> actio
             ObSchemaGetterGuard *schema_guard = schema_checker_->get_schema_guard();
 
             const auto &name = peg::alter_constraint_name(*action_node);
-            constraint_name.assign_ptr(name.text.data(), name.text.size());
+            const auto name_text = name.text();
+            constraint_name.assign_ptr(name_text.data(), name_text.size());
             if (constraint_name.empty()) { ret = OB_ERR_UNEXPECTED; }
             if (OB_SUCC(ret)) {
               if (!table_schema_->is_mysql_tmp_table()) {
@@ -530,7 +531,7 @@ int ObAlterTableResolver::resolve_action_list(rust::Slice<const peg::Node> actio
         }
         default: {
             ret = OB_ERR_UNEXPECTED;
-            SQL_RESV_LOG(WARN, "Unknown alter table action %d", K(action_node->kind), K(ret));
+            SQL_RESV_LOG(WARN, "Unknown alter table action %d", K(action_node->kind()), K(ret));
             /* won't be here */
             break;
           }
@@ -694,12 +695,12 @@ int ObAlterTableResolver::resolve_column_options(const peg::Node &node,
                                                  bool &has_drop_column)
 {
   int ret = OB_SUCCESS;
-  has_add_column = node.kind == peg::NodeKind::ColumnAdd;
-  has_drop_column = node.kind == peg::NodeKind::ColumnDrop;
+  has_add_column = node.kind() == peg::NodeKind::ColumnAdd;
+  has_drop_column = node.kind() == peg::NodeKind::ColumnDrop;
   if (OB_ISNULL(table_schema_)) {
     ret = OB_ERR_UNEXPECTED;
   } else {
-    switch (node.kind) {
+    switch (node.kind()) {
       case peg::NodeKind::ColumnAdd: OZ(resolve_add_column(node, add_column_names_set)); break;
       case peg::NodeKind::ColumnAlter: OZ(resolve_alter_column(node)); break;
       case peg::NodeKind::ColumnChange: OZ(resolve_change_column(node)); break;
@@ -730,10 +731,11 @@ int ObAlterTableResolver::resolve_index_column_list(rust::Slice<const peg::Node>
       const auto &expression = peg::index_column_expression(column);
       {
         sort_item.reset();
-        sort_item.is_func_index_ = expression.kind != peg::NodeKind::Ident;
+        sort_item.is_func_index_ = expression.kind() != peg::NodeKind::Ident;
         cnt_func_index |= sort_item.is_func_index_;
+        const auto expression_text = expression.text();
         const ObString name = sort_item.is_func_index_ ? params_.syntax_->source(expression)
-            : ObString(expression.text.size(), expression.text.data());
+            : ObString(expression_text.size(), expression_text.data());
         OZ(ob_write_string(*allocator_, name, sort_item.column_name_));
         bool is_multi_value_index = false;
         OZ(share::ObMulValueIndexBuilderUtil::adjust_index_type(sort_item.column_name_,
@@ -933,7 +935,8 @@ int ObAlterTableResolver::resolve_add_index(const peg::Node &node)
               }
             } else {
               {
-                OZ(ob_write_string(*allocator_, ObString(index_name_node->text.size(), index_name_node->text.data()), create_index_arg->index_name_));
+                const auto index_name_node_text = index_name_node->text();
+                OZ(ob_write_string(*allocator_, ObString(index_name_node_text.size(), index_name_node_text.data()), create_index_arg->index_name_));
                 ObCollationType cs_type = CS_TYPE_INVALID;
                 if (OB_FAIL(ret)) {
                 } else if (OB_UNLIKELY(NULL == session_info_)) {
@@ -1203,7 +1206,7 @@ int ObAlterTableResolver::inner_add_partition(rust::Slice<const peg::Node> eleme
   if (elements.empty() || OB_ISNULL(alter_stmt)) {
     ret = OB_ERR_UNEXPECTED;
   } else if (part_option.is_range_part()) {
-    if (elements[0].kind == peg::NodeKind::ListPartitionElement) {
+    if (elements[0].kind() == peg::NodeKind::ListPartitionElement) {
       ret = OB_ERR_PARTITION_EXPECT_VALUES_LESS_THAN;
     } else if (OB_FAIL(resolve_range_partition_elements(alter_stmt,
                                                         elements,
@@ -1213,7 +1216,7 @@ int ObAlterTableResolver::inner_add_partition(rust::Slice<const peg::Node> eleme
                                                         alter_stmt->get_part_values_exprs()))) {
     }
   } else if (part_option.is_list_part()) {
-    if (elements[0].kind == peg::NodeKind::RangePartitionElement) {
+    if (elements[0].kind() == peg::NodeKind::RangePartitionElement) {
       ret = OB_ERR_PARTITION_NOT_EXPECT_VALUES_LESS_THAN;
     } else if (OB_FAIL(resolve_list_partition_elements(alter_stmt,
                                                        elements,
@@ -1257,7 +1260,7 @@ int ObAlterTableResolver::resolve_stored_partition_function(const ObTableSchema 
   }
   if (OB_SUCC(ret)) {
     const peg::Node *expression = syntax.statement();
-    while (expression->kind == peg::NodeKind::Parenthesized) {
+    while (expression->kind() == peg::NodeKind::Parenthesized) {
       expression = &peg::parenthesized_expression(*expression);
     }
     const ParsedSql *saved_syntax = params_.syntax_;
@@ -1358,7 +1361,8 @@ int ObAlterTableResolver::resolve_drop_index(const peg::Node &node)
     {
       const auto &name = peg::alter_index_name(node);
       ObString drop_index_name;
-      OZ(ob_write_string(*allocator_, ObString(name.text.size(), name.text.data()), drop_index_name));
+      const auto name_text = name.text();
+      OZ(ob_write_string(*allocator_, ObString(name_text.size(), name_text.data()), drop_index_name));
       //construct ObDropIndexArg
       ObDropIndexArg *drop_index_arg = NULL;
       void *tmp_ptr = NULL;
@@ -1426,17 +1430,18 @@ int ObAlterTableResolver::resolve_drop_foreign_key(const peg::Node &node)
   int ret = OB_SUCCESS;
   ObAlterTableStmt *alter_table_stmt = get_alter_table_stmt();
   const auto &name = peg::alter_constraint_name(node);
+  const auto name_text = name.text();
   ObDropForeignKeyArg *foreign_key_arg = NULL;
   ObString foreign_key_name;
   bool has_same_fk_arg = false;
   void *tmp_ptr = NULL;
-  if (name.text.empty()) {
+  if (name_text.empty()) {
     ret = OB_ERR_UNEXPECTED;
   } else if (OB_ISNULL(tmp_ptr = allocator_->alloc(sizeof(ObDropForeignKeyArg)))) {
     ret = OB_ALLOCATE_MEMORY_FAILED;
     SQL_RESV_LOG(ERROR, "failed to allocate memory", K(ret));
   } else if (FALSE_IT(foreign_key_arg = new (tmp_ptr)ObDropForeignKeyArg())) {
-  } else if (OB_FAIL(ob_write_string(*allocator_, ObString(name.text.size(), name.text.data()), foreign_key_arg->foreign_key_name_))) {
+  } else if (OB_FAIL(ob_write_string(*allocator_, ObString(name_text.size(), name_text.data()), foreign_key_arg->foreign_key_name_))) {
   } else if (OB_ISNULL(alter_table_stmt)) {
     ret = OB_ERR_UNEXPECTED;
     SQL_RESV_LOG(WARN, "alter table stmt should not be null", K(ret));
@@ -1453,7 +1458,8 @@ int ObAlterTableResolver::resolve_drop_constraint(const peg::Node &node)
   int ret = OB_SUCCESS;
   ObAlterTableStmt *statement = get_alter_table_stmt();
   const auto &name = peg::alter_constraint_name(node);
-  ObString text(name.text.size(), name.text.data());
+  const auto name_text = name.text();
+  ObString text(name_text.size(), name_text.data());
   ObConstraint constraint;
   auto iter = table_schema_->constraint_begin();
   if (OB_ISNULL(statement)) {
@@ -1467,7 +1473,7 @@ int ObAlterTableResolver::resolve_drop_constraint(const peg::Node &node)
     }
     if (OB_FAIL(ret)) {
     } else if (iter == table_schema_->constraint_end()) {
-      if (node.kind == peg::NodeKind::DropConstraint) {
+      if (node.kind() == peg::NodeKind::DropConstraint) {
         ret = OB_ERR_NONEXISTENT_CONSTRAINT;
         LOG_USER_ERROR(OB_ERR_NONEXISTENT_CONSTRAINT, text.length(), text.ptr());
       } else {
@@ -1503,7 +1509,8 @@ int ObAlterTableResolver::resolve_drop_partition(const peg::Node &node,
           alter_table_stmt->get_alter_table_arg().alter_table_schema_;
       for (int64_t i = 0; OB_SUCC(ret) && i < names.size(); ++i) {
         ObPartition part;
-        ObString partition_name(names[i].text.size(), names[i].text.data());
+        const auto partition_text = names[i].text();
+        ObString partition_name(partition_text.size(), partition_text.data());
         if (OB_FAIL(part.set_part_name(partition_name))) {
           ret = OB_ALLOCATE_MEMORY_FAILED;
           SQL_RESV_LOG(ERROR, "set partition name failed", K(partition_name), K(ret));
@@ -1542,7 +1549,8 @@ int ObAlterTableResolver::resolve_drop_subpartition(const peg::Node &node,
       ObPartition dummy_part;
       for (int64_t i = 0; OB_SUCC(ret) && i < names.size(); ++i) {
         ObSubPartition subpart;
-        ObString partition_name(names[i].text.size(), names[i].text.data());
+        const auto partition_text = names[i].text();
+        ObString partition_name(partition_text.size(), partition_text.data());
         if (OB_FAIL(subpart.set_part_name(partition_name))) {
         } else if (OB_FAIL(check_subpart_name(dummy_part, subpart))){
         } else if (OB_FAIL(dummy_part.add_partition(subpart))){
@@ -1628,7 +1636,8 @@ int ObAlterTableResolver::resolve_exchange_partition_stmt(
       ret = OB_TABLE_NOT_EXIST;
     } else {
       const auto &name = peg::alter_partition_exchange_name(node);
-      OZ(ob_write_string(*allocator_, ObString(name.text.size(), name.text.data()), orig_part_name));
+      const auto name_text = name.text();
+      OZ(ob_write_string(*allocator_, ObString(name_text.size(), name_text.data()), orig_part_name));
     }
   }
   return ret;
@@ -1691,7 +1700,8 @@ int ObAlterTableResolver::resolve_rename_index(const peg::Node &node)
     {
       const auto &old_name = peg::alter_index_name(node);
       const auto &new_name = peg::alter_index_new_name(node);
-      ObString tmp_new_index_name(new_name.text.size(), new_name.text.data());
+      const auto new_name_text = new_name.text();
+      ObString tmp_new_index_name(new_name_text.size(), new_name_text.data());
       ObCollationType cs_type = CS_TYPE_INVALID;
       ObRenameIndexArg *rename_index_arg = NULL;
       if (OB_ISNULL(session_info_)) {
@@ -1702,8 +1712,9 @@ int ObAlterTableResolver::resolve_rename_index(const peg::Node &node)
         ObString tmp_index_name;
         ObString ori_index_name;
         ObString new_index_name;
-        OZ(ob_write_string(*allocator_, ObString(old_name.text.size(), old_name.text.data()), ori_index_name));
-        OZ(ob_write_string(*allocator_, ObString(new_name.text.size(), new_name.text.data()), new_index_name));
+        const auto old_name_text = old_name.text();
+        OZ(ob_write_string(*allocator_, ObString(old_name_text.size(), old_name_text.data()), ori_index_name));
+        OZ(ob_write_string(*allocator_, ObString(new_name_text.size(), new_name_text.data()), new_index_name));
         void *tmp_ptr = NULL;
 
         if (OB_FAIL(ret)) {
@@ -1785,7 +1796,8 @@ int ObAlterTableResolver::resolve_alter_primary(rust::Slice<const peg::Node> act
         const auto &column_node = columns[i];
         {
           sort_item.reset();
-          OZ(ob_write_string(*allocator_, ObString(column_node.text.size(), column_node.text.data()), sort_item.column_name_));
+          const auto column_node_text = column_node.text();
+          OZ(ob_write_string(*allocator_, ObString(column_node_text.size(), column_node_text.data()), sort_item.column_name_));
           sort_item.prefix_len_ = 0;
           sort_item.order_type_ = common::ObOrderType::ASC;
           if (OB_FAIL(ret)) {
@@ -1849,7 +1861,8 @@ int ObAlterTableResolver::resolve_add_primary(const peg::Node &node)
       const auto &column_node = columns[i];
         {
         sort_item.reset();
-        OZ(ob_write_string(*allocator_, ObString(column_node.text.size(), column_node.text.data()), sort_item.column_name_));
+        const auto column_node_text = column_node.text();
+        OZ(ob_write_string(*allocator_, ObString(column_node_text.size(), column_node_text.data()), sort_item.column_name_));
         sort_item.prefix_len_ = 0;
         sort_item.order_type_ = common::ObOrderType::ASC;
         if (OB_FAIL(ret)) {
@@ -1906,9 +1919,9 @@ int ObAlterTableResolver::check_is_drop_primary_key(rust::Slice<const peg::Node>
   }
   for (int64_t i = 0; OB_SUCC(ret) && i < actions.size(); ++i) {
     const auto &action = actions[i];
-    if (action.kind == peg::NodeKind::PrimaryKey) {
+    if (action.kind() == peg::NodeKind::PrimaryKey) {
       add_pk_node_cnt++;
-    } else if (action.kind == peg::NodeKind::PrimaryKeyDrop) {
+    } else if (action.kind() == peg::NodeKind::PrimaryKeyDrop) {
       drop_pk_node_cnt++;
     } else {
       other_action_cnt++;
@@ -1985,7 +1998,7 @@ int ObAlterTableResolver::resolve_index_options(rust::Slice<const peg::Node> act
                                                 bool &is_add_index)
 {
   int ret = OB_SUCCESS;
-  switch (node.kind) {
+  switch (node.kind()) {
     case peg::NodeKind::IndexAdd: is_add_index = true; break;
     case peg::NodeKind::IndexDrop: OZ(resolve_drop_index(node)); break;
     case peg::NodeKind::IndexRename: OZ(resolve_rename_index(node)); break;
@@ -2053,7 +2066,7 @@ int ObAlterTableResolver::resolve_constraint_options(const peg::Node &node, cons
 {
   int ret = OB_SUCCESS;
   ObAlterTableStmt *statement = get_alter_table_stmt();
-  if (node.kind == peg::NodeKind::DropConstraint || node.kind == peg::NodeKind::CheckConstraintDrop) {
+  if (node.kind() == peg::NodeKind::DropConstraint || node.kind() == peg::NodeKind::CheckConstraintDrop) {
     OZ(resolve_drop_constraint(node));
     if (OB_SUCC(ret)) { statement->get_alter_table_arg().alter_constraint_type_ = ObAlterTableArg::DROP_CONSTRAINT; }
   } else if (is_multi_actions) {
@@ -2083,13 +2096,13 @@ int ObAlterTableResolver::resolve_partition_options(const peg::Node &node)
 
     if (OB_SUCC(ret)) {
       const ObPartitionLevel part_level = table_schema_->get_part_level();
-      if (peg::NodeKind::Repartition != node.kind
+      if (peg::NodeKind::Repartition != node.kind()
           && PARTITION_LEVEL_ZERO == part_level) {
         ret = OB_ERR_PARTITION_MGMT_ON_NONPARTITIONED;
       }
     }
     if (OB_SUCC(ret)) {
-      switch(node.kind) {
+      switch(node.kind()) {
         case peg::NodeKind::PartitionAdd: {
           if (OB_FAIL(resolve_add_partition(node, *table_schema_))) {
           } else {
@@ -2147,7 +2160,7 @@ int ObAlterTableResolver::resolve_partition_options(const peg::Node &node)
         default: {
           ret = OB_ERR_UNEXPECTED;
           SQL_RESV_LOG(WARN, "Unknown alter partition option %d!",
-                       "option type", node.kind, K(ret));
+                       "option type", node.kind(), K(ret));
           break;
         }
       }
@@ -2193,7 +2206,8 @@ int ObAlterTableResolver::resolve_convert_to_character(const peg::Node &node)
 {
   int ret = OB_SUCCESS;
   const auto &name = peg::alter_charset_name(node);
-  ObString charset(name.text.size(), name.text.data());
+  const auto name_text = name.text();
+  ObString charset(name_text.size(), name_text.data());
   charset = charset.trim();
   const ObCharsetType charset_type = ObCharset::charset_type(charset);
   if (CHARSET_INVALID == charset_type) {
@@ -2204,7 +2218,8 @@ int ObAlterTableResolver::resolve_convert_to_character(const peg::Node &node)
   }
   if (OB_SUCC(ret) && peg::alter_charset_has_collation(node)) {
     const auto &name = peg::alter_charset_collation(node);
-    ObString collation(name.text.size(), name.text.data());
+    const auto name_text = name.text();
+    ObString collation(name_text.size(), name_text.data());
     collation = collation.trim();
     const ObCollationType collation_type = ObCharset::collation_type(collation);
     if (CS_TYPE_INVALID == collation_type) {
@@ -2220,7 +2235,7 @@ int ObAlterTableResolver::resolve_convert_to_character(const peg::Node &node)
 int ObAlterTableResolver::resolve_foreign_key_options(const peg::Node &node)
 {
   int ret = OB_SUCCESS;
-  if (node.kind == peg::NodeKind::DropConstraint || node.kind == peg::NodeKind::ForeignKeyDrop) {
+  if (node.kind() == peg::NodeKind::DropConstraint || node.kind() == peg::NodeKind::ForeignKeyDrop) {
     OZ(resolve_drop_foreign_key(node));
   } else {
     ObCreateForeignKeyArg arg;
@@ -2341,7 +2356,8 @@ int ObAlterTableResolver::resolve_pos_column(const peg::Node &definition,
     column.is_first_ = true;
   } else if (position != peg::ColumnPosition::None) {
     const auto &name = peg::column_position_name(definition);
-    ObString text(name.text.size(), name.text.data());
+    const auto name_text = name.text();
+    ObString text(name_text.size(), name_text.data());
     if (text.empty()) { ret = OB_INVALID_ARGUMENT; }
     else if (position == peg::ColumnPosition::After) { column.set_prev_column_name(text); }
     else { column.set_next_column_name(text); }
@@ -3100,7 +3116,7 @@ int ObAlterTableResolver::is_exist_item_type(rust::Slice<const peg::Node> action
 {
   is_exist = false;
   for (const auto &action : actions) {
-    is_exist |= action.kind == kind;
+    is_exist |= action.kind() == kind;
   }
   return OB_SUCCESS;
 }

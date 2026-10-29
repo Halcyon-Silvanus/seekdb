@@ -6299,10 +6299,12 @@ int ObRawExprUtils::get_real_expr_without_generated_column(
 
 bool ObRawExprUtils::is_new_old_column_ref(const peg::Node &node)
 {
-  if (node.kind != peg::NodeKind::Column || peg::name_is_wildcard(node)) return false;
+  if (node.kind() != peg::NodeKind::Column || peg::name_is_wildcard(node)) return false;
   const auto parts = peg::name_parts(node);
-  return parts.size() == 2 && parts[0].text.size() >= 3
-      && (0 == STRNCASECMP(parts[0].text.data(), "NEW", 3) || 0 == STRNCASECMP(parts[0].text.data(), "OLD", 3));
+  if (parts.size() != 2) return false;
+  const auto qualifier = parts[0].text();
+  return qualifier.size() >= 3
+      && (0 == STRNCASECMP(qualifier.data(), "NEW", 3) || 0 == STRNCASECMP(qualifier.data(), "OLD", 3));
 }
 
 int ObRawExprUtils::resolve_trigger_column_name(const peg::Node &node,
@@ -6312,7 +6314,7 @@ int ObRawExprUtils::resolve_trigger_column_name(const peg::Node &node,
 {
   int ret = OB_SUCCESS;
   const auto parts = peg::name_parts(node);
-  const bool new_row = 0 == STRNCASECMP(parts[0].text.data(), "NEW", 3);
+  const bool new_row = 0 == STRNCASECMP(parts[0].text().data(), "NEW", 3);
   if (new_row && (timing == TgTimingEvent::TG_BEFORE_DELETE || timing == TgTimingEvent::TG_AFTER_DELETE)) {
     ret = OB_ERR_TRIGGER_NO_SUCH_ROW;
     LOG_USER_ERROR(OB_ERR_TRIGGER_NO_SUCH_ROW, "NEW", "DELETE");
@@ -6322,7 +6324,8 @@ int ObRawExprUtils::resolve_trigger_column_name(const peg::Node &node,
   }
   for (const auto &part : parts) {
     ObString text;
-    OZ(ob_write_string(allocator, ObString(part.text.size(), part.text.data()), text));
+    const auto part_text = part.text();
+    OZ(ob_write_string(allocator, ObString(part_text.size(), part_text.data()), text));
     OZ(name.access_idents_.push_back(ObObjAccessIdent(text, OB_INVALID_INDEX)));
   }
   return ret;

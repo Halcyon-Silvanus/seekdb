@@ -434,13 +434,13 @@ int ObRawExprResolverImpl::do_recursive_resolve(const peg::Node &node,
   const NumericLowering *lowering = ctx_.parameterization_ != nullptr
       ? ctx_.parameterization_->numeric_lowering(&node) : nullptr;
   if (OB_FAIL(ret)) {
-  } else if (node.kind == peg::NodeKind::CharsetName) {
+  } else if (node.kind() == peg::NodeKind::CharsetName) {
     OZ(process_char_charset_node(node, expr));
   } else if (binding != nullptr || peg::is_literal(node)
       || (lowering != nullptr && lowering->kind != NumericLowering::Kind::AddNegatedOperand)) {
     OZ (process_datatype_or_questionmark(node, expr));
   } else {
-    switch (node.kind) {
+    switch (node.kind()) {
       case peg::NodeKind::Parenthesized:
         OZ (recursive_resolve(peg::parenthesized_expression(node), expr, is_root_expr));
         break;
@@ -590,7 +590,7 @@ int ObRawExprResolverImpl::do_recursive_resolve(const peg::Node &node,
       case peg::NodeKind::PartitionKeyFunction:
       case peg::NodeKind::PartitionHashFunction:
       case peg::NodeKind::SetCollation:
-        OZ (process_internal_sys_function_node(node, expr, callable_expression_type(node.kind)));
+        OZ (process_internal_sys_function_node(node, expr, callable_expression_type(node.kind())));
         break;
       case peg::NodeKind::PlNamedArgument: OZ(process_call_param_node(node, expr)); break;
       case peg::NodeKind::Function:
@@ -612,8 +612,9 @@ int ObRawExprResolverImpl::do_recursive_resolve(const peg::Node &node,
 
 ObString ObRawExprResolverImpl::source_text(const peg::Node &node) const
 {
-  return node.end == node.start ? ObString()
-      : ObString(node.end - node.start, ctx_.syntax_source_.ptr() + node.start);
+  const auto span = node.span();
+  return span.end == span.start ? ObString()
+      : ObString(span.end - span.start, ctx_.syntax_source_.ptr() + span.start);
 }
 
 int ObRawExprResolverImpl::process_row(const peg::Node &node, ObRawExpr *&expr)
@@ -826,7 +827,8 @@ int ObRawExprResolverImpl::resolve_func_node_of_obj_access_idents(const peg::Nod
   int ret = OB_SUCCESS;
   for (const auto &qualifier : peg::call_qualifiers(node)) {
     ObString text;
-    OZ(ob_write_string(ctx_.expr_factory_.get_allocator(), ObString(qualifier.text.size(), qualifier.text.data()), text));
+    const auto qualifier_text = qualifier.text();
+    OZ(ob_write_string(ctx_.expr_factory_.get_allocator(), ObString(qualifier_text.size(), qualifier_text.data()), text));
     OZ(name.access_idents_.push_back(ObObjAccessIdent(text, OB_INVALID_INDEX)));
   }
   const auto spelling = peg::call_name(node);
@@ -1017,6 +1019,7 @@ int ObRawExprResolverImpl::process_datatype_or_questionmark(const peg::Node &nod
   ObObjParam val;
   ObConstRawExpr *c_expr = NULL;
   ObString literal_prefix;
+  const auto span = node.span();
   const ParameterBinding *binding = ctx_.parameterization_ != nullptr
       ? ctx_.parameterization_->find(&node) : nullptr;
   const NumericLowering *lowering = ctx_.parameterization_ != nullptr
@@ -1055,7 +1058,7 @@ int ObRawExprResolverImpl::process_datatype_or_questionmark(const peg::Node &nod
       }
       if (OB_FAIL(ObResolverUtils::resolve_numeric_literal(literal, options,
               ctx_.expr_factory_.get_allocator(), val, literal_prefix))) {
-      } else if (node.kind == peg::NodeKind::DateUnit && node.start != node.end
+      } else if (node.kind() == peg::NodeKind::DateUnit && span.start != span.end
                  && (literal.kind == NumericKind::Integer || literal.kind == NumericKind::Unsigned)) {
         literal_prefix = literal.text;
       }
@@ -1074,7 +1077,7 @@ int ObRawExprResolverImpl::process_datatype_or_questionmark(const peg::Node &nod
     OZ(ob_write_string(ctx_.expr_factory_.get_allocator(), literal_prefix, owned_prefix));
     OX(literal_prefix = owned_prefix);
   }
-  if (OB_SUCC(ret) && node.kind == peg::NodeKind::DateUnit && node.start != node.end) {
+  if (OB_SUCC(ret) && node.kind() == peg::NodeKind::DateUnit && span.start != span.end) {
     OZ(ob_write_string(ctx_.expr_factory_.get_allocator(), source_text(node), literal_prefix));
   }
   if (OB_FAIL(ret)) {
@@ -1082,7 +1085,7 @@ int ObRawExprResolverImpl::process_datatype_or_questionmark(const peg::Node &nod
   } else if (OB_ISNULL(c_expr)) {
     ret = OB_ERR_UNEXPECTED;
   } else {
-    if (node.kind == peg::NodeKind::DateUnit && node.start != node.end) {
+    if (node.kind() == peg::NodeKind::DateUnit && span.start != span.end) {
       c_expr->set_is_date_unit();
     }
     c_expr->set_value(val);
@@ -1090,7 +1093,7 @@ int ObRawExprResolverImpl::process_datatype_or_questionmark(const peg::Node &nod
     c_expr->set_expr_obj_meta(val.get_param_meta());
     c_expr->set_literal_prefix(literal_prefix);
     // for mysql mode distinguish tinyint and literal bool
-    if (node.kind == peg::NodeKind::Bool) {
+    if (node.kind() == peg::NodeKind::Bool) {
       c_expr->set_is_literal_bool(true);
     }
     if (!val.is_unknown()) {
@@ -1340,7 +1343,8 @@ int ObRawExprResolverImpl::process_char_charset_node(const peg::Node &node, ObRa
 {
   int ret = OB_SUCCESS;
   ObString name;
-  OZ(ob_write_string(ctx_.expr_factory_.get_allocator(), ObString(node.text.size(), node.text.data()), name));
+  const auto node_text = node.text();
+  OZ(ob_write_string(ctx_.expr_factory_.get_allocator(), ObString(node_text.size(), node_text.data()), name));
   if (OB_SUCC(ret) && ObCharset::charset_type(name) == CHARSET_INVALID) {
     ret = OB_ERR_UNKNOWN_CHARSET;
     LOG_USER_ERROR(OB_ERR_UNKNOWN_CHARSET, name.length(), name.ptr());
@@ -1363,7 +1367,7 @@ int ObRawExprResolverImpl::process_vector_func_node(const peg::Node &node, ObRaw
 {
   int ret = OB_SUCCESS;
   ObSysFunRawExpr *function = nullptr;
-  const bool similarity = node.kind == peg::NodeKind::VectorSimilarity;
+  const bool similarity = node.kind() == peg::NodeKind::VectorSimilarity;
   const auto arguments = peg::call_arguments(node);
   const auto metric = peg::vector_metric(node);
   OZ(ctx_.expr_factory_.create_raw_expr(similarity ? T_FUN_SYS_VECTOR_SIMILARITY : T_FUN_SYS_VECTOR_DISTANCE, function));
@@ -1450,7 +1454,7 @@ int ObRawExprResolverImpl::process_geo_func_node(const peg::Node &node, ObRawExp
 {
   int ret = OB_SUCCESS;
   ObSysFunRawExpr *function = nullptr;
-  const auto type = callable_expression_type(node.kind);
+  const auto type = callable_expression_type(node.kind());
   OZ(ctx_.expr_factory_.create_raw_expr(type, function));
   OZ(set_geo_func_name(function, type));
   OZ(function->init_param_exprs(peg::call_arguments(node).size()));
@@ -1505,8 +1509,9 @@ int ObRawExprResolverImpl::check_lambda_params_duplicated(const peg::Node &lambd
   int ret = OB_SUCCESS;
   const auto parameters = peg::lambda_parameters(lambda);
   for (size_t i = 0; OB_SUCC(ret) && i < parameters.size(); ++i) {
+    const auto parameter_text = parameters[i].text();
     for (size_t j = 0; OB_SUCC(ret) && j < i; ++j) {
-      if (strncmp(parameters[j].text.data(), parameters[i].text.data(), parameters[i].text.size()) == 0) {
+      if (strncmp(parameters[j].text().data(), parameter_text.data(), parameter_text.size()) == 0) {
         ret = OB_ERR_PARAM_DUPLICATE;
       }
     }
@@ -1522,7 +1527,8 @@ int ObRawExprResolverImpl::process_lambda_func_node(const peg::Node &node, ObRaw
   ObSEArray<ObString, 4> names;
   OZ (check_lambda_params_duplicated(node));
   for (const auto &name : peg::lambda_parameters(node)) {
-    OZ (names.push_back(ObString(name.text.size(), name.text.data())));
+    const auto name_text = name.text();
+    OZ (names.push_back(ObString(name_text.size(), name_text.data())));
   }
   if (OB_SUCC(ret)) {
     const auto *outer = lambda_parameters_;
@@ -1569,7 +1575,7 @@ int ObRawExprResolverImpl::process_array_map_func_node(const peg::Node &node, Ob
       if (variables.at(j)->get_ref_index() == i) { variables.at(j)->set_ref_expr(array); }
     }
   }
-  OZ (ctx_.expr_factory_.create_raw_expr(callable_expression_type(node.kind), function));
+  OZ (ctx_.expr_factory_.create_raw_expr(callable_expression_type(node.kind()), function));
   OX (function->set_func_name("array_map"));
   OZ (function->set_param_exprs(arguments));
   OX (expr = function);
@@ -1681,7 +1687,7 @@ int ObRawExprResolverImpl::process_user_assignment(const peg::Node &node, ObRawE
 int ObRawExprResolverImpl::process_any_or_all_node(const peg::Node &node, ObRawExpr *&expr)
 {
   int ret = OB_SUCCESS;
-  const bool exists = node.kind == peg::NodeKind::Exists;
+  const bool exists = node.kind() == peg::NodeKind::Exists;
   const peg::Node &query = exists ? peg::exists_query(node) : peg::quantified_query(node);
   ObRawExpr *operand = nullptr;
   ObOpRawExpr *operation = nullptr;
@@ -1742,8 +1748,8 @@ int ObRawExprResolverImpl::process_pos_or_neg_node(const peg::Node &node, ObRawE
   int64_t remaining = 0;
   const peg::Node *operand = &node;
   const peg::Node *last_sign = nullptr;
-  while (operand->kind == peg::NodeKind::Parenthesized
-      || (operand->kind == peg::NodeKind::Unary
+  while (operand->kind() == peg::NodeKind::Parenthesized
+      || (operand->kind() == peg::NodeKind::Unary
           && (peg::unary_operator(*operand) == peg::UnaryOperator::Plus
               || peg::unary_operator(*operand) == peg::UnaryOperator::Minus))) {
     if (operand != &node && ctx_.parameterization_ != nullptr) {
@@ -1751,7 +1757,7 @@ int ObRawExprResolverImpl::process_pos_or_neg_node(const peg::Node &node, ObRawE
       if (ctx_.parameterization_->find(operand) != nullptr
           || (lowering != nullptr && lowering->kind == NumericLowering::Kind::FoldUnaryExpression)) { break; }
     }
-    if (operand->kind == peg::NodeKind::Parenthesized) {
+    if (operand->kind() == peg::NodeKind::Parenthesized) {
       operand = &peg::parenthesized_expression(*operand);
     } else {
       last_sign = operand;
@@ -1760,11 +1766,11 @@ int ObRawExprResolverImpl::process_pos_or_neg_node(const peg::Node &node, ObRawE
     }
   }
   const peg::Node *literal_node = operand;
-  while (literal_node->kind == peg::NodeKind::Parenthesized) literal_node = &peg::parenthesized_expression(*literal_node);
+  while (literal_node->kind() == peg::NodeKind::Parenthesized) literal_node = &peg::parenthesized_expression(*literal_node);
   const bool has_binding = ctx_.parameterization_ != nullptr
       && (ctx_.parameterization_->find(literal_node) != nullptr || ctx_.parameterization_->numeric_lowering(literal_node) != nullptr);
   if (last_sign != nullptr && peg::unary_operator(*last_sign) == peg::UnaryOperator::Minus
-      && literal_node->kind == peg::NodeKind::Uint && !has_binding) {
+      && literal_node->kind() == peg::NodeKind::Uint && !has_binding) {
     const auto literal = peg::expression_literal(*literal_node);
     if (&peg::unary_operand(*last_sign) == literal_node && literal.integer == (uint64_t(1) << 63)) {
       OZ(build_implicit_literal({peg::LiteralKind::Integer, literal.integer, source_text(*last_sign), {}, false, 0}, expr));
@@ -2102,7 +2108,7 @@ int ObRawExprResolverImpl::process_like_node(const peg::Node &node, ObRawExpr *&
   const ObItemType type = binary_expression_type(peg::binary_operator(node));
   if (peg::like_has_escape(node)) {
     const peg::Node &escape_node = peg::like_escape(node);
-    if (escape_node.kind == peg::NodeKind::Parameter) {
+    if (escape_node.kind() == peg::NodeKind::Parameter) {
       const int64_t parameter_index = peg::placeholder_index(escape_node);
       // If it has gone through the fast parser, then escape will be replaced with ?, need to get the real value from the param list
       if (OB_ISNULL(ctx_.param_list_)) {
@@ -2171,7 +2177,7 @@ int ObRawExprResolverImpl::process_like_node(const peg::Node &node, ObRawExpr *&
       */
       bool no_escapes = false;
       const auto &pattern_syntax = peg::binary_right(node);
-      if (pattern_syntax.kind == peg::NodeKind::Cast) {
+      if (pattern_syntax.kind() == peg::NodeKind::Cast) {
         const auto target = peg::type_syntax(peg::cast_target(pattern_syntax));
         no_escapes = is_no_backslash_escapes && target.name == peg::TypeName::VarBinary;
       }
@@ -2405,7 +2411,7 @@ int ObRawExprResolverImpl::process_agg_node(const peg::Node &node, ObRawExpr *&e
 {
   int ret = OB_SUCCESS;
   ObAggFunRawExpr *aggregate = nullptr;
-  const auto type = callable_expression_type(node.kind);
+  const auto type = callable_expression_type(node.kind());
   const auto arguments = peg::call_arguments(node);
   const bool distinct = peg::aggregate_quantifier(node) == peg::AggregateQuantifier::Distinct;
   const bool add_flag = !ctx_.parents_expr_info_.has_member(IS_AGG);
@@ -2417,7 +2423,7 @@ int ObRawExprResolverImpl::process_agg_node(const peg::Node &node, ObRawExpr *&e
     ret = OB_DISTINCT_NOT_ALLOWED;
   }
   for (size_t i = 0; OB_SUCC(ret) && i < arguments.size(); ++i) {
-    if (type == T_FUN_COUNT && arguments[i].kind == peg::NodeKind::Star) continue;
+    if (type == T_FUN_COUNT && arguments[i].kind() == peg::NodeKind::Star) continue;
     ObRawExpr *value = nullptr;
     OZ(SMART_CALL(recursive_resolve(arguments[i], value)));
     if (OB_SUCC(ret) && type == T_FUN_TOP_FRE_HIST) {
@@ -2453,11 +2459,11 @@ int ObRawExprResolverImpl::process_agg_node(const peg::Node &node, ObRawExpr *&e
     const auto &key = peg::sort_expression(sort);
     order.order_type_ = peg::sort_direction(sort) == peg::SortDirection::Descending
         ? (type == T_FUNC_SYS_ARRAY_AGG ? NULLS_FIRST_DESC : NULLS_LAST_DESC) : NULLS_FIRST_ASC;
-    if (type == T_FUN_GROUP_CONCAT && key.kind == peg::NodeKind::Int) {
+    if (type == T_FUN_GROUP_CONCAT && key.kind() == peg::NodeKind::Int) {
       const int64_t position = peg::integer_literal_value(key);
       if (position <= 0 || position > aggregate->get_real_param_count()) ret = OB_ERR_BAD_FIELD_ERROR;
       else order.expr_ = aggregate->get_real_param_exprs().at(position - 1);
-    } else if (type == T_FUN_GROUP_CONCAT && key.kind == peg::NodeKind::Parameter) {
+    } else if (type == T_FUN_GROUP_CONCAT && key.kind() == peg::NodeKind::Parameter) {
       ret = OB_ERR_PARSE_SQL;
     } else {
       OZ(SMART_CALL(recursive_resolve(key, order.expr_)));
@@ -2488,10 +2494,10 @@ int ObRawExprResolverImpl::process_timestamp_node(const peg::Node &node, ObRawEx
     ObCStringHelper helper;
     LOG_USER_ERROR(OB_ERR_TOO_BIG_PRECISION, scale, helper.convert(ObString(name.size(), name.data())), OB_MAX_DATETIME_PRECISION);
   } else {
-    OZ(ctx_.expr_factory_.create_raw_expr(callable_expression_type(node.kind), function));
+    OZ(ctx_.expr_factory_.create_raw_expr(callable_expression_type(node.kind()), function));
     OX(function->set_scale(scale));
     if (OB_SUCC(ret)) {
-      switch (node.kind) {
+      switch (node.kind()) {
         case peg::NodeKind::CurrentTimestamp: function->set_func_name(N_CUR_TIMESTAMP); break;
         case peg::NodeKind::CurrentTime: function->set_func_name(N_CUR_TIME); break;
         case peg::NodeKind::CurrentDate: function->set_func_name(N_CUR_DATE); break;
@@ -2514,7 +2520,8 @@ int ObRawExprResolverImpl::process_collation_node(const peg::Node &node, ObRawEx
   int ret = OB_SUCCESS;
   {
     ObConstRawExpr *c_expr = NULL;
-    ObString collation(node.text.size(), node.text.data());
+    const auto node_text = node.text();
+    ObString collation(node_text.size(), node_text.data());
     ObCollationType collation_type = CS_TYPE_INVALID;
     if (0 == collation.case_compare("utf8mb4_name_case")) {
       if (OB_ORIGIN_AND_SENSITIVE == ctx_.case_mode_) {
@@ -2528,7 +2535,7 @@ int ObRawExprResolverImpl::process_collation_node(const peg::Node &node, ObRawEx
     }
     if (CS_TYPE_INVALID == collation_type) {
       ret = OB_ERR_UNKNOWN_COLLATION;
-      LOG_USER_ERROR(OB_ERR_UNKNOWN_COLLATION, int(node.text.size()), node.text.data());
+      LOG_USER_ERROR(OB_ERR_UNKNOWN_COLLATION, int(node_text.size()), node_text.data());
     } else if (OB_FAIL(ctx_.expr_factory_.create_raw_expr(T_INT, c_expr))) {
     } else if (OB_ISNULL(c_expr)) {
       ret = OB_ERR_UNEXPECTED;
@@ -2589,7 +2596,8 @@ int ObRawExprResolverImpl::process_call_param_node(const peg::Node &node, ObRawE
   ObRawExpr *value = nullptr;
   const auto &identifier = peg::named_argument_name(node);
   ObString name;
-  OZ(ob_write_string(ctx_.expr_factory_.get_allocator(), ObString(identifier.text.size(), identifier.text.data()), name));
+  const auto identifier_text = identifier.text();
+  OZ(ob_write_string(ctx_.expr_factory_.get_allocator(), ObString(identifier_text.size(), identifier_text.data()), name));
   OZ(ctx_.expr_factory_.create_raw_expr(T_SP_CPARAM, result));
   OZ(SMART_CALL(recursive_resolve(peg::named_argument_value(node), value)));
   OX(result->set_name(name));
@@ -2633,9 +2641,9 @@ int ObRawExprResolverImpl::process_sqlcode_node(const peg::Node &node, ObRawExpr
 int ObRawExprResolverImpl::check_first_node(const peg::Node &node)
 {
   int ret = OB_SUCCESS;
-  if (node.kind == peg::NodeKind::Star || (node.kind == peg::NodeKind::Column && peg::name_is_wildcard(node))) {
+  if (node.kind() == peg::NodeKind::Star || (node.kind() == peg::NodeKind::Column && peg::name_is_wildcard(node))) {
     ret = OB_ERR_INVALID_COLUMN_SPE;
-  } else if (node.kind == peg::NodeKind::ValueVector || node.kind == peg::NodeKind::ExprList) {
+  } else if (node.kind() == peg::NodeKind::ValueVector || node.kind() == peg::NodeKind::ExprList) {
     for (const auto &element : peg::row_elements(node)) OZ(SMART_CALL(check_first_node(element)));
   }
   return ret;
@@ -2996,11 +3004,12 @@ int ObRawExprResolverImpl::resolve_stored_function(const peg::Node &call, ObUDFI
     bool named = false;
     for (const auto &argument : peg::call_arguments(call)) {
       ObRawExpr *value = nullptr;
-      if (argument.kind == peg::NodeKind::PlNamedArgument) {
+      if (argument.kind() == peg::NodeKind::PlNamedArgument) {
         named = true;
         const auto &identifier = peg::named_argument_name(argument);
         ObString parameter_name;
-        OZ(ob_write_string(ctx_.expr_factory_.get_allocator(), ObString(identifier.text.size(), identifier.text.data()), parameter_name));
+        const auto identifier_text = identifier.text();
+        OZ(ob_write_string(ctx_.expr_factory_.get_allocator(), ObString(identifier_text.size(), identifier_text.data()), parameter_name));
         OZ(udf_info.param_names_.push_back(parameter_name));
         OZ(SMART_CALL(recursive_resolve(peg::named_argument_value(argument), value)));
         OZ(udf_info.param_exprs_.push_back(value));
@@ -3094,7 +3103,7 @@ int ObRawExprResolverImpl::process_window_function_node(const peg::Node &node, O
 {
   int ret = OB_SUCCESS;
   ObWinFunRawExpr *window = nullptr;
-  const bool named = node.kind == peg::NodeKind::NamedWindow;
+  const bool named = node.kind() == peg::NodeKind::NamedWindow;
   if (!is_win_expr_valid_scope(ctx_.current_scope_) || ctx_.parents_expr_info_.has_member(IS_AGG)
       || ctx_.parents_expr_info_.has_member(IS_WINDOW_FUNC)) {
     ret = OB_ERR_INVALID_WINDOW_FUNCTION_PLACE;
@@ -3109,11 +3118,12 @@ int ObRawExprResolverImpl::process_window_function_node(const peg::Node &node, O
     OX(aggregate = count);
     const auto &identifier = peg::named_window_name(node);
     ObString name;
-    OZ(ob_write_string(ctx_.expr_factory_.get_allocator(), ObString(identifier.text.size(), identifier.text.data()), name));
+    const auto identifier_text = identifier.text();
+    OZ(ob_write_string(ctx_.expr_factory_.get_allocator(), ObString(identifier_text.size(), identifier_text.data()), name));
     OX(window->set_win_name(name));
   } else if (OB_SUCC(ret)) {
     const auto &function = peg::window_function(node);
-    type = callable_expression_type(function.kind);
+    type = callable_expression_type(function.kind());
     const bool was_window_aggregate = ctx_.is_win_agg_;
     OZ(ctx_.parents_expr_info_.add_member(IS_WINDOW_FUNC));
     if (IS_AGGR_FUN(type)) {
@@ -3171,7 +3181,8 @@ int ObRawExprResolverImpl::resolve_window_spec(const peg::Node &specification, O
   const bool frame_written = peg::window_has_frame(specification);
   if (peg::window_has_reference(specification)) {
     const auto &identifier = peg::window_reference(specification);
-    const ObString name(identifier.text.size(), identifier.text.data());
+    const auto identifier_text = identifier.text();
+    const ObString name(identifier_text.size(), identifier_text.data());
     if (OB_ISNULL(ctx_.stmt_) || !ctx_.stmt_->is_select_stmt()) {
       ret = OB_ERR_UNEXPECTED;
     } else {

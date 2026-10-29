@@ -47,11 +47,11 @@ int calc_digest_text_inner(const ObString &query,
   } else if (OB_ISNULL(parsed.statement())) {
     ret = OB_ERR_UNEXPECTED;
   } else if (i > 0) {
-    if (parsed.statement()->kind != peg::NodeKind::EmptyQuery) {
+    if (parsed.statement()->kind() != peg::NodeKind::EmptyQuery) {
       ret = OB_INVALID_ARGUMENT;
       LOG_USER_ERROR(OB_INVALID_ARGUMENT, "digest function");
     }
-  } else if (parsed.statement()->kind == peg::NodeKind::EmptyQuery) {
+  } else if (parsed.statement()->kind() == peg::NodeKind::EmptyQuery) {
     ret = OB_INVALID_ARGUMENT;
     LOG_USER_ERROR(OB_INVALID_ARGUMENT, "digest function");
   } else if (OB_FAIL(parsed.statement_type(stmt_type))) {

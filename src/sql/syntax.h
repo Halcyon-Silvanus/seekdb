@@ -57,24 +57,43 @@ int report_parse_error(const common::ObString &sql, size_t offset);
 class ParsedSql {
 public:
   ParsedSql() = default;
-  ParsedSql(ParsedSql &&) = default;
-  ParsedSql &operator=(ParsedSql &&) = default;
+  ParsedSql(ParsedSql &&other) noexcept
+      : metadata_(other.metadata_), original_source_(other.original_source_),
+        syntax_(std::move(other.syntax_))
+  {
+    other.reset();
+  }
+  ParsedSql &operator=(ParsedSql &&other) noexcept
+  {
+    if (this != &other) {
+      metadata_ = other.metadata_;
+      original_source_ = other.original_source_;
+      syntax_ = std::move(other.syntax_);
+      other.reset();
+    }
+    return *this;
+  }
   ParsedSql(const ParsedSql &) = delete;
   ParsedSql &operator=(const ParsedSql &) = delete;
 
   ParseResult &metadata() { return metadata_; }
   const ParseResult &metadata() const { return metadata_; }
-  const peg::Node *statement() const { return syntax_ ? &syntax_->root : nullptr; }
+  const peg::Node *statement() const { return syntax_ ? &(*syntax_)->root() : nullptr; }
   common::ObString source() const
   {
-    return syntax_ && !syntax_->expanded_sql.empty()
-        ? common::ObString(syntax_->expanded_sql.size(), syntax_->expanded_sql.data())
-        : original_source_;
+    if (syntax_) {
+      const auto expanded_sql = (*syntax_)->expanded_sql();
+      if (!expanded_sql.empty()) {
+        return common::ObString(expanded_sql.size(), expanded_sql.data());
+      }
+    }
+    return original_source_;
   }
   common::ObString original_source() const { return original_source_; }
   common::ObString source(const peg::Node &node) const
   {
-    return common::ObString(node.end - node.start, source().ptr() + node.start);
+    const auto span = node.span();
+    return common::ObString(span.end - span.start, source().ptr() + span.start);
   }
   int preserve_source(common::ObIAllocator &allocator);
   int statement_type(stmt::StmtType &type) const;
@@ -86,7 +105,7 @@ private:
   friend class ObParser;
   ParseResult metadata_{};
   common::ObString original_source_;
-  std::optional<peg::ParseTree> syntax_;
+  std::optional<rust::Box<peg::ParseTree>> syntax_;
 };
 
 class ObMPParseStat {

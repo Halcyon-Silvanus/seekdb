@@ -40,14 +40,15 @@ int ObUseDatabaseResolver::resolve(const peg::Node &parse_tree)
   int ret = OB_SUCCESS;
   ObUseDatabaseStmt *use_database_stmt = NULL;
   ObString db_name;
-  if (parse_tree.kind != peg::NodeKind::UseDatabase || OB_ISNULL(allocator_)) {
+  if (parse_tree.kind() != peg::NodeKind::UseDatabase || OB_ISNULL(allocator_)) {
     ret = OB_INVALID_ARGUMENT;
   } else if (OB_ISNULL(use_database_stmt = create_stmt<ObUseDatabaseStmt>())) {
     ret = OB_ALLOCATE_MEMORY_FAILED;
     LOG_ERROR("failed to create use_database_stmt");
   } else {
     const auto &name = peg::database_name(parse_tree);
-    OZ (ob_write_string(*allocator_, ObString(name.text.size(), name.text.data()), db_name));
+    const auto name_text = name.text();
+    OZ (ob_write_string(*allocator_, ObString(name_text.size(), name_text.data()), db_name));
     ObNameCaseMode mode = OB_NAME_CASE_INVALID;
     if (OB_FAIL(ret)) {
     } else if (OB_ISNULL(session_info_) || OB_ISNULL(schema_checker_)) {

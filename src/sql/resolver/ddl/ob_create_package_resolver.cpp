@@ -34,7 +34,7 @@ int ObCreatePackageResolver::resolve(const peg::Node &parse_tree)
   bool need_reset_default_database = false;
   uint64_t old_database_id = OB_INVALID_ID;
   ObSqlString old_database_name;
-  CK (peg::NodeKind::CreatePackage == parse_tree.kind);
+  CK (peg::NodeKind::CreatePackage == parse_tree.kind());
   CK (OB_NOT_NULL(params_.syntax_));
   CK (OB_NOT_NULL(session_info_));
   if (OB_SUCC(ret)) {
@@ -118,7 +118,8 @@ int ObCreatePackageResolver::resolve(const peg::Node &parse_tree)
       //NOTE: null package name is possible
       if (OB_SUCC(ret) && peg::package_has_end_name(package_block_node)) {
         const auto &end_name = peg::package_end_name(package_block_node);
-        ObString opt_package_name(end_name.text.size(), end_name.text.data());
+        const auto end_name_text = end_name.text();
+        ObString opt_package_name(end_name_text.size(), end_name_text.data());
         if (OB_SUCC(ret)
             && OB_UNLIKELY(0 != package_name.case_compare(opt_package_name))) {
           ret = OB_ERR_SP_LILABEL_MISMATCH;
@@ -271,7 +272,7 @@ int ObCreatePackageResolver::resolve_invoke_accessible(rust::Slice<const peg::No
   for (const auto &clause : clauses) {
     if (OB_FAIL(ret)) {
       break;
-    } else if (clause.kind != peg::NodeKind::InvokeRights) {
+    } else if (clause.kind() != peg::NodeKind::InvokeRights) {
       ret = OB_NOT_SUPPORTED;
       LOG_USER_ERROR(OB_NOT_SUPPORTED, "specified invoker clause");
     } else if (has_invoker_clause) {
@@ -416,7 +417,7 @@ int ObCreatePackageBodyResolver::resolve(const peg::Node &parse_tree)
   CK (OB_NOT_NULL(params_.allocator_));
   CK (OB_NOT_NULL(params_.session_info_));
   CK (OB_NOT_NULL(params_.sql_proxy_));
-  CK (OB_LIKELY(peg::NodeKind::CreatePackageBody == parse_tree.kind));
+  CK (OB_LIKELY(peg::NodeKind::CreatePackageBody == parse_tree.kind()));
 
 
   if (OB_SUCC(ret)
@@ -434,7 +435,8 @@ int ObCreatePackageBodyResolver::resolve(const peg::Node &parse_tree)
         && peg::package_has_end_name(package_body_block_node)) {
       ObString end_package_name;
       const auto &end_name = peg::package_end_name(package_body_block_node);
-      end_package_name = ObString(end_name.text.size(), end_name.text.data());
+      const auto end_name_text = end_name.text();
+      end_package_name = ObString(end_name_text.size(), end_name_text.data());
       if (OB_SUCC(ret)
           && OB_UNLIKELY(0 != package_name.case_compare(end_package_name))) {
         ret = OB_ERR_SP_LILABEL_MISMATCH;

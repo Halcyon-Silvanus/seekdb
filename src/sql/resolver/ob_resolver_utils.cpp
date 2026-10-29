@@ -1469,7 +1469,8 @@ int ObResolverUtils::resolve_sp_access_name(ObSchemaChecker &schema_checker,
     ret = OB_INVALID_ARGUMENT;
   } else {
     const auto text = [](const peg::Node &name) {
-      return ObString(name.text.size(), name.text.data());
+      const auto name_text = name.text();
+      return ObString(name_text.size(), name_text.data());
     };
     routine_name = text(names[names.size() - 1]);
     if (names.size() == 3) {
@@ -1520,7 +1521,8 @@ int ObResolverUtils::resolve_sp_name(ObSQLSessionInfo &session_info,
   } else if (OB_FAIL(session_info.get_collation_connection(cs_type))) {
   } else {
     const auto &name = names[names.size() - 1];
-    OZ (ob_write_string(allocator, ObString(name.text.size(), name.text.data()), sp_name));
+    const auto name_text = name.text();
+    OZ (ob_write_string(allocator, ObString(name_text.size(), name_text.data()), sp_name));
     if (OB_FAIL(ret)) {
     } else if (sp_name.empty() || !sp_name[0] || ' ' == sp_name[sp_name.length() - 1]) {
       ret = OB_ER_SP_WRONG_NAME;
@@ -1536,7 +1538,8 @@ int ObResolverUtils::resolve_sp_name(ObSQLSessionInfo &session_info,
       }
     } else {
       const auto &database = names[0];
-      OZ (ob_write_string(allocator, ObString(database.text.size(), database.text.data()), db_name));
+      const auto database_text = database.text();
+      OZ (ob_write_string(allocator, ObString(database_text.size(), database_text.data()), db_name));
       OZ (ObSQLUtils::check_and_convert_db_name(cs_type, mode != OB_LOWERCASE_AND_INSENSITIVE, db_name));
     }
   }
@@ -1555,7 +1558,8 @@ int ObResolverUtils::resolve_column_ref(const peg::Node &node, const ObNameCaseM
     ret = OB_ERR_UNEXPECTED;
   } else {
     const auto copy = [&](const peg::Node &part, ObString &out) {
-      return ob_write_string(allocator, ObString(part.text.size(), part.text.data()), out);
+      const auto part_text = part.text();
+      return ob_write_string(allocator, ObString(part_text.size(), part_text.data()), out);
     };
     if (!wildcard) { OZ (copy(parts[parts.size() - 1], column_ref.col_name_)); }
     if (qualifiers >= 1) { OZ (copy(parts[qualifiers - 1], column_ref.tbl_name_)); }
@@ -1574,7 +1578,7 @@ int ObResolverUtils::resolve_obj_access_ref_node(ObRawExprFactory &factory,
                                                 const ObSQLSessionInfo &session)
 {
   int ret = OB_SUCCESS;
-  if (node.kind == peg::NodeKind::Ident || node.kind == peg::NodeKind::Column) {
+  if (node.kind() == peg::NodeKind::Ident || node.kind() == peg::NodeKind::Column) {
     OZ(resolve_column_ref(node, OB_NAME_CASE_INVALID, factory.get_allocator(), name));
     if (OB_SUCC(ret) && name.database_name_.empty() && name.tbl_name_.empty()) {
       OZ(name.access_idents_.push_back(ObObjAccessIdent(name.col_name_, OB_INVALID_INDEX)));
@@ -1582,8 +1586,8 @@ int ObResolverUtils::resolve_obj_access_ref_node(ObRawExprFactory &factory,
     ObColumnRefRawExpr *reference = nullptr;
     OZ(factory.create_raw_expr(T_REF_COLUMN, reference));
     OX(name.ref_expr_ = reference);
-  } else if (node.kind == peg::NodeKind::SystemVariable || node.kind == peg::NodeKind::GetUserVariable
-             || node.kind == peg::NodeKind::UserVariable) {
+  } else if (node.kind() == peg::NodeKind::SystemVariable || node.kind() == peg::NodeKind::GetUserVariable
+             || node.kind() == peg::NodeKind::UserVariable) {
     const auto spelling = peg::variable_name(node);
     ObString text;
     OZ(ob_write_string(factory.get_allocator(), ObString(spelling.size(), spelling.data()), text));
@@ -2934,11 +2938,11 @@ int ObResolverUtils::resolve_partition_list_value_expr(ObResolverParams &params,
 {
   int ret = OB_SUCCESS;
   const peg::Node *value = &syntax;
-  while (value->kind == peg::NodeKind::Parenthesized) {
+  while (value->kind() == peg::NodeKind::Parenthesized) {
     value = &peg::parenthesized_expression(*value);
   }
   const peg::Node &node = *value;
-  if ((node.kind == peg::NodeKind::ExprList || node.kind == peg::NodeKind::ValueVector)) {
+  if ((node.kind() == peg::NodeKind::ExprList || node.kind() == peg::NodeKind::ValueVector)) {
     if (peg::row_elements(node).size() != part_func_exprs.count()) {
       ret = OB_ERR_PARTITION_COLUMN_LIST_ERROR;
       LOG_ERROR("Inconsistency in usage of column lists for partitioning near", K(ret),
@@ -3057,11 +3061,11 @@ int ObResolverUtils::resolve_partition_list_value_expr(ObResolverParams &params,
 {
   int ret = OB_SUCCESS;
   const peg::Node *value = &syntax;
-  while (value->kind == peg::NodeKind::Parenthesized) {
+  while (value->kind() == peg::NodeKind::Parenthesized) {
     value = &peg::parenthesized_expression(*value);
   }
   const peg::Node &node = *value;
-  if ((node.kind == peg::NodeKind::ExprList || node.kind == peg::NodeKind::ValueVector)) {
+  if ((node.kind() == peg::NodeKind::ExprList || node.kind() == peg::NodeKind::ValueVector)) {
     if (OB_INVALID_COUNT != expr_num
         && peg::row_elements(node).size() != expr_num) {
       ret = OB_ERR_PARTITION_COLUMN_LIST_ERROR;
@@ -5642,7 +5646,7 @@ int ObResolverUtils::get_select_into_variables(const peg::Node &query,
                                                 bool top_level)
 {
   int ret = OB_SUCCESS;
-  if (query.kind == peg::NodeKind::Select) {
+  if (query.kind() == peg::NodeKind::Select) {
     const auto operands = peg::query_set_operands(query);
     if (operands.empty()) {
       variables = peg::query_into_variables(query);
@@ -6145,7 +6149,7 @@ int ObResolverUtils::fast_get_param_type(const peg::Node &node,
                                          ObCollationLevel &coll_level)
 {
   int ret = OB_SUCCESS;
-  if (binding != nullptr || node.kind == peg::NodeKind::Parameter) {
+  if (binding != nullptr || node.kind() == peg::NodeKind::Parameter) {
     const int64_t parameter_index = binding != nullptr ? binding->parameter_index : peg::placeholder_index(node);
     if (OB_ISNULL(param_store) || parameter_index < 0 || parameter_index >= param_store->count()) {
       ret = OB_ERR_UNEXPECTED;

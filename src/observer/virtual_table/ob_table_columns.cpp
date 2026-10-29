@@ -1098,7 +1098,7 @@ int ObTableColumns::resolve_view_definition(
         if (OB_SUCC(ret)) {
           ObSelectResolver select_resolver(resolver_ctx);
           const peg::Node *select_stmt_node = syntax.statement();
-          if (OB_UNLIKELY(NULL == select_stmt_node || select_stmt_node->kind != peg::NodeKind::Select)) {
+          if (OB_UNLIKELY(NULL == select_stmt_node || select_stmt_node->kind() != peg::NodeKind::Select)) {
             ret = OB_ERR_UNEXPECTED;
           } else if (OB_FAIL(select_resolver.resolve(*select_stmt_node))) {
             if (can_rewrite_error_code(ret)) {

@@ -29,7 +29,7 @@ int ObDropProcedureResolver::resolve(const peg::Node &parse_tree)
   ObString db_name;
   ObString sp_name;
   ObDropRoutineStmt *proc_stmt = NULL;
-  if (parse_tree.kind != peg::NodeKind::DropProcedure) {
+  if (parse_tree.kind() != peg::NodeKind::DropProcedure) {
     ret = OB_INVALID_ARGUMENT;
   } else if (OB_ISNULL(session_info_)) {
     ret = OB_NOT_INIT;
@@ -59,7 +59,7 @@ int ObDropFunctionResolver::resolve(const peg::Node &parse_tree)
   ObString db_name;
   ObString sp_name;
   ObDropRoutineStmt *routine_stmt = NULL;
-  if (parse_tree.kind != peg::NodeKind::DropFunction) {
+  if (parse_tree.kind() != peg::NodeKind::DropFunction) {
     ret = OB_INVALID_ARGUMENT;
   } else if (OB_ISNULL(session_info_)) {
     ret = OB_NOT_INIT;

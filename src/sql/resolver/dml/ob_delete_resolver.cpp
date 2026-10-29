@@ -65,7 +65,7 @@ int ObDeleteResolver::resolve(const peg::Node &query)
   } else if (OB_ISNULL(delete_stmt = create_stmt<ObDeleteStmt>())) {
     ret = OB_ALLOCATE_MEMORY_FAILED;
     LOG_ERROR("create delete stmt failed", K(ret));
-  } else if (query.kind != peg::NodeKind::Delete) {
+  } else if (query.kind() != peg::NodeKind::Delete) {
     ret = OB_ERR_UNEXPECTED;
   } else {
     stmt_ = delete_stmt;

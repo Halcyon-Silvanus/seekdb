@@ -499,7 +499,10 @@ public:
                                         bool &is_compatible);
   int64_t combine_line_and_col(const peg::Node &node) const;
   ObString source(const peg::Node &node) const
-  { return ObString(node.end - node.start, source_.ptr() + node.start); }
+  {
+    const auto span = node.span();
+    return ObString(span.end - span.start, source_.ptr() + span.start);
+  }
   int resolve_routine_decl_param_list(rust::Slice<const peg::Node> parameters,
       ObPLAstUnit &package_ast,
       ObPLRoutineInfo &routine_info);

@@ -33,7 +33,7 @@ int ObAlterRoutineResolver::resolve(const peg::Node &parse_tree)
   CK (OB_NOT_NULL(session_info_));
   CK (OB_NOT_NULL(schema_checker_));
   CK (OB_NOT_NULL(allocator_));
-  CK (OB_LIKELY((peg::NodeKind::AlterProcedure == parse_tree.kind) || (peg::NodeKind::AlterFunction == parse_tree.kind)));
+  CK (OB_LIKELY((peg::NodeKind::AlterProcedure == parse_tree.kind()) || (peg::NodeKind::AlterFunction == parse_tree.kind())));
 
   if (OB_SUCC(ret)) {
     ObAlterRoutineStmt *alter_routine_stmt = NULL;
@@ -49,7 +49,7 @@ int ObAlterRoutineResolver::resolve(const peg::Node &parse_tree)
     }
     //Step3: got standalone routine info 
     if (OB_FAIL(ret)) {
-    } else if (peg::NodeKind::AlterProcedure == parse_tree.kind) {
+    } else if (peg::NodeKind::AlterProcedure == parse_tree.kind()) {
       OZ (schema_checker_->get_standalone_procedure_info(
         db_name, sp_name, routine_info));
     } else {
@@ -59,7 +59,7 @@ int ObAlterRoutineResolver::resolve(const peg::Node &parse_tree)
     if (OB_SUCC(ret) && OB_ISNULL(routine_info)) {
       ret = OB_ERR_SP_DOES_NOT_EXIST;
       LOG_USER_ERROR(OB_ERR_SP_DOES_NOT_EXIST,
-                     peg::NodeKind::AlterProcedure == parse_tree.kind ? "PROCEDURE" : "FUNCTION",
+                     peg::NodeKind::AlterProcedure == parse_tree.kind() ? "PROCEDURE" : "FUNCTION",
                      db_name.length(), db_name.ptr(),
                      sp_name.length(), sp_name.ptr());
     }
@@ -95,15 +95,16 @@ int ObAlterRoutineResolver::resolve_clause_list(
   for (const auto &clause : clauses) {
     if (OB_FAIL(ret)) {
       break;
-    } else if (clause.kind == peg::NodeKind::InvokeRights) {
+    } else if (clause.kind() == peg::NodeKind::InvokeRights) {
       if (peg::routine_invoker_rights(clause)) {
         routine.set_invoker_right();
       } else {
         routine.clear_invoker_right();
       }
-    } else if (clause.kind == peg::NodeKind::ColumnComment) {
-      OZ (routine.set_comment(ObString(clause.text.size(), clause.text.data())));
-    } else if (clause.kind == peg::NodeKind::DataAccess) {
+    } else if (clause.kind() == peg::NodeKind::ColumnComment) {
+      const auto clause_text = clause.text();
+      OZ (routine.set_comment(ObString(clause_text.size(), clause_text.data())));
+    } else if (clause.kind() == peg::NodeKind::DataAccess) {
       switch (peg::routine_data_access(clause)) {
       case peg::RoutineDataAccess::NoSql: routine.set_no_sql(); break;
       case peg::RoutineDataAccess::ReadsSqlData: routine.set_reads_sql_data(); break;

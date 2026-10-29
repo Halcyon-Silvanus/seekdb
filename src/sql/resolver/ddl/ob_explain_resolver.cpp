@@ -32,8 +32,8 @@ int ObExplainResolver::resolve(const peg::Node &query)
   display.with_tree_line_ = true;
   if (OB_ISNULL(statement)) {
     ret = OB_SQL_RESOLVER_NO_MEMORY;
-  } else if (child.kind != peg::NodeKind::Select && child.kind != peg::NodeKind::Insert
-             && child.kind != peg::NodeKind::Update && child.kind != peg::NodeKind::Delete) {
+  } else if (child.kind() != peg::NodeKind::Select && child.kind() != peg::NodeKind::Insert
+             && child.kind() != peg::NodeKind::Update && child.kind() != peg::NodeKind::Delete) {
     ret = OB_NOT_SUPPORTED;
     LOG_USER_ERROR(OB_NOT_SUPPORTED, "stmt type for EXPLAIN");
   } else {
@@ -63,13 +63,15 @@ int ObExplainResolver::resolve(const peg::Node &query)
       if (peg::explain_has_into_table(query)) {
         const auto &node = peg::explain_into_table(query);
         ObString name;
-        OZ(ob_write_string(*allocator_, ObString(node.text.size(), node.text.data()), name));
+        const auto node_text = node.text();
+        OZ(ob_write_string(*allocator_, ObString(node_text.size(), node_text.data()), name));
         OX(statement->set_into_table(name));
       }
       if (peg::explain_has_statement_id(query)) {
         const auto &node = peg::explain_statement_id(query);
         ObString name;
-        OZ(ob_write_string(*allocator_, ObString(node.text.size(), node.text.data()), name));
+        const auto node_text = node.text();
+        OZ(ob_write_string(*allocator_, ObString(node_text.size(), node_text.data()), name));
         OX(statement->set_statement_id(name));
       }
     }

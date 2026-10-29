@@ -46,7 +46,7 @@ int ObAnalyzeStmtResolver::resolve(const peg::Node &parse_tree)
     ret = OB_ALLOCATE_MEMORY_FAILED;
     LOG_ERROR("failed to create analyze stmt", K(ret));
   } else if (OB_FAIL(session_info_->get_force_parallel_query_dop(parallel_degree))) {
-  } else if (parse_tree.kind == peg::NodeKind::Analyze) {
+  } else if (parse_tree.kind() == peg::NodeKind::Analyze) {
     OZ (resolve_analyze_table(parse_tree, *analyze_stmt));
   } else {
     ret = OB_ERR_UNEXPECTED;

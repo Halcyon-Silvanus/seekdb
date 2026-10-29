@@ -217,7 +217,7 @@ int ObCreateTableResolverBase::resolve_table_organization(rust::Slice<const peg:
   for (const auto &option : options) {
     if (OB_FAIL(ret)) {
       break;
-    } else if (option.kind == peg::NodeKind::Organization) {
+    } else if (option.kind() == peg::NodeKind::Organization) {
       if (stmt_->get_stmt_type() == stmt::T_CREATE_TABLE) {
         table_organization_ = peg::table_option_organization(option) == peg::TableOrganization::Heap
             ? ObTableOrganizationType::OB_HEAP_ORGANIZATION : ObTableOrganizationType::OB_INDEX_ORGANIZATION;

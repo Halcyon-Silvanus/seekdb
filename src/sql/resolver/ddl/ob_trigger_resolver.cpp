@@ -34,7 +34,7 @@ using namespace pl;
 int ObTriggerResolver::resolve(const peg::Node &parse_tree)
 {
   int ret = OB_SUCCESS;
-  switch (parse_tree.kind) {
+  switch (parse_tree.kind()) {
   case peg::NodeKind::CreateTrigger: {
     ObCreateTriggerStmt *stmt = create_stmt<ObCreateTriggerStmt>();
     OV (OB_NOT_NULL(stmt), OB_ALLOCATE_MEMORY_FAILED);
@@ -123,7 +123,7 @@ int ObTriggerResolver::resolve_sp_definer(const peg::Node *parse_node,
   cur_user_name = session_info_->get_user_name();
   cur_host_name = session_info_->get_host_name();
   if (OB_NOT_NULL(parse_node)) {
-    CK(peg::NodeKind::UserHost == parse_node->kind);
+    CK(peg::NodeKind::UserHost == parse_node->kind());
     if (OB_SUCC(ret)) {
       const auto account = peg::account_identity(*parse_node);
       {
@@ -183,7 +183,7 @@ int ObTriggerResolver::resolve_create_trigger_stmt(const peg::Node &parse_node,
                                                    ObCreateTriggerArg &trigger_arg)
 {
   int ret = OB_SUCCESS;
-  OV (parse_node.kind == peg::NodeKind::CreateTrigger);
+  OV (parse_node.kind() == peg::NodeKind::CreateTrigger);
   OV (OB_NOT_NULL(session_info_));
   OX (trigger_arg.with_replace_ = false);
   OX (trigger_arg.trigger_info_.set_owner_id(session_info_->get_user_id()));
@@ -718,9 +718,10 @@ int ObTriggerSourceBuilder::replace_table_name_in_body(ObTriggerInfo &trigger_in
   if (OB_SUCC(ret)) {
     const auto names = peg::name_parts(peg::trigger_table(peg::trigger_definition(*syntax.statement())));
     const auto &table = names[names.size() - 1];
+    const auto span = table.span();
     const ObString source = syntax.source();
     ObSqlString rewritten;
-    OZ (rewritten.append(source.ptr(), table.start));
+    OZ (rewritten.append(source.ptr(), span.start));
     OZ (rewritten.append("`"));
     for (int64_t i = 0; OB_SUCC(ret) && i < base_object_name.length(); ++i) {
       if (base_object_name.ptr()[i] == '`') {
@@ -730,7 +731,7 @@ int ObTriggerSourceBuilder::replace_table_name_in_body(ObTriggerInfo &trigger_in
       }
     }
     OZ (rewritten.append("`"));
-    OZ (rewritten.append(source.ptr() + table.end, source.length() - table.end));
+    OZ (rewritten.append(source.ptr() + span.end, source.length() - span.end));
     OZ (trigger_info.set_trigger_body(rewritten.string()));
   }
   return ret;

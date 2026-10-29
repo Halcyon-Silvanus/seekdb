@@ -38,7 +38,7 @@ int ObCreateDatabaseResolver::resolve(const peg::Node &parse_tree)
 {
   int ret = OB_SUCCESS;
   if (OB_ISNULL(session_info_) || OB_ISNULL(allocator_)
-      || parse_tree.kind != peg::NodeKind::CreateDatabase) {
+      || parse_tree.kind() != peg::NodeKind::CreateDatabase) {
     ret = OB_ERR_UNEXPECTED;
   } else {
     ObCreateDatabaseStmt *create_database_stmt = NULL;
@@ -55,7 +55,8 @@ int ObCreateDatabaseResolver::resolve(const peg::Node &parse_tree)
       ObString database_name;
       const auto &name = peg::database_name(parse_tree);
       if (OB_SUCC(ret)) {
-        OZ (ob_write_string(*allocator_, ObString(name.text.size(), name.text.data()), database_name));
+        const auto name_text = name.text();
+        OZ (ob_write_string(*allocator_, ObString(name_text.size(), name_text.data()), database_name));
         ObNameCaseMode mode = OB_NAME_CASE_INVALID;
         if (OB_FAIL(ret)) {
         } else if (OB_FAIL(session_info_->get_name_case_mode(mode))) {
@@ -104,10 +105,11 @@ int ObCreateDatabaseResolver::resolve_options(ObCreateDatabaseStmt &stmt,
   bool collation_set = false;
   for (const auto &option : options) {
     if (OB_FAIL(ret)) { break; }
-    ObString name(option.text.size(), option.text.data());
+    const auto option_text = option.text();
+    ObString name(option_text.size(), option_text.data());
     ObCharsetType charset_type = CHARSET_INVALID;
     ObCollationType collation_type = CS_TYPE_INVALID;
-    if (option.kind == peg::NodeKind::Charset) {
+    if (option.kind() == peg::NodeKind::Charset) {
       charset_type = ObCharset::charset_type(name.trim());
       collation_type = ObCharset::get_default_collation(charset_type);
       if (charset_type == CHARSET_INVALID) {
@@ -121,7 +123,7 @@ int ObCreateDatabaseResolver::resolve_options(ObCreateDatabaseStmt &stmt,
                        ObCharset::charset_name(stmt.get_charset_type()),
                        ObCharset::charset_name(charset_type));
       }
-    } else if (option.kind == peg::NodeKind::Collation) {
+    } else if (option.kind() == peg::NodeKind::Collation) {
       collation_type = ObCharset::collation_type(name.trim());
       charset_type = ObCharset::charset_type_by_coll(collation_type);
       if (collation_type == CS_TYPE_INVALID) {

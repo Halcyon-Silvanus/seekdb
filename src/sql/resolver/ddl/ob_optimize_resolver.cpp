@@ -25,7 +25,7 @@ int ObOptimizeTableResolver::resolve(const peg::Node &parser_tree)
 {
   int ret = OB_SUCCESS;
   ObOptimizeTableStmt *stmt = nullptr;
-  if (OB_ISNULL(session_info_) || peg::NodeKind::OptimizeTable != parser_tree.kind) {
+  if (OB_ISNULL(session_info_) || peg::NodeKind::OptimizeTable != parser_tree.kind()) {
     ret = OB_INVALID_ARGUMENT;
   } else {
     if (OB_ISNULL(stmt = create_stmt<ObOptimizeTableStmt>())) {

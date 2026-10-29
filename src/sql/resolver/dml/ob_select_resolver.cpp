@@ -97,7 +97,8 @@ int ObSelectResolver::do_check_node_in_cte_recursive_union(const peg::Node *quer
   while (!recursive_union && relations->advance_relation()) {
     const peg::Node &relation = relations->relation_reference();
     const auto &name = peg::relation_name(relation);
-    const ObString table_name(name.text.size(), name.text.data());
+    const auto name_text = name.text();
+    const ObString table_name(name_text.size(), name_text.data());
     recursive_union = cte_ctx_.is_with_resolver()
         && !peg::relation_has_database(relation)
         && !table_name.empty()
@@ -305,7 +306,7 @@ int ObSelectResolver::do_resolve_set_query_in_normal(const peg::Node &parse_tree
       bool is_type_same = false;
       bool enable_pullup = false;
       if (OB_ISNULL(child_node) ||
-          OB_UNLIKELY(peg::NodeKind::Select != child_node->kind)) {
+          OB_UNLIKELY(peg::NodeKind::Select != child_node->kind())) {
         ret = OB_ERR_UNEXPECTED;
       } else if (OB_FAIL(do_resolve_set_query(*child_node, child_stmt, i == 0))) {
       } else if (OB_FAIL(check_set_child_into_pullup(*select_stmt, *child_stmt, i == 0))) {
@@ -1028,11 +1029,11 @@ int ObSelectResolver::resolve_query_options(rust::Slice<const peg::Node> options
   } else {
     for (size_t i = 0; OB_SUCC(ret) && i < options.size(); ++i) {
       const auto &option = options[i];
-      if (option.kind == peg::NodeKind::Distinct) {
+      if (option.kind() == peg::NodeKind::Distinct) {
         is_distinct = true;
-      } else if (option.kind == peg::NodeKind::All) {
+      } else if (option.kind() == peg::NodeKind::All) {
         is_all = true;
-      } else if (option.kind == peg::NodeKind::FoundRows) {
+      } else if (option.kind() == peg::NodeKind::FoundRows) {
         if (has_calc_found_rows_) {
           has_calc_found_rows_ = false;
           select_stmt->set_calc_found_rows(true);
@@ -1040,7 +1041,7 @@ int ObSelectResolver::resolve_query_options(rust::Slice<const peg::Node> options
           ret = OB_ERR_CANT_USE_OPTION_HERE;
           LOG_USER_ERROR(OB_ERR_CANT_USE_OPTION_HERE, "SQL_CALC_FOUND_ROWS");
         }
-      } else if (option.kind == peg::NodeKind::StraightJoin) {
+      } else if (option.kind() == peg::NodeKind::StraightJoin) {
         select_stmt->set_select_straight_join(true);
       }
     }
@@ -1203,14 +1204,14 @@ int ObSelectResolver::resolve_order_item(const peg::Node &sort_node, OrderItem &
   int ret = OB_SUCCESS;
   ObSelectStmt *select_stmt = NULL;
   const peg::Node *expression = &peg::sort_expression(sort_node);
-  while (expression->kind == peg::NodeKind::Parenthesized) {
+  while (expression->kind() == peg::NodeKind::Parenthesized) {
     expression = &peg::parenthesized_expression(*expression);
   }
   const auto &syntax = *expression;
   if (OB_ISNULL(select_stmt = get_select_stmt())) {
     ret = OB_ERR_UNEXPECTED;
   } else if (OB_FAIL(ObResolverUtils::set_direction_by_mode(sort_node, order_item))) {
-  } else if (OB_UNLIKELY(syntax.kind == peg::NodeKind::Int)) {
+  } else if (OB_UNLIKELY(syntax.kind() == peg::NodeKind::Int)) {
     // The order-by item is specified using column position
     // ie. ORDER BY 1 DESC
     int32_t pos = static_cast<int32_t>(peg::integer_literal_value(syntax));
@@ -1218,7 +1219,7 @@ int ObSelectResolver::resolve_order_item(const peg::Node &sort_node, OrderItem &
     }
   } else if (params_.is_prepare_protocol_
              && !params_.is_prepare_stage_
-             && syntax.kind == peg::NodeKind::Parameter) {
+             && syntax.kind() == peg::NodeKind::Parameter) {
     ObRawExpr *null_expr = NULL;
     if (OB_ISNULL(params_.expr_factory_)) {
       ret = OB_ERR_UNEXPECTED;
@@ -1227,7 +1228,7 @@ int ObSelectResolver::resolve_order_item(const peg::Node &sort_node, OrderItem &
     } else {
       order_item.expr_ = null_expr;
     }
-  } else if (syntax.kind == peg::NodeKind::Parameter && !params_.is_prepare_protocol_) {
+  } else if (syntax.kind() == peg::NodeKind::Parameter && !params_.is_prepare_protocol_) {
     ret = OB_ERR_PARSE_SQL;
   } else {
     if (OB_FAIL(resolve_sql_expr(syntax, order_item.expr_))) {
@@ -1274,7 +1275,7 @@ int ObSelectResolver::resolve_field_list(rust::Slice<const peg::Node> projection
         && params_.select_item_param_infos_->created()
         ? params_.select_item_param_infos_->get(&projection) : nullptr;
     const peg::Node *display_node = &project_node;
-    while (display_node->kind == peg::NodeKind::Parenthesized) {
+    while (display_node->kind() == peg::NodeKind::Parenthesized) {
       display_node = &peg::parenthesized_expression(*display_node);
     }
     ObString source_name = params_.syntax_->source(project_node);
@@ -1297,16 +1298,16 @@ int ObSelectResolver::resolve_field_list(rust::Slice<const peg::Node> projection
     // SET @I1 = 1;
     // EXECUTE STMT USING @I1, @I1, @I1;
     // col_name1 is ":1", col_name2 is ":2", col_name3 is ":3"
-    if (display_node->kind == peg::NodeKind::Null
+    if (display_node->kind() == peg::NodeKind::Null
         && (params_.parameterization_ == nullptr
             || params_.parameterization_->find(display_node) == nullptr)) {
       OZ(ob_write_string(*allocator_, ObString::make_string("NULL"), select_item.alias_name_));
     } else {
       OZ(ob_write_string(*allocator_, source_name, select_item.alias_name_));
     }
-    if (project_node.kind == peg::NodeKind::Star
-        || (project_node.kind == peg::NodeKind::Column && peg::name_is_wildcard(project_node))) {
-      if (project_node.kind == peg::NodeKind::Star) {
+    if (project_node.kind() == peg::NodeKind::Star
+        || (project_node.kind() == peg::NodeKind::Column && peg::name_is_wildcard(project_node))) {
+      if (project_node.kind() == peg::NodeKind::Star) {
         if (is_bald_star) {
           ret = OB_ERR_STAR_DUPLICATE;
           break;
@@ -1339,7 +1340,8 @@ int ObSelectResolver::resolve_field_list(rust::Slice<const peg::Node> projection
     if (OB_SUCC(ret) && has_alias) {
       const peg::Node &alias = peg::projection_alias(projection);
       select_item.is_real_alias_ = true;
-      OZ(ob_write_string(*allocator_, ObString(alias.text.size(), alias.text.data()), select_item.alias_name_));
+      const auto alias_text = alias.text();
+      OZ(ob_write_string(*allocator_, ObString(alias_text.size(), alias_text.data()), select_item.alias_name_));
     }
 
     if (OB_SUCC(ret)) {
@@ -1356,10 +1358,11 @@ int ObSelectResolver::resolve_field_list(rust::Slice<const peg::Node> projection
 
       if (OB_SUCC(ret) && !has_alias) {
         if (sel_expr->is_column_ref_expr()) {
-          if (project_node.kind == peg::NodeKind::Column && !peg::name_parts(project_node).empty()) {
+          if (project_node.kind() == peg::NodeKind::Column && !peg::name_parts(project_node).empty()) {
             const auto parts = peg::name_parts(project_node);
             const peg::Node &name = parts[parts.size() - 1];
-            OZ(ob_write_string(*allocator_, ObString(name.text.size(), name.text.data()), select_item.alias_name_));
+            const auto name_text = name.text();
+            OZ(ob_write_string(*allocator_, ObString(name_text.size(), name_text.data()), select_item.alias_name_));
           } else {
             select_item.alias_name_ = static_cast<ObColumnRefRawExpr *>(sel_expr)->get_column_name();
           }
@@ -1802,7 +1805,7 @@ int ObSelectResolver::resolve_star(const peg::Node &node)
     LOG_WARN("invalid status", K_(session_info), K(select_stmt), K(params_.expr_factory_));
   }
   if (OB_FAIL(ret)) {
-  } else if (node.kind == peg::NodeKind::Star) {
+  } else if (node.kind() == peg::NodeKind::Star) {
     int64_t num = select_stmt->get_table_size();
     if (num <= 0) {
       // select *
@@ -1821,7 +1824,7 @@ int ObSelectResolver::resolve_star(const peg::Node &node)
       } else {/*do nothing*/}
     } else if (OB_FAIL(resolve_star_for_table_groups())) {
     }
-  } else if (node.kind == peg::NodeKind::Column && peg::name_is_wildcard(node)) {
+  } else if (node.kind() == peg::NodeKind::Column && peg::name_is_wildcard(node)) {
     ObQualifiedName column_ref;
     bool is_json_wildcard_column = false;  // special input : tab_name.column_name.*
     bool is_column_name_equal = false;
@@ -2209,7 +2212,7 @@ int ObSelectResolver::resolve_group_by_sql_expr(const peg::Node *group_node,
   ObRawExpr *expr = NULL;
   if (OB_ISNULL(group_node)) {
     ret = OB_INVALID_ARGUMENT;
-  } else if (group_node->kind == peg::NodeKind::Int) {
+  } else if (group_node->kind() == peg::NodeKind::Int) {
     int64_t pos = peg::integer_literal_value(*group_node);
     if (pos <= 0 || pos > select_stmt->get_select_item_size()) {
       ret = OB_ERR_BAD_FIELD_ERROR;
@@ -2274,10 +2277,10 @@ int ObSelectResolver::resolve_groupby_node(const peg::Node *group_node,
   } else if (OB_FAIL(check_stack_overflow(is_stack_overflow))) {
   } else if (is_stack_overflow) {
     ret = OB_SIZE_OVERFLOW;
-  } else if (group_node->kind == peg::NodeKind::Parenthesized) {
+  } else if (group_node->kind() == peg::NodeKind::Parenthesized) {
     OZ(SMART_CALL(resolve_groupby_node(&peg::parenthesized_expression(*group_node), group_sort_node,
         groupby_exprs, rollup_exprs, order_items, has_explicit_dir, is_groupby_expr, group_expr_level)));
-  } else if (group_node->kind == peg::NodeKind::ExprList) {
+  } else if (group_node->kind() == peg::NodeKind::ExprList) {
     /****************************************************************************
     Support row-shaped group-by expressions such as:
     select c1 from t1 group by ((c1)); ==> select c1 from t1 group by c1;
@@ -2425,11 +2428,13 @@ int ObSelectResolver::get_refindex_from_named_windows(const peg::Node &reference
                                                        rust::Slice<const peg::Node> windows,
                                                        int64_t &ref_idx)
 {
-  const ObString reference_name(reference.text.size(), reference.text.data());
+  const auto reference_text = reference.text();
+  const ObString reference_name(reference_text.size(), reference_text.data());
   ref_idx = -1;
   for (size_t i = 0; i < windows.size(); ++i) {
     const auto &name = peg::named_window_name(windows[i]);
-    const ObString candidate(name.text.size(), name.text.data());
+    const auto name_text = name.text();
+    const ObString candidate(name_text.size(), name_text.data());
     if (ObCharset::case_insensitive_equal(reference_name, candidate)) {
       ref_idx = i;
       break;
@@ -2489,7 +2494,8 @@ int ObSelectResolver::resolve_named_windows_clause(rust::Slice<const peg::Node> 
         }
         if (OB_SUCC(ret) && ready) {
           const auto &name_node = peg::named_window_name(window);
-          ObString name(name_node.text.size(), name_node.text.data());
+          const auto name_node_text = name_node.text();
+          ObString name(name_node_text.size(), name_node_text.data());
           ObRawExpr *expression = nullptr;
           OZ(check_duplicated_name_window(name, names));
           OZ(names.push_back(name));
@@ -3909,7 +3915,7 @@ int ObSelectResolver::check_union_leaf_to_values_table_valid(const peg::Node &pa
         ObCollationLevel dummy_collation_level;
         if (FALSE_IT(binding = params_.parameterization_ != nullptr
             ? params_.parameterization_->find(param_node) : nullptr)) {
-        } else if (binding == nullptr && !peg::is_literal(*param_node) && param_node->kind != peg::NodeKind::Parameter) {
+        } else if (binding == nullptr && !peg::is_literal(*param_node) && param_node->kind() != peg::NodeKind::Parameter) {
           is_valid = false;
         } else if (OB_FAIL(ObResolverUtils::fast_get_param_type(*param_node, binding, param_store,
                                                     connect_collation, nchar_collation,

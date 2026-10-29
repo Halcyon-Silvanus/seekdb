@@ -344,7 +344,7 @@ int ObDMLResolver::resolve_sql_expr(const peg::Node &node, ObRawExpr *&expr,
       if (OB_FAIL(expr_resolver.resolve(node, expr, *output_columns, sys_vars,
                                        sub_query_info, aggr_exprs, win_exprs, udf_info,
                                        op_exprs, user_var_exprs, inlist_infos, match_exprs))) {
-        LOG_WARN("resolve expression failed", K(ret), "kind", static_cast<int32_t>(node.kind));
+        LOG_WARN("resolve expression failed", K(ret), "kind", static_cast<int32_t>(node.kind()));
       }
     }
 
@@ -687,9 +687,10 @@ int ObDMLResolver::resolve_into_variables(rust::Slice<const peg::Node> variables
       ch_node = &variables[i];
       expr = NULL;
       if (OB_SUCC(ret)) {
-        if (ch_node->kind == peg::NodeKind::UserVariable) {
+        if (ch_node->kind() == peg::NodeKind::UserVariable) {
           ObString var_name;
-          OZ(ob_write_string(*allocator_, ObString(ch_node->text.size(), ch_node->text.data()), var_name));
+          const auto ch_node_text = ch_node->text();
+          OZ(ob_write_string(*allocator_, ObString(ch_node_text.size(), ch_node_text.data()), var_name));
           ObCharset::casedn(CS_TYPE_UTF8MB4_GENERAL_CI, var_name);
           OZ (user_vars.push_back(var_name));
           OZ (user_var_idx.add_member(i));
@@ -698,7 +699,7 @@ int ObDMLResolver::resolve_into_variables(rust::Slice<const peg::Node> variables
             CK(OB_NOT_NULL(params_.allocator_), OB_NOT_NULL(params_.expr_factory_));
             const pl::ObPLVar* var = NULL;
             bool need_reset_inout_flag = false;
-            if (OB_SUCC(ret) && ch_node->kind == peg::NodeKind::Parameter) {
+            if (OB_SUCC(ret) && ch_node->kind() == peg::NodeKind::Parameter) {
               // get var from symbol table
               int64_t idx = peg::placeholder_index(*ch_node);
               const pl::ObPLSymbolTable* symbol_table = NULL;
@@ -726,7 +727,7 @@ int ObDMLResolver::resolve_into_variables(rust::Slice<const peg::Node> variables
                                                    true));
             OZ (pl_vars.push_back(expr));
           } else if (params_.is_prepare_protocol_) { // RETURNING clause in dynamic SQL, followed by QuestionMark
-            if (OB_SUCC(ret) && ch_node->kind != peg::NodeKind::Parameter) {
+            if (OB_SUCC(ret) && ch_node->kind() != peg::NodeKind::Parameter) {
               ret = OB_NOT_SUPPORTED;
               LOG_USER_ERROR(OB_NOT_SUPPORTED, "dynamic sql into variable not a question mark");
             } else if (params_.is_dynamic_sql_ &&
@@ -750,7 +751,8 @@ int ObDMLResolver::resolve_into_variables(rust::Slice<const peg::Node> variables
              * Directly execute select 1 into a in sql; mysql will report “ERROR 1327 (42000): Undeclared variable: a”
              * */
             ret = OB_ERR_SP_UNDECLARED_VAR;
-            LOG_USER_ERROR(OB_ERR_SP_UNDECLARED_VAR, static_cast<int>(ch_node->text.size()), ch_node->text.data());
+            const auto ch_node_text = ch_node->text();
+            LOG_USER_ERROR(OB_ERR_SP_UNDECLARED_VAR, static_cast<int>(ch_node_text.size()), ch_node_text.data());
           }
         }
       }
@@ -765,9 +767,10 @@ int ObDMLResolver::resolve_into_variables(rust::Slice<const peg::Node> variables
           expr = NULL;
           ch_node = &variables[i];
           if (user_var_idx.has_member(i)) {
+            const auto ch_node_text = ch_node->text();
             OZ( ObRawExprUtils::build_get_user_var(
                   *params_.expr_factory_,
-                  ObString(ch_node->text.size(), ch_node->text.data()),
+                  ObString(ch_node_text.size(), ch_node_text.data()),
                   expr,
                   params_.session_info_,
                   params_.query_ctx_,
@@ -1546,7 +1549,8 @@ int ObDMLResolver::resolve_basic_table_without_cte(const peg::Node &parse_tree, 
   }
   if (OB_SUCC(ret)) {
     if (alias_node != NULL) {
-      OZ(ob_write_string(*allocator_, ObString(alias_node->text.size(), alias_node->text.data()), alias_name));
+      const auto alias_node_text = alias_node->text();
+      OZ(ob_write_string(*allocator_, ObString(alias_node_text.size(), alias_node_text.data()), alias_name));
     }
 
     // flag IS to set larger query_timeout.
@@ -1787,7 +1791,7 @@ int ObDMLResolver::resolve_table(const peg::Node &parse_tree,
                                  TableItem *&table_item)
 {
   int ret = OB_SUCCESS;
-  const peg::Node *table_node = parse_tree.kind == peg::NodeKind::Table
+  const peg::Node *table_node = parse_tree.kind() == peg::NodeKind::Table
       ? &peg::table_source(parse_tree) : &parse_tree;
   const peg::Node *time_node = peg::table_has_snapshot(parse_tree) ? &peg::table_snapshot(parse_tree) : nullptr;
   ObDMLStmt *stmt = get_stmt();
@@ -1796,7 +1800,7 @@ int ObDMLResolver::resolve_table(const peg::Node &parse_tree,
     if (!stmt->is_select_stmt() && OB_NOT_NULL(time_node)) {
       ret = OB_ERR_SNAPSHOT_QUERY_WITH_UPDATE;
     } else {
-      switch (table_node->kind) {
+      switch (table_node->kind()) {
       case peg::NodeKind::Relation: {
         if (OB_FAIL(resolve_basic_table(parse_tree, table_item))) {
         }
@@ -1978,7 +1982,8 @@ int ObDMLResolver::resolve_using_columns(rust::Slice<const peg::Node> columns, O
   for (const peg::Node &column : columns) {
     if (OB_FAIL(ret)) { break; }
     {
-      OZ(ob_write_string(*allocator_, ObString(column.text.size(), column.text.data()), column_name));
+      const auto column_text = column.text();
+      OZ(ob_write_string(*allocator_, ObString(column_text.size(), column_text.data()), column_name));
       // filter out duplicated column
       bool found = false;
       for (int64_t j = 0; j < column_names.count(); j++) {
@@ -2179,7 +2184,7 @@ int ObDMLResolver::resolve_joined_table_item(const peg::Node &parse_node, Joined
   JoinedTable *child_table = NULL;
   TableItem *table_item = NULL;
   bool reverse_parse = false;
-  if (OB_ISNULL(stmt_) || OB_UNLIKELY(parse_node.kind != peg::NodeKind::JoinedTable)) {
+  if (OB_ISNULL(stmt_) || OB_UNLIKELY(parse_node.kind() != peg::NodeKind::JoinedTable)) {
     ret = OB_INVALID_ARGUMENT;
   } else if (OB_FAIL(alloc_joined_table_item(cur_table))) {
   } else if (peg::join_kind(parse_node) == peg::JoinKind::Right &&
@@ -2194,7 +2199,7 @@ int ObDMLResolver::resolve_joined_table_item(const peg::Node &parse_node, Joined
     uint64_t i = reverse_parse ? 3 - index : index;
     table_node = i == 1 ? &peg::join_left(parse_node) : &peg::join_right(parse_node);
     // nested join case or normal join case
-    if (peg::NodeKind::JoinedTable == table_node->kind) {
+    if (peg::NodeKind::JoinedTable == table_node->kind()) {
       if (OB_FAIL(SMART_CALL(resolve_joined_table(*table_node, child_table)))) {
       } else if (1 == i) {
         cur_table->left_table_ = child_table;
@@ -2346,7 +2351,7 @@ int ObDMLResolver::check_contain_lateral_node(const peg::Node *table, bool &is_c
 {
   int ret = OB_SUCCESS;
   is_contain = peg::table_lateral(*table);
-  if (!is_contain && table->kind == peg::NodeKind::JoinedTable) {
+  if (!is_contain && table->kind() == peg::NodeKind::JoinedTable) {
     OZ(SMART_CALL(check_contain_lateral_node(&peg::join_left(*table), is_contain)));
     if (OB_SUCC(ret) && !is_contain) {
       OZ(SMART_CALL(check_contain_lateral_node(&peg::join_right(*table), is_contain)));
@@ -2375,7 +2380,8 @@ int ObDMLResolver::do_resolve_generate_table(const peg::Node &table_node,
     ret = OB_ERR_UNEXPECTED;
   } else if (peg::table_has_alias(table_node)) {
     const auto &alias = peg::table_alias(table_node);
-    OZ(ob_write_string(*allocator_, ObString(alias.text.size(), alias.text.data()), alias_name));
+    const auto alias_text = alias.text();
+    OZ(ob_write_string(*allocator_, ObString(alias_text.size(), alias_text.data()), alias_name));
   }
 
   bool enable_var_assign_use_das = false;
@@ -2509,7 +2515,8 @@ int ObDMLResolver::resolve_json_table_item(const peg::Node &parse_tree, TableIte
       ret = OB_ALLOCATE_MEMORY_FAILED;
     } else {
       const auto &alias = peg::table_alias(parse_tree);
-      OZ(ob_write_string(*allocator_, ObString(alias.text.size(), alias.text.data()), alias_name));
+      const auto alias_text = alias.text();
+      OZ(ob_write_string(*allocator_, ObString(alias_text.size(), alias_text.data()), alias_name));
     }
     OX (item->table_name_ = alias_name);
     OX (item->alias_name_ = alias_name);
@@ -2612,7 +2619,8 @@ int ObDMLResolver::resolve_function_table_item(const peg::Node &parse_tree,
       ret = OB_ALLOCATE_MEMORY_FAILED;
     } else if (peg::table_has_alias(parse_tree)) {
       const auto &alias = peg::table_alias(parse_tree);
-      OZ(ob_write_string(*allocator_, ObString(alias.text.size(), alias.text.data()), alias_name));
+      const auto alias_text = alias.text();
+      OZ(ob_write_string(*allocator_, ObString(alias_text.size(), alias_text.data()), alias_name));
     } else {
       if (OB_FAIL(stmt->generate_func_table_name(*allocator_, alias_name))) {
       }
@@ -3737,14 +3745,14 @@ int ObDMLResolver::resolve_order_item(const peg::Node &sort_node, OrderItem &ord
   int ret = OB_SUCCESS;
   ObRawExpr *expr = nullptr;
   const peg::Node *expression = &peg::sort_expression(sort_node);
-  while (expression->kind == peg::NodeKind::Parenthesized) {
+  while (expression->kind() == peg::NodeKind::Parenthesized) {
     expression = &peg::parenthesized_expression(*expression);
   }
   if (OB_FAIL(ObResolverUtils::set_direction_by_mode(sort_node, order_item))) {
   }
   if (OB_FAIL(ret)) {
     // do nothing
-  } else if (OB_UNLIKELY(expression->kind == peg::NodeKind::Int)) {
+  } else if (OB_UNLIKELY(expression->kind() == peg::NodeKind::Int)) {
     ret = OB_ERR_PARSER_SYNTAX;
     SQL_RESV_LOG(WARN, "index order item not support in update");
   } else if (OB_FAIL(resolve_sql_expr(*expression, expr))) {
@@ -3942,7 +3950,7 @@ int ObDMLResolver::resolve_limit_clause(const peg::Node *node, bool disable_offs
       const auto *binding = params_.parameterization_ != nullptr
           ? params_.parameterization_->find(value) : nullptr;
       return binding != nullptr ? binding->parameter_index
-          : value->kind == peg::NodeKind::Parameter ? peg::placeholder_index(*value) : -1;
+          : value->kind() == peg::NodeKind::Parameter ? peg::placeholder_index(*value) : -1;
     };
     const int64_t limit_index = parameter_index(limit_node);
     const int64_t offset_index = parameter_index(offset_node);
@@ -3963,8 +3971,8 @@ int ObDMLResolver::resolve_limit_clause(const peg::Node *node, bool disable_offs
       }
     } else {
       if (limit_node != NULL) {
-        if (limit_index < 0 && limit_node->kind != peg::NodeKind::Int && limit_node->kind != peg::NodeKind::Uint
-            && limit_node->kind != peg::NodeKind::Parameter && limit_node->kind != peg::NodeKind::Column) {
+        if (limit_index < 0 && limit_node->kind() != peg::NodeKind::Int && limit_node->kind() != peg::NodeKind::Uint
+            && limit_node->kind() != peg::NodeKind::Parameter && limit_node->kind() != peg::NodeKind::Column) {
           ret = OB_ERR_RESOLVE_SQL;
           LOG_WARN("Wrong type of limit value");
         } else {
@@ -3973,8 +3981,8 @@ int ObDMLResolver::resolve_limit_clause(const peg::Node *node, bool disable_offs
         }
       }
       if (ret == OB_SUCCESS && offset_node != NULL) {
-        if (offset_index < 0 && offset_node->kind != peg::NodeKind::Int && offset_node->kind != peg::NodeKind::Uint
-            && offset_node->kind != peg::NodeKind::Parameter && offset_node->kind != peg::NodeKind::Column) {
+        if (offset_index < 0 && offset_node->kind() != peg::NodeKind::Int && offset_node->kind() != peg::NodeKind::Uint
+            && offset_node->kind() != peg::NodeKind::Parameter && offset_node->kind() != peg::NodeKind::Column) {
           ret = OB_ERR_RESOLVE_SQL;
         } else if (OB_FAIL(ObResolverUtils::resolve_const_expr(params_, *offset_node, limit_offset, NULL))) {
         }
@@ -4090,9 +4098,9 @@ int ObDMLResolver::do_resolve_subquery_info(const ObSubQueryInfo &subquery_info,
   if (OB_ISNULL(subquery_info.sub_query_) || OB_ISNULL(subquery_info.ref_expr_)) {
     ret = OB_ERR_UNEXPECTED;
     LOG_WARN("subquery info is invalid", K_(subquery_info.sub_query), K_(subquery_info.ref_expr));
-  } else if (OB_UNLIKELY(peg::NodeKind::Select != subquery_info.sub_query_->kind)) {
+  } else if (OB_UNLIKELY(peg::NodeKind::Select != subquery_info.sub_query_->kind())) {
     ret = OB_ERR_ILLEGAL_TYPE;
-    LOG_WARN("Unknown statement type in subquery", "stmt_type", static_cast<int32_t>(subquery_info.sub_query_->kind));
+    LOG_WARN("Unknown statement type in subquery", "stmt_type", static_cast<int32_t>(subquery_info.sub_query_->kind()));
   }
 
   if (OB_FAIL(ret)) {
@@ -4186,7 +4194,8 @@ int ObDMLResolver::resolve_partitions(rust::Slice<const peg::Node> partitions,
     if (OB_FAIL(ret)) { break; }
     ObString name;
     ObSEArray<ObObjectID, 16> partition_ids;
-    OZ(ob_write_string(*allocator_, ObString(partition.text.size(), partition.text.data()), name));
+    const auto partition_text = partition.text();
+    OZ(ob_write_string(*allocator_, ObString(partition_text.size(), partition_text.data()), name));
     if (OB_SUCC(ret)) {
       ObCharset::casedn(CS_TYPE_UTF8MB4_GENERAL_CI, name);
       ObPartGetter getter(schema);
@@ -5459,20 +5468,21 @@ int ObDMLResolver::resolve_json_table_regular_column(const peg::Node &column,
   bool exists = false;
   const auto kind = peg::json_column_kind(column);
   const auto &name = peg::json_column_name(column);
+  const auto name_text = name.text();
   void *buffer = allocator_->alloc(sizeof(ObDmlJtColDef));
   ObDataType data_type;
   ColumnItem *item = nullptr;
   if (OB_ISNULL(buffer)) {
     ret = OB_ALLOCATE_MEMORY_FAILED;
-  } else if (name.text.empty()) {
+  } else if (name_text.empty()) {
     ret = OB_INVALID_ARGUMENT;
-  } else if (name.text.data()[name.text.size() - 1] == ' ') {
+  } else if (name_text.data()[name_text.size() - 1] == ' ') {
     ret = OB_WRONG_COLUMN_NAME;
-    LOG_USER_ERROR(OB_WRONG_COLUMN_NAME, static_cast<int32_t>(name.text.size()), name.text.data());
+    LOG_USER_ERROR(OB_WRONG_COLUMN_NAME, static_cast<int32_t>(name_text.size()), name_text.data());
   } else {
     definition = new (buffer) ObDmlJtColDef();
     auto &info = definition->col_base_info_;
-    OZ(ob_write_string(*allocator_, ObString(name.text.size(), name.text.data()), info.col_name_));
+    OZ(ob_write_string(*allocator_, ObString(name_text.size(), name_text.data()), info.col_name_));
     info.is_name_quoted_ = peg::identifier_is_quoted(name);
     info.col_type_ = kind == peg::JsonColumnKind::Ordinality ? COL_TYPE_ORDINALITY
         : kind == peg::JsonColumnKind::Exists ? COL_TYPE_EXISTS : COL_TYPE_VALUE;
@@ -6066,8 +6076,9 @@ int ObDMLResolver::resolve_sample_clause(const peg::Node *sample_node,
 
       sample_info.percent_ = 0;
       const auto &percent = peg::sample_percent(*sample_node);
-      const ObString spelling(percent.text.size(), percent.text.data());
-      if (percent.kind == peg::NodeKind::SampleInt) {
+      const auto percent_text = percent.text();
+      const ObString spelling(percent_text.size(), percent_text.data());
+      if (percent.kind() == peg::NodeKind::SampleInt) {
         sample_info.percent_ = static_cast<double>(peg::integer_literal_value(percent));
       } else {
         OZ(ObOptEstObjToScalar::convert_string_to_scalar_for_number(spelling, sample_info.percent_));
@@ -6739,7 +6750,7 @@ int ObDMLResolver::resolve_outline_data_hints()
     ret = OB_NOT_INIT;
   } else if (get_parent_namespace_resolver() != NULL) {
     /* do noting */
-  } else if (outline_statement == nullptr || outline_statement->kind != peg::NodeKind::Select ||
+  } else if (outline_statement == nullptr || outline_statement->kind() != peg::NodeKind::Select ||
              peg::query_hints(*outline_statement).empty()) {
     /* do noting */
   } else {
@@ -6784,7 +6795,7 @@ int ObDMLResolver::inner_resolve_hints(rust::Slice<const peg::Node> nodes,
       const peg::Node &hint_node = nodes[i];
       resolved_hint = false;
       cur_hints.reuse();
-      if (peg::NodeKind::QbName == hint_node.kind) {
+      if (peg::NodeKind::QbName == hint_node.kind()) {
         ObString tmp_qb_name;
         if (OB_FAIL(resolve_qb_name_node(&peg::hint_query_block(hint_node), tmp_qb_name))) {
         } else if (OB_UNLIKELY(qb_name_conflict || (!qb_name.empty() && !tmp_qb_name.empty()))) {
@@ -6795,13 +6806,13 @@ int ObDMLResolver::inner_resolve_hints(rust::Slice<const peg::Node> nodes,
         }
       } else if (filter_embedded_hint || get_outline_data) {
         /* has valid outline data already, do not resolve hint except qb_name hint */
-      } else if (peg::NodeKind::BeginOutline == hint_node.kind) {
+      } else if (peg::NodeKind::BeginOutline == hint_node.kind()) {
         if (OB_LIKELY(!in_outline_data)) {
           in_outline_data = true;
         } else {
           reset_outline_hints = true;
         }
-      } else if (peg::NodeKind::EndOutline == hint_node.kind) {
+      } else if (peg::NodeKind::EndOutline == hint_node.kind()) {
         if (OB_UNLIKELY(!in_outline_data)) {
         } else {
           get_outline_data = true;
@@ -6811,16 +6822,16 @@ int ObDMLResolver::inner_resolve_hints(rust::Slice<const peg::Node> nodes,
                                              in_outline_data ? global_hint : embeded_global_hint,
                                              resolved_hint))) {
       } else if (resolved_hint) {
-        LOG_DEBUG("resolve global hint node", "type", static_cast<int>(hint_node.kind), K(in_outline_data));
+        LOG_DEBUG("resolve global hint node", "type", static_cast<int>(hint_node.kind()), K(in_outline_data));
       } else if (OB_FAIL(resolve_transform_hint(hint_node, resolved_hint, cur_hints))) {
       } else if (!resolved_hint && OB_FAIL(resolve_optimize_hint(hint_node, resolved_hint,
                                                                  cur_hints))) {
       } else if (OB_UNLIKELY(!resolved_hint)) {
         ret = OB_ERR_HINT_UNKNOWN;
-        LOG_WARN("Unknown hint", "hint_name", static_cast<int>(hint_node.kind));
+        LOG_WARN("Unknown hint", "hint_name", static_cast<int>(hint_node.kind()));
       } else if (OB_FAIL(append(in_outline_data ? hints : embedded_hints, cur_hints))) {
       } else {
-        LOG_DEBUG("resolved a tranform/optimize hint.", "type", static_cast<int>(hint_node.kind),
+        LOG_DEBUG("resolved a tranform/optimize hint.", "type", static_cast<int>(hint_node.kind()),
                                                         K(cur_hints));
       }
 
@@ -6851,7 +6862,7 @@ int ObDMLResolver::resolve_global_hint(const peg::Node &hint_node,
   int ret = OB_SUCCESS;
   resolved_hint = true;
   using Kind = peg::NodeKind;
-  switch (hint_node.kind) {
+  switch (hint_node.kind()) {
     case Kind::TopK:
       global_hint.merge_topk_hint(peg::integer_literal_value(peg::hint_topk_minimum(hint_node)),
                                  peg::integer_literal_value(peg::hint_topk_precision(hint_node)));
@@ -6868,12 +6879,14 @@ int ObDMLResolver::resolve_global_hint(const peg::Node &hint_node,
       const peg::Node &value = peg::hint_parameter_value(hint_node);
       ObString param_name;
       ObObj val;
-      OZ(ob_write_string(*allocator_, ObString(name.text.size(), name.text.data()), param_name));
-      if (value.kind == Kind::String) {
+      const auto name_text = name.text();
+      OZ(ob_write_string(*allocator_, ObString(name_text.size(), name_text.data()), param_name));
+      if (value.kind() == Kind::String) {
         ObString text;
-        OZ(ob_write_string(*allocator_, ObString(value.text.size(), value.text.data()), text));
+        const auto value_text = value.text();
+        OZ(ob_write_string(*allocator_, ObString(value_text.size(), value_text.data()), text));
         val.set_varchar(text);
-      } else if (value.kind == Kind::Int) {
+      } else if (value.kind() == Kind::Int) {
         val.set_int(static_cast<int64_t>(peg::integer_literal_value(value)));
       } else {
         ret = OB_ERR_UNEXPECTED;
@@ -6941,7 +6954,7 @@ int ObDMLResolver::resolve_transform_hint(const peg::Node &hint_node,
   int ret = OB_SUCCESS;
   resolved_hint = true;
   ObTransHint *trans_hint = nullptr;
-  switch (hint_node.kind) {
+  switch (hint_node.kind()) {
     case peg::NodeKind::MergeView:
     case peg::NodeKind::NoMergeView:
       OZ(resolve_view_merge_hint(hint_node, trans_hint));
@@ -7042,7 +7055,7 @@ int ObDMLResolver::resolve_optimize_hint(const peg::Node &hint_node,
   int ret = OB_SUCCESS;
   resolved_hint = true;
   ObOptHint *opt_hint = nullptr;
-  switch (hint_node.kind) {
+  switch (hint_node.kind()) {
     case peg::NodeKind::FullScan:
     case peg::NodeKind::UseDas:
     case peg::NodeKind::NoUseDas:
@@ -7135,13 +7148,14 @@ int ObDMLResolver::resolve_index_hint(const peg::Node &hint_node, ObOptHint *&op
   opt_hint = nullptr;
   ObIndexHint *hint = nullptr;
   ObString qb_name;
-  OZ(ObQueryHint::create_hint(allocator_, semantic_hint_type(hint_node.kind), hint));
+  OZ(ObQueryHint::create_hint(allocator_, semantic_hint_type(hint_node.kind()), hint));
   OZ(resolve_qb_name_node(query_block_in_hint(hint_node), qb_name));
   OZ(resolve_table_relation_in_hint(peg::hint_tables(hint_node)[0], hint->get_table()));
   if (OB_SUCC(ret)) {
     if (hint->get_hint_type() != T_FULL_HINT && hint->get_hint_type() != T_USE_DAS_HINT) {
       const peg::Node &name = peg::hint_index_name(hint_node);
-      OZ(ob_write_string(*allocator_, ObString(name.text.size(), name.text.data()), hint->get_index_name()));
+      const auto name_text = name.text();
+      OZ(ob_write_string(*allocator_, ObString(name_text.size(), name_text.data()), hint->get_index_name()));
       hint->get_index_prefix() = peg::hint_has_index_prefix(hint_node)
           ? static_cast<int64_t>(peg::integer_literal_value(peg::hint_index_prefix(hint_node))) : -1;
     }
@@ -7170,7 +7184,8 @@ int ObDMLResolver::resolve_index_hint(const TableItem &table, rust::Slice<const 
       OZ(ObQueryHint::create_hint(allocator_, type, hint));
       OZ(index_hints.push_back(hint));
       if (OB_SUCC(ret)) {
-        OZ(ob_write_string(*allocator_, ObString(name.text.size(), name.text.data()), hint->get_index_name()));
+        const auto name_text = name.text();
+        OZ(ob_write_string(*allocator_, ObString(name_text.size(), name_text.data()), hint->get_index_name()));
         hint->get_table().set_table(table);
       }
     }
@@ -7205,7 +7220,7 @@ int ObDMLResolver::resolve_join_hint(const peg::Node &hint_node, ObIArray<ObHint
     OZ(resolve_simple_table_list_in_hint(group, tables));
     if (OB_SUCC(ret) && !tables.empty()) {
       ObJoinHint *hint = nullptr;
-      OZ(ObQueryHint::create_hint(allocator_, semantic_hint_type(hint_node.kind), hint));
+      OZ(ObQueryHint::create_hint(allocator_, semantic_hint_type(hint_node.kind()), hint));
       OZ(hint->get_tables().assign(tables));
       OZ(hints.push_back(hint));
       if (OB_SUCC(ret)) {
@@ -7241,8 +7256,8 @@ int ObDMLResolver::resolve_pq_distribute_hint(const peg::Node &hint_node, ObOptH
   if (methods.empty()) {
     dist_algo = DistAlgo::DIST_BASIC_METHOD;
   } else {
-    const ObItemType outer = distribution_method(methods[0].kind);
-    const ObItemType inner = distribution_method(methods[1].kind);
+    const ObItemType outer = distribution_method(methods[0].kind());
+    const ObItemType inner = distribution_method(methods[1].kind());
     if (T_DISTRIBUTE_HASH == outer && T_DISTRIBUTE_HASH == inner) {
       dist_algo = DistAlgo::DIST_HASH_HASH;
     } else if (T_DISTRIBUTE_BROADCAST == outer && T_DISTRIBUTE_NONE == inner) {
@@ -7308,7 +7323,7 @@ int ObDMLResolver::resolve_pq_set_hint(const peg::Node &hint_node, ObOptHint *&o
   OZ(resolve_qb_name_node(peg::hint_has_target(hint_node) ? &peg::hint_target(hint_node) : nullptr,
                           left_branch));
   for (const peg::Node &method : syntax_methods) {
-    OZ(methods.push_back(distribution_method(method.kind)));
+    OZ(methods.push_back(distribution_method(method.kind())));
   }
   const bool valid = syntax_methods.empty() ||
       (syntax_methods.size() >= 2 && ObPQSetHint::is_valid_dist_methods(methods));
@@ -7329,11 +7344,11 @@ int ObDMLResolver::resolve_normal_pq_hint(const peg::Node &hint_node, ObOptHint 
 {
   int ret = OB_SUCCESS;
   opt_hint = nullptr;
-  const ObItemType method = distribution_method(peg::hint_distribution_methods(hint_node)[0].kind);
+  const ObItemType method = distribution_method(peg::hint_distribution_methods(hint_node)[0].kind());
   if (ObPQHint::get_dist_method_str(method) != nullptr) {
     ObPQHint *hint = nullptr;
     ObString qb_name;
-    OZ(ObQueryHint::create_hint(allocator_, semantic_hint_type(hint_node.kind), hint));
+    OZ(ObQueryHint::create_hint(allocator_, semantic_hint_type(hint_node.kind()), hint));
     OZ(resolve_qb_name_node(query_block_in_hint(hint_node), qb_name));
     if (OB_SUCC(ret)) {
       hint->set_qb_name(qb_name);
@@ -7353,7 +7368,7 @@ int ObDMLResolver::resolve_view_merge_hint(const peg::Node &hint_node, ObTransHi
   result = nullptr;
   ObViewMergeHint *hint = nullptr;
   ObString qb_name;
-  OZ(ObQueryHint::create_hint(allocator_, semantic_hint_type(hint_node.kind), hint));
+  OZ(ObQueryHint::create_hint(allocator_, semantic_hint_type(hint_node.kind()), hint));
   OZ(resolve_qb_name_node(query_block_in_hint(hint_node), qb_name));
   ObString parent;
   OZ(resolve_qb_name_node(peg::hint_has_target(hint_node) ? &peg::hint_target(hint_node) : nullptr, parent));
@@ -7374,14 +7389,15 @@ int ObDMLResolver::resolve_or_expand_hint(const peg::Node &hint_node, ObTransHin
   result = nullptr;
   ObOrExpandHint *hint = nullptr;
   ObString qb_name;
-  OZ(ObQueryHint::create_hint(allocator_, semantic_hint_type(hint_node.kind), hint));
+  OZ(ObQueryHint::create_hint(allocator_, semantic_hint_type(hint_node.kind()), hint));
   OZ(resolve_qb_name_node(query_block_in_hint(hint_node), qb_name));
   if (OB_SUCC(ret) && peg::hint_has_condition(hint_node)) {
     const peg::Node &condition = peg::hint_condition(hint_node);
-    const int32_t length = condition.text.size() >= ObHint::MAX_EXPR_STR_LENGTH_IN_HINT
-        ? ObHint::MAX_EXPR_STR_LENGTH_IN_HINT - 1 : static_cast<int32_t>(condition.text.size());
+    const auto condition_text = condition.text();
+    const int32_t length = condition_text.size() >= ObHint::MAX_EXPR_STR_LENGTH_IN_HINT
+        ? ObHint::MAX_EXPR_STR_LENGTH_IN_HINT - 1 : static_cast<int32_t>(condition_text.size());
     ObString text;
-    OZ(ob_write_string(*allocator_, ObString(length, condition.text.data()), text));
+    OZ(ob_write_string(*allocator_, ObString(length, condition_text.data()), text));
     if (OB_SUCC(ret)) {
       hint->set_expand_condition(text.ptr(), text.length());
     }
@@ -7399,7 +7415,7 @@ int ObDMLResolver::resolve_materialize_hint(const peg::Node &hint_node, ObTransH
   result = nullptr;
   ObMaterializeHint *hint = nullptr;
   ObString qb_name;
-  OZ(ObQueryHint::create_hint(allocator_, semantic_hint_type(hint_node.kind), hint));
+  OZ(ObQueryHint::create_hint(allocator_, semantic_hint_type(hint_node.kind()), hint));
   OZ(resolve_qb_name_node(query_block_in_hint(hint_node), qb_name));
   OZ(resolve_multi_qb_name_list(peg::hint_query_block_groups(hint_node), hint->get_qb_name_list()));
   if (OB_SUCC(ret)) {
@@ -7415,7 +7431,7 @@ int ObDMLResolver::resolve_coalesce_sq_hint(const peg::Node &hint_node, ObTransH
   result = nullptr;
   ObCoalesceSqHint *hint = nullptr;
   ObString qb_name;
-  OZ(ObQueryHint::create_hint(allocator_, semantic_hint_type(hint_node.kind), hint));
+  OZ(ObQueryHint::create_hint(allocator_, semantic_hint_type(hint_node.kind()), hint));
   OZ(resolve_qb_name_node(query_block_in_hint(hint_node), qb_name));
   OZ(resolve_multi_qb_name_list(peg::hint_query_block_groups(hint_node), hint->get_qb_name_list()));
   if (OB_SUCC(ret)) {
@@ -7431,7 +7447,7 @@ int ObDMLResolver::resolve_semi_to_inner_hint(const peg::Node &hint_node, ObTran
   result = nullptr;
   ObSemiToInnerHint *hint = nullptr;
   ObString qb_name;
-  OZ(ObQueryHint::create_hint(allocator_, semantic_hint_type(hint_node.kind), hint));
+  OZ(ObQueryHint::create_hint(allocator_, semantic_hint_type(hint_node.kind()), hint));
   OZ(resolve_qb_name_node(query_block_in_hint(hint_node), qb_name));
   for (const peg::Node &group : peg::hint_tables(hint_node)) {
     OZ(resolve_simple_table_list_in_hint(group, hint->get_tables()));
@@ -7449,7 +7465,7 @@ int ObDMLResolver::resolve_left_to_anti_hint(const peg::Node &hint_node, ObTrans
   result = nullptr;
   ObLeftToAntiHint *hint = nullptr;
   ObString qb_name;
-  OZ(ObQueryHint::create_hint(allocator_, semantic_hint_type(hint_node.kind), hint));
+  OZ(ObQueryHint::create_hint(allocator_, semantic_hint_type(hint_node.kind()), hint));
   OZ(resolve_qb_name_node(query_block_in_hint(hint_node), qb_name));
   OZ(resolve_tb_name_list(peg::hint_tables(hint_node), hint->get_tb_name_list()));
   if (OB_SUCC(ret)) {
@@ -7465,7 +7481,7 @@ int ObDMLResolver::resolve_eliminate_join_hint(const peg::Node &hint_node, ObTra
   result = nullptr;
   ObEliminateJoinHint *hint = nullptr;
   ObString qb_name;
-  OZ(ObQueryHint::create_hint(allocator_, semantic_hint_type(hint_node.kind), hint));
+  OZ(ObQueryHint::create_hint(allocator_, semantic_hint_type(hint_node.kind()), hint));
   OZ(resolve_qb_name_node(query_block_in_hint(hint_node), qb_name));
   OZ(resolve_tb_name_list(peg::hint_tables(hint_node), hint->get_tb_name_list()));
   if (OB_SUCC(ret)) {
@@ -7481,7 +7497,7 @@ int ObDMLResolver::resolve_place_group_by_hint(const peg::Node &hint_node, ObTra
   result = nullptr;
   ObGroupByPlacementHint *hint = nullptr;
   ObString qb_name;
-  OZ(ObQueryHint::create_hint(allocator_, semantic_hint_type(hint_node.kind), hint));
+  OZ(ObQueryHint::create_hint(allocator_, semantic_hint_type(hint_node.kind()), hint));
   OZ(resolve_qb_name_node(query_block_in_hint(hint_node), qb_name));
   OZ(resolve_tb_name_list(peg::hint_tables(hint_node), hint->get_tb_name_list()));
   if (OB_SUCC(ret)) {
@@ -7497,7 +7513,7 @@ int ObDMLResolver::resolve_win_magic_hint(const peg::Node &hint_node, ObTransHin
   result = nullptr;
   ObWinMagicHint *hint = nullptr;
   ObString qb_name;
-  OZ(ObQueryHint::create_hint(allocator_, semantic_hint_type(hint_node.kind), hint));
+  OZ(ObQueryHint::create_hint(allocator_, semantic_hint_type(hint_node.kind()), hint));
   OZ(resolve_qb_name_node(query_block_in_hint(hint_node), qb_name));
   ObSEArray<ObHint::TablesInHint, 4> groups;
   OZ(resolve_tb_name_list(peg::hint_tables(hint_node), groups));
@@ -7519,7 +7535,7 @@ int ObDMLResolver::resolve_normal_transform_hint(const peg::Node &hint_node, ObT
   result = nullptr;
   ObTransHint *hint = nullptr;
   ObString qb_name;
-  OZ(ObQueryHint::create_hint(allocator_, semantic_hint_type(hint_node.kind), hint));
+  OZ(ObQueryHint::create_hint(allocator_, semantic_hint_type(hint_node.kind()), hint));
   OZ(resolve_qb_name_node(query_block_in_hint(hint_node), qb_name));
 
   if (OB_SUCC(ret)) {
@@ -7535,7 +7551,7 @@ int ObDMLResolver::resolve_normal_optimize_hint(const peg::Node &hint_node, ObOp
   result = nullptr;
   ObOptHint *hint = nullptr;
   ObString qb_name;
-  OZ(ObQueryHint::create_hint(allocator_, semantic_hint_type(hint_node.kind), hint));
+  OZ(ObQueryHint::create_hint(allocator_, semantic_hint_type(hint_node.kind()), hint));
   OZ(resolve_qb_name_node(query_block_in_hint(hint_node), qb_name));
 
   if (OB_SUCC(ret)) {
@@ -7551,7 +7567,7 @@ int ObDMLResolver::resolve_aggregation_hint(const peg::Node &hint_node, ObOptHin
   result = nullptr;
   ObAggHint *hint = nullptr;
   ObString qb_name;
-  OZ(ObQueryHint::create_hint(allocator_, semantic_hint_type(hint_node.kind), hint));
+  OZ(ObQueryHint::create_hint(allocator_, semantic_hint_type(hint_node.kind()), hint));
   OZ(resolve_qb_name_node(query_block_in_hint(hint_node), qb_name));
 
   if (OB_SUCC(ret)) {
@@ -7576,7 +7592,7 @@ int ObDMLResolver::resolve_tb_name_list(rust::Slice<const peg::Node> groups,
 int ObDMLResolver::resolve_tables_in_leading_hint(const peg::Node &node, ObLeadingTable &leading)
 {
   int ret = OB_SUCCESS;
-  if (node.kind == peg::NodeKind::HintRelation) {
+  if (node.kind() == peg::NodeKind::HintRelation) {
     OZ(ObQueryHint::create_hint_table(allocator_, leading.table_));
     OZ(resolve_table_relation_in_hint(node, *leading.table_));
   } else {
@@ -7596,7 +7612,7 @@ int ObDMLResolver::resolve_simple_table_list_in_hint(const peg::Node &node,
                                                    ObIArray<ObTableInHint> &tables)
 {
   int ret = OB_SUCCESS;
-  if (node.kind == peg::NodeKind::HintRelation) {
+  if (node.kind() == peg::NodeKind::HintRelation) {
     ObTableInHint table;
     OZ(resolve_table_relation_in_hint(node, table));
     OZ(tables.push_back(table));
@@ -7624,8 +7640,11 @@ int ObDMLResolver::resolve_qb_name_node(const peg::Node *name, ObString &qb_name
 {
   int ret = OB_SUCCESS;
   qb_name.reset();
-  if (name != nullptr && name->text.size() <= OB_MAX_QB_NAME_LENGTH) {
-    OZ(ob_write_string(*allocator_, ObString(name->text.size(), name->text.data()), qb_name));
+  if (name != nullptr) {
+    const auto name_text = name->text();
+    if (name_text.size() <= OB_MAX_QB_NAME_LENGTH) {
+      OZ(ob_write_string(*allocator_, ObString(name_text.size(), name_text.data()), qb_name));
+    }
   }
   return ret;
 }
@@ -7852,11 +7871,12 @@ int ObDMLResolver::get_opt_alias_colnames_for_recursive_cte(
     ctx.has_cte_param_list_ = true;
     int64_t alias_num = columns.size();
     for (int64_t i = 0; OB_SUCC(ret) && i < alias_num; ++i) {
-      if (columns[i].text.size() <= 0) {
+      const auto column_text = columns[i].text();
+      if (column_text.size() <= 0) {
         ret = OB_ERR_UNEXPECTED;
       } else {
         ObString column_alia_name;
-        OZ(ob_write_string(*allocator_, ObString(columns[i].text.size(), columns[i].text.data()), column_alia_name));
+        OZ(ob_write_string(*allocator_, ObString(column_text.size(), column_text.data()), column_alia_name));
         if (OB_FAIL(ctx.cte_col_names_.push_back(column_alia_name))) {
         }
       }
@@ -8015,7 +8035,8 @@ int ObDMLResolver::resolve_basic_table_with_cte(const peg::Node &parse_tree, Tab
   bool find_CTE_name = false;
   // Lookup order: first look up normal cte, then look up recursive cte, finally look up normal tables
   // The upper-level CTE with the same name as the current RCTE has been removed
-  ObString tblname(name.text.size(), name.text.data());
+  const auto name_text = name.text();
+  ObString tblname(name_text.size(), name_text.data());
   bool is_equal = false;
   if (OB_ISNULL(session_info_)) {
     ret = OB_ERR_UNEXPECTED;
@@ -8059,7 +8080,8 @@ int ObDMLResolver::resolve_basic_table_with_cte(const peg::Node &parse_tree, Tab
     if (OB_TABLE_NOT_EXIST == ret && cte_ctx_.is_with_resolver()) {
       if (peg::table_has_alias(parse_tree)) {
         const auto &alias = peg::table_alias(parse_tree);
-        ObString table_name(alias.text.size(), alias.text.data());
+        const auto alias_text = alias.text();
+        ObString table_name(alias_text.size(), alias_text.data());
         if (OB_FAIL(check_table_name_equal(cte_ctx_.current_cte_table_name_, table_name, is_equal))) {
         } else if (is_equal) {
           //change the error number
@@ -8107,10 +8129,12 @@ int ObDMLResolver::resolve_cte_table(const peg::Node &table,
   } else {
     if (peg::table_has_alias(table)) {
       const auto &alias = peg::table_alias(table);
-      OZ(ob_write_string(*allocator_, ObString(alias.text.size(), alias.text.data()), table_item->alias_name_));
+      const auto alias_text = alias.text();
+      OZ(ob_write_string(*allocator_, ObString(alias_text.size(), alias_text.data()), table_item->alias_name_));
     }
     const auto &name = peg::relation_name(peg::table_source(table));
-    OZ(ob_write_string(*allocator_, ObString(name.text.size(), name.text.data()), table_item->table_name_));
+    const auto name_text = name.text();
+    OZ(ob_write_string(*allocator_, ObString(name_text.size(), name_text.data()), table_item->table_name_));
     table_item->table_id_ = generate_table_id();
     table_item->type_ = TableItem::TEMP_TABLE;
     table_item->ref_query_ = definition->ref_query_;
@@ -8147,14 +8171,15 @@ int ObDMLResolver::resolve_with_clause_opt_alias_colnames(rust::Slice<const peg:
     sub_select_stmt_item_count = sub_select_items.count();
     without_pseudo_count = sub_select_stmt_item_count;
     for (int64_t i = 0; OB_SUCC(ret) && i < columns.size(); ++i) {
-      if (OB_UNLIKELY(columns[i].text.size() <= 0)) {
+      const auto column_text = columns[i].text();
+      if (OB_UNLIKELY(column_text.size() <= 0)) {
         ret = OB_ERR_UNEXPECTED;
-      } else if (OB_UNLIKELY(columns[i].text.size()
+      } else if (OB_UNLIKELY(column_text.size()
                              > OB_MAX_EXTENDED_USER_TABLE_NAME_LENGTH)) {
         ret = OB_ERR_TOO_LONG_IDENT;
       } else {
         ObString column_name;
-        OZ(ob_write_string(*allocator_, ObString(columns[i].text.size(), columns[i].text.data()), column_name));
+        OZ(ob_write_string(*allocator_, ObString(column_text.size(), column_text.data()), column_name));
         if (OB_FAIL(column_alias.push_back(column_name))) {
         }
       }
@@ -8235,7 +8260,8 @@ int ObDMLResolver::resolve_with_clause_subquery(const peg::Node &parse_tree, Tab
   } else if (OB_ISNULL(stmt)) {
     ret = OB_ERR_UNEXPECTED;
   } else {
-    OZ(ob_write_string(*allocator_, ObString(alias_node.text.size(), alias_node.text.data()), table_name));
+    const auto alias_node_text = alias_node.text();
+    OZ(ob_write_string(*allocator_, ObString(alias_node_text.size(), alias_node_text.data()), table_name));
     if (OB_FAIL(init_cte_resolver(select_resolver, columns, table_name, has_recursive_word))) {
     } else if (OB_FAIL(select_resolver.resolve_child_stmt(table_node))) {
     } else if (OB_ISNULL(ref_stmt = select_resolver.get_child_stmt())){
@@ -8286,7 +8312,8 @@ int ObDMLResolver::resolve_with_clause(const peg::Node &query, bool same_level)
       if (OB_FAIL(ret)) { break; }
       {
         const auto &name = peg::cte_name(cte);
-        ObString table_name(name.text.size(), name.text.data());
+        const auto name_text = name.text();
+        ObString table_name(name_text.size(), name_text.data());
         if (OB_FAIL(ObDMLResolver::check_current_CTE_name_exist(table_name, duplicate_name))) {
         } else if (duplicate_name) {
           ret = OB_ERR_NONUNIQ_TABLE;
@@ -8851,7 +8878,8 @@ int ObDMLResolver::refine_generate_table_column_name(rust::Slice<const peg::Node
   } else {
     for (size_t i = 0; i < columns.size(); ++i) {
       SelectItem &item = select_stmt.get_select_item(i);
-      OZ(ob_write_string(*allocator_, ObString(columns[i].text.size(), columns[i].text.data()), item.alias_name_));
+      const auto column_text = columns[i].text();
+      OZ(ob_write_string(*allocator_, ObString(column_text.size(), column_text.data()), item.alias_name_));
       item.is_real_alias_ = true;
     }
   }

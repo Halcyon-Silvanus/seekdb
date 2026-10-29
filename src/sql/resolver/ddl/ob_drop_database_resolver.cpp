@@ -40,7 +40,7 @@ ObDropDatabaseResolver::~ObDropDatabaseResolver()
 int ObDropDatabaseResolver::resolve(const peg::Node &parse_tree)
 {
   int ret = OB_SUCCESS;
-  if (parse_tree.kind != peg::NodeKind::DropDatabase || OB_ISNULL(allocator_)) {
+  if (parse_tree.kind() != peg::NodeKind::DropDatabase || OB_ISNULL(allocator_)) {
     ret = OB_ERR_UNEXPECTED;
   } else if (OB_ISNULL(session_info_)) {
     ret = OB_ERR_UNEXPECTED;
@@ -60,7 +60,8 @@ int ObDropDatabaseResolver::resolve(const peg::Node &parse_tree)
       ObString database_name;
       const auto &name = peg::database_name(parse_tree);
       if (OB_SUCC(ret)) {
-        OZ (ob_write_string(*allocator_, ObString(name.text.size(), name.text.data()), database_name));
+        const auto name_text = name.text();
+        OZ (ob_write_string(*allocator_, ObString(name_text.size(), name_text.data()), database_name));
         ObNameCaseMode mode = OB_NAME_CASE_INVALID;
         if (OB_FAIL(ret)) {
         } else if (OB_FAIL(session_info_->get_name_case_mode(mode))) {

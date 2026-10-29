@@ -46,7 +46,7 @@ int ObForkDatabaseResolver::resolve(const peg::Node &parse_tree)
 
   if (OB_ISNULL(session_info_) ||
       OB_ISNULL(allocator_) ||
-      peg::NodeKind::ForkDatabase != parse_tree.kind) {
+      peg::NodeKind::ForkDatabase != parse_tree.kind()) {
     ret = OB_ERR_UNEXPECTED;
     SQL_RESV_LOG(WARN, "invalid parse tree!", K(ret));
   } else if (OB_ISNULL(fork_database_stmt = create_stmt<ObForkDatabaseStmt>())) {
@@ -66,8 +66,10 @@ int ObForkDatabaseResolver::resolve(const peg::Node &parse_tree)
     const auto &source = peg::fork_source(parse_tree);
     ObString dst_database_name;
     ObString src_database_name;
-    OZ (ob_write_string(*allocator_, ObString(destination.text.size(), destination.text.data()), dst_database_name));
-    OZ (ob_write_string(*allocator_, ObString(source.text.size(), source.text.data()), src_database_name));
+    const auto destination_text = destination.text();
+    OZ (ob_write_string(*allocator_, ObString(destination_text.size(), destination_text.data()), dst_database_name));
+    const auto source_text = source.text();
+    OZ (ob_write_string(*allocator_, ObString(source_text.size(), source_text.data()), src_database_name));
     if (OB_SUCC(ret)) {
       // Check and convert database names
       ObNameCaseMode mode = OB_NAME_CASE_INVALID;

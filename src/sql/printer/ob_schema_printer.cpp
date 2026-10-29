@@ -2607,7 +2607,7 @@ int ObSchemaPrinter::print_routine_definition_v2_mysql(
   const char *quote = sql_quote_show_create_ ? quote_char : "";
 
   CK (OB_NOT_NULL(create_node));
-  CK (create_node->kind == peg::NodeKind::CreateProcedure || create_node->kind == peg::NodeKind::CreateFunction);
+  CK (create_node->kind() == peg::NodeKind::CreateProcedure || create_node->kind() == peg::NodeKind::CreateFunction);
   OX (body = syntax.source(peg::routine_body(*create_node)));
 
   OX (priv_user = routine_info.get_priv_user());

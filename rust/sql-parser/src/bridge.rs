@@ -13,7 +13,6 @@
 // limitations under the License.
 
 use crate::{
-    grammar,
     node::{Kind, Node},
     SqlMode,
 };
@@ -778,14 +777,10 @@ pub(crate) mod ffi {
         HybridHist,
     }
 
-    struct Node {
-        kind: NodeKind,
-        children: Vec<Node>,
-        text: String,
+    #[derive(Clone, Copy)]
+    struct Span {
         start: usize,
         end: usize,
-        value: u64,
-        depth: usize,
     }
 
     enum TransactionAccess {
@@ -799,15 +794,6 @@ pub(crate) mod ffi {
         access: TransactionAccess,
     }
 
-    struct ParseTree {
-        root: Node,
-        expanded_sql: String,
-        parameters: usize,
-        parameter_names: Vec<String>,
-        named_parameters: bool,
-        error: String,
-        error_offset: usize,
-    }
 
     struct ColumnReference {
         parts: Vec<String>,
@@ -1625,6 +1611,21 @@ pub(crate) mod ffi {
     }
 
     extern "Rust" {
+        type Node;
+        fn kind(self: &Node) -> NodeKind;
+        #[rust_name = "as_text"]
+        fn text(self: &Node) -> &str;
+        fn span(self: &Node) -> Span;
+
+        type ParseTree;
+        fn root(self: &ParseTree) -> &Node;
+        fn expanded_sql(self: &ParseTree) -> &str;
+        fn error(self: &ParseTree) -> &str;
+        fn error_offset(self: &ParseTree) -> usize;
+        fn parameters(self: &ParseTree) -> usize;
+        fn has_parameter_names(self: &ParseTree) -> bool;
+        fn named_parameters(self: &ParseTree) -> bool;
+
         fn transaction_command(sql: &[u8]) -> TransactionCommand;
         fn insert_outline_hint(sql: &[u8], hint: &[u8], mode: SqlMode) -> Vec<u8>;
         fn classify_statement(sql: &[u8], mode: SqlMode) -> StatementInfo;
@@ -2153,7 +2154,7 @@ pub(crate) mod ffi {
         fn hint_parameter_value(hint: &Node) -> &Node;
         fn hint_has_sort_method(hint: &Node) -> bool;
         fn hint_sort_method(hint: &Node) -> &Node;
-        fn parse_sql(sql: &[u8], mode: SqlMode, parse_mode: ParseMode) -> ParseTree;
+        fn parse_sql(sql: &[u8], mode: SqlMode, parse_mode: ParseMode) -> Box<ParseTree>;
     }
 }
 
@@ -2192,136 +2193,32 @@ fn transaction_options(node: &Node) -> ffi::TransactionOptions {
     options
 }
 
-fn number_parameters(
-    node: &mut Node,
-    count: &mut usize,
-    names: &mut Vec<String>,
-) -> Result<(), usize> {
-    fn collect<'a>(node: &'a mut Node, parameters: &mut Vec<&'a mut Node>) {
-        if node.kind == Kind::Parameter {
-            parameters.push(node);
-        } else {
-            for child in &mut node.children {
-                collect(child, parameters);
-            }
+pub struct ParseTree(Result<crate::parser::Parsed, crate::parser::ParseFailure>);
+
+impl ParseTree {
+    fn parsed(&self) -> &crate::parser::Parsed {
+        self.0.as_ref().expect("parse succeeded")
+    }
+    pub fn root(&self) -> &Node { self.parsed().root() }
+    pub fn expanded_sql(&self) -> &str {
+        match &self.0 {
+            Ok(parsed) => parsed.expanded_sql(),
+            Err(error) => &error.expanded_sql,
         }
     }
-    let mut parameters = Vec::new();
-    collect(node, &mut parameters);
-    parameters.sort_by_key(|parameter| parameter.start);
-    for node in parameters {
-        if node.text.is_empty() {
-            if !names.is_empty() {
-                return Err(node.start);
-            }
-            node.value = *count as u64;
-            *count += 1;
-        } else {
-            if *count != names.len() {
-                return Err(node.start);
-            }
-            let index = names
-                .iter()
-                .position(|name| name.eq_ignore_ascii_case(&node.text));
-            node.value = index.unwrap_or_else(|| {
-                names.push(node.text.clone());
-                *count += 1;
-                names.len() - 1
-            }) as u64;
-        }
+    pub fn error(&self) -> &str {
+        match &self.0 { Ok(_) => "", Err(error) => &error.message }
     }
-    Ok(())
+    pub fn error_offset(&self) -> usize {
+        match &self.0 { Ok(_) => 0, Err(error) => error.offset }
+    }
+    pub fn parameters(&self) -> usize { self.parsed().parameters() }
+    pub fn has_parameter_names(&self) -> bool { !self.parsed().parameter_names().is_empty() }
+    pub fn named_parameters(&self) -> bool { self.parsed().named_parameters() }
 }
 
-pub fn parse_sql(sql: &[u8], mode: SqlMode, parse_mode: ffi::ParseMode) -> ffi::ParseTree {
-    let mut result = ffi::ParseTree {
-        root: Node::missing(),
-        expanded_sql: String::new(),
-        parameters: 0,
-        parameter_names: Vec::new(),
-        named_parameters: false,
-        error: String::new(),
-        error_offset: 0,
-    };
-    let sql = &sql[..normalized_sql_length(sql)];
-    let sql = match std::str::from_utf8(sql) {
-        Ok(sql) => sql,
-        Err(error) => {
-            result.error_offset = error.valid_up_to();
-            result.error = error.to_string();
-            return result;
-        }
-    };
-    let source = if parse_mode == ffi::ParseMode::RoutineDefinition {
-        let mut source = String::with_capacity("CREATE\n".len() + sql.len());
-        source.push_str("CREATE\n");
-        source.push_str(sql);
-        std::borrow::Cow::Owned(source)
-    } else {
-        std::borrow::Cow::Borrowed(sql)
-    };
-    let sql = source.as_ref();
-    let parse = |text: &str| match parse_mode {
-        ffi::ParseMode::Routine => grammar::sql::routine_body(text, mode),
-        ffi::ParseMode::Trigger => grammar::sql::trigger(text, mode),
-        ffi::ParseMode::Statistics => grammar::sql::statistics_options(text, mode),
-        ffi::ParseMode::Expression => grammar::sql::expression(text, mode),
-        ffi::ParseMode::Sql | ffi::ParseMode::RoutineDefinition => grammar::sql::query(text, mode),
-        _ => unreachable!("unknown parser entry point"),
-    };
-    let parsed = grammar::executable_sql(sql, mode, true).and_then(|mut text| {
-        let mut parsed = parse(&text);
-        if parsed.is_err() && matches!(text, std::borrow::Cow::Owned(_)) {
-            text = grammar::executable_sql(sql, mode, false)?;
-            parsed = parse(&text);
-        }
-        if let std::borrow::Cow::Owned(sql) = text {
-            result.expanded_sql = sql;
-        }
-        parsed
-    });
-    match parsed {
-        Ok(query)
-            if parse_mode == ffi::ParseMode::RoutineDefinition
-                && !matches!(query.kind, Kind::CreateProcedure | Kind::CreateFunction) =>
-        {
-            result.error_offset = query.start;
-            result.error = "expected procedure or function definition".into();
-        }
-        Ok(mut query) => {
-            match number_parameters(
-                &mut query,
-                &mut result.parameters,
-                &mut result.parameter_names,
-            ) {
-                Ok(()) => {
-                    result.named_parameters = result
-                        .parameter_names
-                        .iter()
-                        .any(|name| !name.as_bytes()[1].is_ascii_digit());
-                    result.root = query;
-                }
-                Err(offset) => {
-                    result.error_offset = offset;
-                    result.error = "ordinal and named parameters cannot be combined".into();
-                }
-            }
-        }
-        Err(error) => {
-            result.error_offset = if error.location.offset == sql.len() {
-                grammar::sql::last_token_start(sql, mode).unwrap()
-            } else {
-                error.location.offset
-            };
-            result.error = error.to_string();
-        }
-    }
-    if result.expanded_sql.is_empty() {
-        if let std::borrow::Cow::Owned(source) = source {
-            result.expanded_sql = source;
-        }
-    }
-    result
+fn parse_sql(sql: &[u8], mode: SqlMode, parse_mode: ffi::ParseMode) -> Box<ParseTree> {
+    Box::new(ParseTree(crate::parser::parse(sql, mode, parse_mode)))
 }
 
 use crate::query::{

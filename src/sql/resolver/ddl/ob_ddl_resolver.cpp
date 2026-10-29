@@ -45,7 +45,7 @@ namespace
 const peg::Node &partition_value_expression(const peg::Node &syntax)
 {
   const peg::Node *expression = &syntax;
-  while (expression->kind == peg::NodeKind::Parenthesized) {
+  while (expression->kind() == peg::NodeKind::Parenthesized) {
     expression = &peg::parenthesized_expression(*expression);
   }
   return *expression;
@@ -275,10 +275,10 @@ int ObDDLResolver::resolve_default_value(const peg::Node &node, ObDefaultValueRe
 {
   int ret = OB_SUCCESS;
   using Kind = peg::NodeKind;
-  const peg::Node *expression = node.kind == Kind::ColumnDefault
+  const peg::Node *expression = node.kind() == Kind::ColumnDefault
       ? &peg::column_attribute_expression(node) : &node;
-  const bool literal_timestamp = node.kind == Kind::ColumnDefault && expression->kind != Kind::Parenthesized;
-  while (expression->kind == Kind::Parenthesized) {
+  const bool literal_timestamp = node.kind() == Kind::ColumnDefault && expression->kind() != Kind::Parenthesized;
+  while (expression->kind() == Kind::Parenthesized) {
     expression = &peg::parenthesized_expression(*expression);
   }
   const peg::Node &value = *expression;
@@ -286,8 +286,8 @@ int ObDDLResolver::resolve_default_value(const peg::Node &node, ObDefaultValueRe
   resolve_res.is_literal_ = true;
   if (OB_ISNULL(allocator_) || OB_ISNULL(session_info_)) {
     ret = OB_ERR_UNEXPECTED;
-  } else if (value.kind == Kind::HiddenDouble) {
-  } else if (peg::is_literal(value) && value.kind != Kind::CharsetName) {
+  } else if (value.kind() == Kind::HiddenDouble) {
+  } else if (peg::is_literal(value) && value.kind() != Kind::CharsetName) {
     const auto literal = peg::expression_literal(value);
     ObString text(literal.text.size(), literal.text.data());
     ObString owned_text;
@@ -298,7 +298,7 @@ int ObDDLResolver::resolve_default_value(const peg::Node &node, ObDefaultValueRe
           ObString(bytes.size(), reinterpret_cast<const char *>(bytes.data())), text, true));
     }
     if (OB_SUCC(ret)) {
-      const auto kind = value.kind == Kind::CharsetLiteral ? peg::LiteralKind::String : literal.kind;
+      const auto kind = value.kind() == Kind::CharsetLiteral ? peg::LiteralKind::String : literal.kind;
       switch (kind) {
       case peg::LiteralKind::Integer: {
         int64_t integer = literal.integer;
@@ -439,13 +439,13 @@ int ObDDLResolver::resolve_default_value(const peg::Node &node, ObDefaultValueRe
         break;
       }
     }
-  } else if (value.kind == Kind::CurrentTimestamp) {
+  } else if (value.kind() == Kind::CurrentTimestamp) {
     resolve_res.is_literal_ = literal_timestamp;
     const auto arguments = peg::call_arguments(value);
     default_value.set_ext(ObActionFlag::OP_DEFAULT_NOW_FLAG);
     default_value.set_param_meta();
     default_value.set_scale(arguments.empty() ? 0 : static_cast<int16_t>(peg::integer_literal_value(arguments[0])));
-  } else if (value.kind == Kind::Unary &&
+  } else if (value.kind() == Kind::Unary &&
              (peg::unary_operator(value) == peg::UnaryOperator::Plus ||
               peg::unary_operator(value) == peg::UnaryOperator::Minus)) {
     OZ(resolve_sign_in_default_value(value, resolve_res, peg::unary_operator(value) == peg::UnaryOperator::Minus));
@@ -463,7 +463,7 @@ int ObDDLResolver::resolve_default_value(const peg::Node &node, ObDefaultValueRe
       }
       return ret;
     };
-    switch (value.kind) {
+    switch (value.kind()) {
       case Kind::Ident:
       case Kind::CurrentDate:
       case Kind::UtcDate:
@@ -569,9 +569,9 @@ int ObDDLResolver::resolve_sign_in_default_value(const peg::Node &expression,
     OZ(resolve_default_value(operand, resolve_res));
   } else {
     const peg::Node *number_node = &operand;
-    while (number_node->kind == peg::NodeKind::Parenthesized) { number_node = &peg::parenthesized_expression(*number_node); }
-    if (number_node->kind == peg::NodeKind::Uint) {
-      if (operand.kind == peg::NodeKind::Uint && peg::integer_literal_value(*number_node) == (uint64_t(1) << 63)) {
+    while (number_node->kind() == peg::NodeKind::Parenthesized) { number_node = &peg::parenthesized_expression(*number_node); }
+    if (number_node->kind() == peg::NodeKind::Uint) {
+      if (operand.kind() == peg::NodeKind::Uint && peg::integer_literal_value(*number_node) == (uint64_t(1) << 63)) {
         resolve_res.value_.set_int(INT64_MIN);
       } else {
         const auto literal = peg::expression_literal(*number_node);
@@ -602,7 +602,7 @@ int ObDDLResolver::resolve_sign_in_default_value(const peg::Node &expression,
       } else if (value.is_double()) {
         resolve_res.value_.set_double(-value.get_double());
         resolve_res.value_.set_param_meta();
-      } else if (number_node->kind == peg::NodeKind::Number) {
+      } else if (number_node->kind() == peg::NodeKind::Number) {
         ObString str;
         char buffer[number::ObNumber::MAX_PRINTABLE_SIZE];
         OZ(value.get_varchar(str));
@@ -806,7 +806,7 @@ int ObDDLResolver::resolve_table_option(const peg::Node &option, const bool is_i
     ret = OB_ERR_UNEXPECTED;
   } else if (OB_FAIL(schema_checker_->get_database_id(database_name_, database_id))) {
   } else {
-    switch (option.kind) {
+    switch (option.kind()) {
       case peg::NodeKind::BlockSize: {
         const int64_t block_size = peg::table_option_number(option);
         if (block_size < MIN_BLOCK_SIZE || block_size > MAX_BLOCK_SIZE) {
@@ -902,7 +902,8 @@ int ObDDLResolver::resolve_table_option(const peg::Node &option, const bool is_i
         for (size_t i = 0; OB_SUCC(ret) && i < names.size(); ++i) {
           const auto &name = names[i];
           ObString column_name;
-          if (OB_FAIL(ob_write_string(*allocator_, ObString(name.text.size(), name.text.data()), column_name))) {
+          const auto name_text = name.text();
+          if (OB_FAIL(ob_write_string(*allocator_, ObString(name_text.size(), name_text.data()), column_name))) {
           } else if (stmt::T_ALTER_TABLE == stmt_->get_stmt_type() ||
                      stmt::T_CREATE_INDEX == stmt_->get_stmt_type()) {
             OZ(add_storing_column(column_name, false));
@@ -1010,7 +1011,8 @@ int ObDDLResolver::resolve_table_option(const peg::Node &option, const bool is_i
           LOG_USER_ERROR(OB_NOT_SUPPORTED, "specify charset in index option");
         } else if (CHARSET_INVALID == charset_type_) {
           const auto &name = peg::table_option_charset(option);
-          ObString charset(name.text.size(), name.text.data());
+          const auto name_text = name.text();
+          ObString charset(name_text.size(), name_text.data());
           charset = charset.trim();
           const ObCharsetType charset_type = ObCharset::charset_type(charset);
           if (CHARSET_INVALID == charset_type) {
@@ -1121,7 +1123,8 @@ int ObDDLResolver::resolve_column_definition_ref(ObColumnSchemaV2 &column,
   const auto names = peg::name_parts(node);
   ObString name;
   if (names.size() == 3) {
-    const ObString database(names[0].text.size(), names[0].text.data());
+    const auto database_text = names[0].text();
+    const ObString database(database_text.size(), database_text.data());
     if (database != database_name_) {
       ret = OB_WRONG_DB_NAME;
       LOG_USER_ERROR(OB_WRONG_DB_NAME, database.length(), database.ptr());
@@ -1129,7 +1132,8 @@ int ObDDLResolver::resolve_column_definition_ref(ObColumnSchemaV2 &column,
   }
   if (OB_SUCC(ret) && names.size() >= 2) {
     const auto &part = names[names.size() - 2];
-    const ObString table(part.text.size(), part.text.data());
+    const auto part_text = part.text();
+    const ObString table(part_text.size(), part_text.data());
     if (table != table_name_) {
       ret = OB_WRONG_TABLE_NAME;
       LOG_USER_ERROR(OB_WRONG_TABLE_NAME, table.length(), table.ptr());
@@ -1147,9 +1151,10 @@ int ObDDLResolver::resolve_column_definition_ref(ObColumnSchemaV2 &column,
 int ObDDLResolver::resolve_column_name(common::ObString &col_name, const peg::Node *node/* column_name */)
 {
   int ret = OB_SUCCESS;
-  if (OB_ISNULL(node) || peg::NodeKind::Ident != node->kind) {
+  if (OB_ISNULL(node) || peg::NodeKind::Ident != node->kind()) {
     ret = OB_ERR_UNEXPECTED;
-  } else if (OB_FAIL(ob_write_string(*allocator_, ObString(node->text.size(), node->text.data()), col_name))) {
+  } else if (const auto node_text = node->text();
+             OB_FAIL(ob_write_string(*allocator_, ObString(node_text.size(), node_text.data()), col_name))) {
   } else {
     int32_t name_length = col_name.length();
     const char *name_ptr = col_name.ptr();
@@ -1228,10 +1233,11 @@ int ObDDLResolver::resolve_column_definition(ObColumnSchemaV2 &column,
           type_syntax.name != peg::TypeName::Binary && type_syntax.name != peg::TypeName::VarBinary) {
         const peg::Node *last_collation = nullptr;
         for (const peg::Node &attribute : definition.attributes) {
-          if (attribute.kind == peg::NodeKind::Collation) { last_collation = &attribute; }
+          if (attribute.kind() == peg::NodeKind::Collation) { last_collation = &attribute; }
         }
         if (last_collation != nullptr) {
-          const ObString name(last_collation->text.size(), last_collation->text.data());
+          const auto last_collation_text = last_collation->text();
+          const ObString name(last_collation_text.size(), last_collation_text.data());
           const ObCollationType collation = ObCharset::collation_type(name);
           if (collation == CS_TYPE_INVALID) {
             ret = OB_ERR_UNKNOWN_COLLATION;
@@ -1450,7 +1456,7 @@ int ObDDLResolver::resolve_normal_column_attribute(ObColumnSchemaV2 &column,
 
     for (size_t i = 0; OB_SUCC(ret) && i < attributes.size(); ++i) {
       const peg::Node &attribute = attributes[i];
-      switch (attribute.kind) {
+      switch (attribute.kind()) {
       case peg::NodeKind::NotNull: {
         if (OB_FAIL(resolve_normal_column_attribute_constr_not_null(column, attribute, resolve_stat))) {
         }
@@ -1597,7 +1603,7 @@ int ObDDLResolver::resolve_normal_column_attribute(ObColumnSchemaV2 &column,
       }
       default:  // won't be here
         ret = OB_ERR_PARSER_SYNTAX;
-        SQL_RESV_LOG(WARN, "Wrong column attribute", K(ret), "kind", static_cast<int>(attribute.kind));
+        SQL_RESV_LOG(WARN, "Wrong column attribute", K(ret), "kind", static_cast<int>(attribute.kind()));
         break;
       }
     }
@@ -1674,7 +1680,7 @@ int ObDDLResolver::resolve_generated_column_attribute(ObColumnSchemaV2 &column,
   }
   for (size_t i = 0; OB_SUCC(ret) && i < attributes.size(); ++i) {
     const peg::Node &attribute = attributes[i];
-    switch (attribute.kind) {
+    switch (attribute.kind()) {
     case peg::NodeKind::NotNull:
       column.set_nullable(false);
       resolve_stat.is_set_not_null_ = true;
@@ -1739,12 +1745,12 @@ int ObDDLResolver::resolve_generated_column_attribute(ObColumnSchemaV2 &column,
     }
     case peg::NodeKind::ColumnDefault: {
       ret = OB_ERR_PARSER_SYNTAX;
-      SQL_RESV_LOG(WARN, "Wrong column attribute", K(ret), "kind", static_cast<int>(attribute.kind));
+      SQL_RESV_LOG(WARN, "Wrong column attribute", K(ret), "kind", static_cast<int>(attribute.kind()));
       break;
     }
     default:  // won't be here
       ret = OB_ERR_PARSER_SYNTAX;
-      SQL_RESV_LOG(WARN, "Wrong column attribute", K(ret), "kind", static_cast<int>(attribute.kind));
+      SQL_RESV_LOG(WARN, "Wrong column attribute", K(ret), "kind", static_cast<int>(attribute.kind()));
       break;
     }
   }
@@ -1763,7 +1769,7 @@ int ObDDLResolver::resolve_srid_node(ObColumnSchemaV2 &column, const peg::Node &
 {
   int ret = OB_SUCCESS;
   const uint64_t value = peg::column_srid(node);
-  if (peg::column_attribute_expression(node).kind != peg::NodeKind::Int) {
+  if (peg::column_attribute_expression(node).kind() != peg::NodeKind::Int) {
     ret = OB_ERR_UNEXPECTED;
   } else if (!ob_is_geometry_tc(column.get_data_type())) {
     ret = OB_ERR_SRID_WRONG_USAGE;
@@ -2311,7 +2317,7 @@ int ObDDLResolver::resolve_part_func(ObResolverParams &params,
   partition_keys.reset();
   bool is_gen_col_udf = false;
 
-  if (node.kind == peg::NodeKind::ExprList) {
+  if (node.kind() == peg::NodeKind::ExprList) {
     const auto values = peg::row_elements(node);
     if (values.size() < 1) {
       ret = OB_ERR_UNEXPECTED;
@@ -2321,7 +2327,7 @@ int ObDDLResolver::resolve_part_func(ObResolverParams &params,
       ObRawExpr *func_expr = NULL;
       for (int64_t i = 0; OB_SUCC(ret) && i < values.size(); i++) {
         func_expr = NULL;
-        if (OB_UNLIKELY(partition_value_expression(values[i]).kind == peg::NodeKind::ExprList)) {
+        if (OB_UNLIKELY(partition_value_expression(values[i]).kind() == peg::NodeKind::ExprList)) {
           ret = OB_ERR_PARTITION_FUNCTION_IS_NOT_ALLOWED;
           LOG_WARN("row expr as partition function is not allowed for hash/range/list partition");
         } else if (OB_FAIL(ObResolverUtils::resolve_partition_expr(params,
@@ -2391,7 +2397,8 @@ int ObDDLResolver::check_partition_name_duplicate(rust::Slice<const peg::Node> e
   ObPartitionNameSet names;
   for (size_t i = 0; OB_SUCC(ret) && i < elements.size(); ++i) {
     const auto &name = peg::relation_name(peg::partition_element(elements[i]).name);
-    ObString text(name.text.size(), name.text.data());
+    const auto name_text = name.text();
+    ObString text(name_text.size(), name_text.data());
     ObPartitionNameHashWrapper key(text);
     if (OB_HASH_EXIST == names.exist_refactored(key)) {
       ret = OB_ERR_SAME_NAME_PARTITION;
@@ -3327,7 +3334,7 @@ int ObDDLResolver::resolve_range_value_exprs(rust::Slice<const peg::Node> values
   int ret = OB_SUCCESS;
   {
     for (int64_t j = 0; OB_SUCC(ret) && j < values.size(); j++) {
-      const auto kind = partition_value_expression(values[j]).kind;
+      const auto kind = partition_value_expression(values[j]).kind();
       if (peg::NodeKind::MaxValue == kind) {
         ObRawExpr *maxvalue_expr = NULL;
         ObConstRawExpr *c_expr = NULL;
@@ -3553,7 +3560,7 @@ int ObDDLResolver::resolve_vec_index_constraint(
         index_keyname_ = VEC_KEY;
         bool has_set_params = false;
         for (size_t i = 0; i < options.size(); ++i) {
-          has_set_params |= options[i].kind == peg::NodeKind::VectorParameters;
+          has_set_params |= options[i].kind() == peg::NodeKind::VectorParameters;
         }
         if (OB_SUCC(ret) && has_set_params) {
         } else {
@@ -4122,7 +4129,8 @@ int ObDDLResolver::resolve_check_constraint_node(
   const bool generated = !peg::check_constraint_has_name(node);
   if (!generated) {
     const auto &syntax_name = peg::check_constraint_name(node);
-    name.assign_ptr(syntax_name.text.data(), syntax_name.text.size());
+    const auto syntax_name_text = syntax_name.text();
+    name.assign_ptr(syntax_name_text.data(), syntax_name_text.size());
     if (name.empty()) {
       ret = OB_ERR_ZERO_LENGTH_IDENTIFIER;
     }
@@ -4292,7 +4300,8 @@ int ObDDLResolver::resolve_foreign_key_columns(rust::Slice<const peg::Node> name
   int ret = OB_SUCCESS;
   for (size_t i = 0; OB_SUCC(ret) && i < names.size(); ++i) {
     ObString name;
-    OZ(ob_write_string(*allocator_, ObString(names[i].text.size(), names[i].text.data()), name));
+    const auto name_text = names[i].text();
+    OZ(ob_write_string(*allocator_, ObString(name_text.size(), name_text.data()), name));
     OZ(columns.push_back(name));
   }
   return ret;
@@ -4347,10 +4356,10 @@ int ObDDLResolver::resolve_foreign_key_name(const peg::Node *name,
   if (nullptr == name) {
     OZ(create_fk_cons_name_automatically(foreign_key_name));
     if (OB_SUCC(ret)) { name_generated_type = GENERATED_TYPE_SYSTEM; }
-  } else if (name->text.empty()) {
+  } else if (const auto name_text = name->text(); name_text.empty()) {
     ret = OB_ERR_ZERO_LENGTH_IDENTIFIER;
   } else {
-    OZ(ob_write_string(*allocator_, ObString(name->text.size(), name->text.data()), foreign_key_name));
+    OZ(ob_write_string(*allocator_, ObString(name_text.size(), name_text.data()), foreign_key_name));
     if (OB_SUCC(ret)) {
       ObForeignKeyNameHashWrapper key(foreign_key_name);
       if (OB_HASH_EXIST == current_foreign_key_name_set_.exist_refactored(key)) {
@@ -4751,7 +4760,8 @@ int ObDDLResolver::resolve_partition_name(const peg::Node &partition_name_node,
   int ret = OB_SUCCESS;
   {
     const auto &name_node = peg::relation_name(partition_name_node);
-    partition_name.assign_ptr(name_node.text.data(), name_node.text.size());
+    const auto name_node_text = name_node.text();
+    partition_name.assign_ptr(name_node_text.data(), name_node_text.size());
     if (OB_FAIL(ObSQLUtils::check_ident_name(CS_TYPE_UTF8MB4_GENERAL_CI,
                                              partition_name,
                                              false, //check_for_path_chars
@@ -4891,15 +4901,15 @@ int ObDDLResolver::resolve_partition_node(ObPartitionedStmt *stmt,
                                           ObTableSchema &table_schema)
 {
   int ret = OB_SUCCESS;
-  if (is_hash_type_partition(part_node.kind)) {
+  if (is_hash_type_partition(part_node.kind())) {
     ret = resolve_partition_hash_or_key(stmt, part_node, false, table_schema);
-  } else if (is_range_type_partition(part_node.kind)) {
+  } else if (is_range_type_partition(part_node.kind())) {
     ret = resolve_partition_range(stmt, part_node, false, table_schema);
-  } else if (is_list_type_partition(part_node.kind)) {
+  } else if (is_list_type_partition(part_node.kind())) {
     ret = resolve_partition_list(stmt, part_node, false, table_schema);
   } else {
     ret = OB_INVALID_ARGUMENT;
-    SQL_RESV_LOG(WARN, "node type is invalid.", K(ret), K(part_node.kind));
+    SQL_RESV_LOG(WARN, "node type is invalid.", K(ret), K(part_node.kind()));
   }
 
   if (OB_SUCC(ret)) {
@@ -4929,18 +4939,18 @@ int ObDDLResolver::resolve_subpartition_option(ObPartitionedStmt *stmt,
                                                ObTableSchema &table_schema)
 {
   int ret = OB_SUCCESS;
-  if (is_hash_type_partition(subpart_node.kind)) {
+  if (is_hash_type_partition(subpart_node.kind())) {
     if (OB_FAIL(resolve_partition_hash_or_key(stmt, subpart_node, true, table_schema))) {
     }
-  } else if (is_range_type_partition(subpart_node.kind)) {
+  } else if (is_range_type_partition(subpart_node.kind())) {
     if (OB_FAIL(resolve_partition_range(stmt, subpart_node, true, table_schema))) {
     }
-  } else if (is_list_type_partition(subpart_node.kind)) {
+  } else if (is_list_type_partition(subpart_node.kind())) {
     if (OB_FAIL(resolve_partition_list(stmt, subpart_node, true, table_schema))) {
     }
   } else {
     ret = OB_ERR_UNEXPECTED;
-    SQL_RESV_LOG(WARN, "get unexpected subpartition type", K(ret), K(subpart_node.kind));
+    SQL_RESV_LOG(WARN, "get unexpected subpartition type", K(ret), K(subpart_node.kind()));
   }
   return ret;
 }
@@ -4960,21 +4970,21 @@ int ObDDLResolver::resolve_individual_subpartition(ObPartitionedStmt *stmt,
 
   if (OB_ISNULL(stmt)) {
     ret = OB_ERR_UNEXPECTED;
-  } else if (is_range_type_partition(subpart_node.kind)) {
+  } else if (is_range_type_partition(subpart_node.kind())) {
     // range subpartition
     if (OB_FAIL(resolve_range_partition_basic_infos(subpart_node, true, table_schema,
                                                     partition_func_type, func_expr_name,
                                                     part_func_exprs))) {
     } else if (OB_FAIL(stmt->get_subpart_fun_exprs().assign(part_func_exprs))) {
     }
-  } else if (is_list_type_partition(subpart_node.kind)) {
+  } else if (is_list_type_partition(subpart_node.kind())) {
     // list subpartition
     if (OB_FAIL(resolve_list_partition_basic_infos(subpart_node, true, table_schema,
                                                    partition_func_type, func_expr_name,
                                                    part_func_exprs))) {
     } else if (OB_FAIL(stmt->get_subpart_fun_exprs().assign(part_func_exprs))) {
     }
-  } else if (is_hash_type_partition(subpart_node.kind)) {
+  } else if (is_hash_type_partition(subpart_node.kind())) {
     /**
      * Defined hash partitions through subpartitions number, essentially non-template semantics, but before version 2.2.70,
      * they were processed with template semantics. Backup and recovery require that backups from lower versions can be restored
@@ -5744,9 +5754,9 @@ int ObDDLResolver::resolve_range_partition_value_node(const peg::Node &expr_list
                                                       ObIArray<ObRawExpr *> &range_value_exprs)
 {
   int ret = OB_SUCCESS;
-  const auto values = expr_list_node.kind == peg::NodeKind::Default ? rust::Slice<const peg::Node>() : peg::row_elements(expr_list_node);
+  const auto values = expr_list_node.kind() == peg::NodeKind::Default ? rust::Slice<const peg::Node>() : peg::row_elements(expr_list_node);
   for (int64_t i = 0; OB_SUCC(ret) && i < values.size(); ++i) {
-    const auto kind = partition_value_expression(values[i]).kind;
+    const auto kind = partition_value_expression(values[i]).kind();
     if (peg::NodeKind::Null == kind) {
       ret = OB_EER_NULL_IN_VALUES_LESS_THAN;
     } else if (peg::NodeKind::MaxValue == kind) {
@@ -5790,14 +5800,14 @@ int ObDDLResolver::resolve_list_partition_value_node(const peg::Node &expr_list_
                                                      ObDDLStmt::array_t &list_value_exprs)
 {
   int ret = OB_SUCCESS;
-  const auto values = expr_list_node.kind == peg::NodeKind::Default ? rust::Slice<const peg::Node>() : peg::row_elements(expr_list_node);
+  const auto values = expr_list_node.kind() == peg::NodeKind::Default ? rust::Slice<const peg::Node>() : peg::row_elements(expr_list_node);
   ObOpRawExpr *row_expr = NULL;
   if (OB_ISNULL(params_.expr_factory_)) {
     ret = OB_ERR_UNEXPECTED;
   } else if (OB_FAIL(params_.expr_factory_->create_raw_expr(T_OP_ROW, row_expr))) {
   } else if (OB_ISNULL(row_expr)) {
     ret = OB_ALLOCATE_MEMORY_FAILED;
-  } else if (peg::NodeKind::Default == expr_list_node.kind) {
+  } else if (peg::NodeKind::Default == expr_list_node.kind()) {
     // Here use max to replace default value
     ObRawExpr *maxvalue_expr = NULL;
     ObConstRawExpr *c_expr = NULL;
@@ -5815,7 +5825,7 @@ int ObDDLResolver::resolve_list_partition_value_node(const peg::Node &expr_list_
     ObSEArray<ObRawExpr *, 16> part_value_exprs;
     bool is_all_expr_list = false;
     if (values.size() > 0) {
-      is_all_expr_list = (partition_value_expression(values[0]).kind == peg::NodeKind::ExprList);
+      is_all_expr_list = (partition_value_expression(values[0]).kind() == peg::NodeKind::ExprList);
     }
     /* multi cols in partition key and only one vector in values
     CREATE TABLE W0CASE (W0_TEST0 NVARCHAR2(100),W0_TEST1 DATE)
@@ -5838,7 +5848,7 @@ int ObDDLResolver::resolve_list_partition_value_node(const peg::Node &expr_list_
     } else {
       for (int64_t i = 0; OB_SUCC(ret) && i < values.size(); ++i) {
         part_value_exprs.reset();
-        const bool is_row = partition_value_expression(values[i]).kind == peg::NodeKind::ExprList;
+        const bool is_row = partition_value_expression(values[i]).kind() == peg::NodeKind::ExprList;
         if (is_all_expr_list != is_row) {
           ret = OB_ERR_PARTITION_COLUMN_LIST_ERROR;
           LOG_ERROR("Inconsistency in usage of column lists for partitioning near", K(ret));
@@ -6326,7 +6336,7 @@ int ObDDLResolver::resolve_hints(rust::Slice<const peg::Node> hints, ObDDLStmt &
   if (OB_NOT_NULL(session_info_)) {
     for (size_t i = 0; i < hints.size(); ++i) {
       const auto &hint = hints[i];
-      if (hint.kind == peg::NodeKind::Parallel &&
+      if (hint.kind() == peg::NodeKind::Parallel &&
           peg::hint_parallel_policy(hint) == peg::ParallelPolicy::Explicit) {
         const int64_t degree = peg::integer_literal_value(peg::hint_parallel_degree(hint));
         if (degree < 1) {

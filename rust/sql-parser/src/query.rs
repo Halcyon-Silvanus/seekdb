@@ -19,6 +19,42 @@ use crate::bridge::ffi::{
 };
 use crate::node::{Kind, Node};
 
+#[derive(Clone, Copy)]
+pub struct Query<'a>(&'a Node);
+
+#[derive(Clone, Copy)]
+pub struct Projection<'a>(&'a Node);
+
+impl Node {
+    pub fn as_query(&self) -> Option<Query<'_>> {
+        (self.kind == Kind::Select).then_some(Query(self))
+    }
+}
+
+impl<'a> Query<'a> {
+    pub fn projections(self) -> impl ExactSizeIterator<Item = Projection<'a>> + 'a {
+        query_projection(self.0).iter().map(Projection)
+    }
+
+    pub fn sources(self) -> &'a [Node] {
+        query_sources(self.0)
+    }
+
+    pub fn filter(self) -> Option<&'a Node> {
+        query_has_filter(self.0).then(|| query_filter(self.0))
+    }
+}
+
+impl<'a> Projection<'a> {
+    pub fn expression(self) -> &'a Node {
+        projection_expression(self.0)
+    }
+
+    pub fn alias(self) -> Option<&'a Node> {
+        (projection_alias_form(self.0) != AliasForm::Absent).then(|| projection_alias(self.0))
+    }
+}
+
 pub(crate) struct RelationReferences<'a> {
     pending: Vec<&'a Node>,
     current: Option<&'a Node>,

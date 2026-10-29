@@ -328,14 +328,14 @@ int resolve_role_activation(const peg::Node &node, ObResolverParams &params, ObS
   if (OB_SUCC(ret)) {
     auto &arg = changed->get_ddl_arg();
     const ObUserInfo *user = nullptr;
-    if (node.kind == peg::NodeKind::SetRole) {
+    if (node.kind() == peg::NodeKind::SetRole) {
       changed->set_set_role_flag(ObAlterUserRoleStmt::SET_ROLE);
       OZ (params.schema_checker_->get_user_info(params.session_info_->get_priv_user_id(), user));
       if (OB_SUCC(ret) && OB_ISNULL(user)) { ret = OB_ERR_UNEXPECTED; }
       OZ (resolve_selected_roles(node, params, arg, user->get_role_id_array(), false));
     } else {
       changed->set_set_role_flag(ObAlterUserRoleStmt::SET_DEFAULT_ROLE);
-      const bool alter_user = node.kind == peg::NodeKind::AlterUserDefaultRole;
+      const bool alter_user = node.kind() == peg::NodeKind::AlterUserDefaultRole;
       for (const auto &account : peg::access_accounts(node)) {
         if (OB_FAIL(ret)) { break; }
         ObString name;
@@ -374,7 +374,7 @@ int resolve_role_activation(const peg::Node &node, ObResolverParams &params, ObS
 int resolve_roles(const peg::Node &node, ObResolverParams &params, ObStmt *&stmt)
 {
   int ret = OB_SUCCESS;
-  switch (node.kind) {
+  switch (node.kind()) {
     case peg::NodeKind::CreateRole: ret = resolve_create_role(node, params, stmt); break;
     case peg::NodeKind::DropRole: ret = resolve_drop_role(node, params, stmt); break;
     case peg::NodeKind::GrantRole: ret = resolve_grant_roles(node, params, stmt); break;

@@ -50,20 +50,21 @@ int ObGetDiagnosticsResolver::resolve(const peg::Node &statement)
     if (condition) {
       const auto &number = peg::diagnostics_condition(statement);
       ObRawExpr *expression = nullptr;
-      if (number.kind == peg::NodeKind::Ident) {
+      if (number.kind() == peg::NodeKind::Ident) {
         ObString name;
-        OZ (ob_write_string(*allocator_, ObString(number.text.size(), number.text.data()), name));
+        const auto number_text = number.text();
+        OZ (ob_write_string(*allocator_, ObString(number_text.size(), number_text.data()), name));
         if (OB_SUCC(ret)) {
           diagnostics->set_invalid_condition_name(name);
           ret = OB_ERR_BAD_FIELD_ERROR;
         }
-      } else if (number.kind == peg::NodeKind::UserVariable) {
+      } else if (number.kind() == peg::NodeKind::UserVariable) {
         const auto name = peg::variable_name(number);
         OZ (ObRawExprUtils::build_get_user_var(*params_.expr_factory_,
             ObString(name.size(), name.data()), expression, session_info_));
       } else {
         OZ (ObResolverUtils::resolve_const_expr(params_, number, expression, nullptr));
-        if (number.kind == peg::NodeKind::Parameter) {
+        if (number.kind() == peg::NodeKind::Parameter) {
           OZ (diagnostics->add_origin_param_index(peg::placeholder_index(number)));
         }
       }
@@ -74,10 +75,11 @@ int ObGetDiagnosticsResolver::resolve(const peg::Node &statement)
       const auto &target = peg::diagnostics_target(item);
       const auto item_name = peg::diagnostics_item_name(item);
       ObRawExpr *expression = nullptr;
-      if (target.kind == peg::NodeKind::Ident) {
+      if (target.kind() == peg::NodeKind::Ident) {
         ret = OB_ERR_SP_UNDECLARED_VAR;
-        LOG_USER_ERROR(OB_ERR_SP_UNDECLARED_VAR, static_cast<int>(target.text.size()), target.text.data());
-      } else if (target.kind == peg::NodeKind::Parameter) {
+        const auto target_text = target.text();
+        LOG_USER_ERROR(OB_ERR_SP_UNDECLARED_VAR, static_cast<int>(target_text.size()), target_text.data());
+      } else if (target.kind() == peg::NodeKind::Parameter) {
         OZ (ObResolverUtils::resolve_const_expr(params_, target, expression, nullptr));
         OZ (diagnostics->add_origin_param_index(peg::placeholder_index(target)));
       } else {

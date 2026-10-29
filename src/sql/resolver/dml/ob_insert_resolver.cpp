@@ -47,7 +47,7 @@ int ObInsertResolver::resolve(const peg::Node &query)
 {
   int ret = OB_SUCCESS;
   ObInsertStmt *insert_stmt = NULL;
-  if (query.kind != peg::NodeKind::Insert || OB_ISNULL(session_info_)) {
+  if (query.kind() != peg::NodeKind::Insert || OB_ISNULL(session_info_)) {
     ret = OB_ERR_UNEXPECTED;
   } else if (OB_ISNULL(insert_stmt = create_stmt<ObInsertStmt>())) {
     ret = OB_ALLOCATE_MEMORY_FAILED;

@@ -891,8 +891,8 @@ int ObSQLUtils::check_enable_mysql_compatible_dates(const sql::ObSQLSessionInfo 
 bool ObSQLUtils::is_mysql_ps_not_support_stmt(const ParsedSql &syntax)
 {
   return syntax.statement() != nullptr
-      && (syntax.statement()->kind == peg::NodeKind::CreateProcedure
-          || syntax.statement()->kind == peg::NodeKind::DropProcedure);
+      && (syntax.statement()->kind() == peg::NodeKind::CreateProcedure
+          || syntax.statement()->kind() == peg::NodeKind::DropProcedure);
 }
 
 

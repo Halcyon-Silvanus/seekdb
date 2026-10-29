@@ -114,7 +114,7 @@ int ObCreateRoutineResolver::resolve_sp_definer(const peg::Node *parse_node,
   cur_user_name = session_info_->get_user_name();
   cur_host_name = session_info_->get_host_name();
   if (OB_NOT_NULL(parse_node)) {
-    CK(peg::NodeKind::UserHost == parse_node->kind);
+    CK(peg::NodeKind::UserHost == parse_node->kind());
     if (OB_SUCC(ret)) {
       const auto account = peg::account_identity(*parse_node);
       user_name = ObString(account.name.size(), account.name.data());
@@ -364,7 +364,7 @@ int ObCreateRoutineResolver::resolve_param_type(const peg::Node *type_node,
   CK (OB_NOT_NULL(type_node));
   CK (OB_NOT_NULL(allocator_));
   if (OB_SUCC(ret)) {
-    if (peg::NodeKind::RowType == type_node->kind) { // %ROWTYPE
+    if (peg::NodeKind::RowType == type_node->kind()) { // %ROWTYPE
       ObArray<ObObjAccessIdx> access_idxs;
       ObArray<ObObjAccessIdent> obj_access_idents;
       CK (OB_NOT_NULL(schema_checker_),
@@ -483,7 +483,8 @@ int ObCreateRoutineResolver::resolve_param_list(rust::Slice<const peg::Node> par
         routine_param.set_subprogram_id(routine_info.get_subprogram_id());
         routine_param.set_param_position(i+1);
         routine_param.set_param_level(0); //todo user defined type guangang.gg
-        param_name = ObString(name_node.text.size(), name_node.text.data());
+        const auto name_node_text = name_node.text();
+        param_name = ObString(name_node_text.size(), name_node_text.data());
         if (OB_FAIL(check_dup_routine_param(routine_info.get_routine_params(), param_name))) {
         } else if (OB_FAIL(routine_param.set_param_name(param_name))) {
         } else if (OB_FAIL(resolve_param_type(&type_node,
@@ -581,7 +582,7 @@ int ObCreateRoutineResolver::resolve_impl(const peg::Node &command,
                                             obcall::ObCreateRoutineArg *crt_routine_arg)
 {
   int ret = OB_SUCCESS;
-  const ObRoutineType routine_type = command.kind == peg::NodeKind::CreateFunction
+  const ObRoutineType routine_type = command.kind() == peg::NodeKind::CreateFunction
       ? ROUTINE_FUNCTION_TYPE : ROUTINE_PROCEDURE_TYPE;
   const peg::Node *sp_definer_node = peg::routine_has_definer(command) ? &peg::routine_definer(command) : nullptr;
   const peg::Node *name_node = &peg::routine_name(command);

@@ -31,7 +31,7 @@ int ObDropPackageResolver::resolve(const peg::Node &parse_tree)
   ObString db_name;
   ObString package_name;
   ObDropPackageStmt *package_stmt = NULL;
-  if (parse_tree.kind != peg::NodeKind::DropPackage) {
+  if (parse_tree.kind() != peg::NodeKind::DropPackage) {
     ret = OB_INVALID_ARGUMENT;
   } else if (OB_ISNULL(session_info_)) {
     ret = OB_NOT_INIT;
