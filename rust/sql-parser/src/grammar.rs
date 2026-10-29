@@ -1514,7 +1514,7 @@ peg::parser! {
             / kw("drop") (kw("database") / kw("schema")) exists:if_exists()? name:ident() {
                 Node::new(Kind::DropDatabase, vec![Node::optional(exists), Node::name(name)])
             }
-            / kw("drop") temporary:temporary()? (kw("table") / kw("tables")) exists:if_exists()? names:(name() ++ ("," _)) {?
+            / kw("drop") temporary:temporary()? (kw("table") / kw("tables")) exists:if_exists()? names:(name() ++ ("," _)) (kw("cascade") / kw("restrict"))? {?
                 let tables=names.into_iter().map(Node::relation).collect::<Result<Vec<_>, _>>()?;
                 Ok(Node::new(Kind::DropTable, vec![Node::optional(temporary), Node::optional(exists), Node::new(Kind::TableList, tables)]))
             }
