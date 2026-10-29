@@ -371,7 +371,7 @@ peg::parser! {
             }
             / depth(level) start:position!() !(['x'|'X'] "'" hex_digit()* "'") parts:expression_name() tail:("." _ "*" end:position!() _ { (None, end) }
                 / enabled(parts.len()!=1 || parts[0].quoted || !["row","match","point","json_query","json_value","trim","position","weight_string","char","character","array","map","array_agg",
-                    "array_map","array_filter","array_first","array_sortby","vector_distance","vector_similarity","group_concat","listagg"].iter().any(|name| parts[0].text.eq_ignore_ascii_case(name)))
+                    "array_map","array_filter","array_first","array_sortby","vector_distance","vector_similarity","group_concat","listagg","get_format"].iter().any(|name| parts[0].text.eq_ignore_ascii_case(name)))
                     "(" _ modifier:((kw("distinct") / kw("unique")) { Kind::Distinct } / kw("all") { Kind::All })? args:expr_list(level+1)? ")" close:position!() _
                     window:(kw("over") value:window(level+1) { value })?
                     { let end=window.as_ref().map_or(close,|value| value.end); (Some((modifier, args.unwrap_or_default(),window)), end) })?
@@ -519,6 +519,12 @@ peg::parser! {
             }
             / start:position!() kw("extract") "(" _ unit:date_unit() kw("from") value:expr(level) ")" end:position!() _ {?
                 Node::named_call(Kind::Function,Node::new(Kind::Ident,vec![]).text("extract".into()),vec![unit,value]).expression(start,end)
+            }
+            / start:position!() kw("get_format") "(" _
+                unit:(kw("date") { 0 } / kw("time") { 1 } / (kw("datetime") / kw("timestamp")) { 2 })
+                "," _ format:expr(level) ")" end:position!() _ {?
+                Node::named_call(Kind::Function,Node::new(Kind::Ident,vec![]).text("get_format".into()),
+                    vec![Node::new(Kind::HiddenInt,vec![]).value(unit),format]).expression(start,end)
             }
         rule collated(level: usize) -> Node = value:atom(level) collations:(kw("collate") value:collation_name() { Node { kind:Kind::Collation,..value } })* {?
             collations.into_iter().try_fold(value,|value,collation| {
