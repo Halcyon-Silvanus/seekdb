@@ -429,9 +429,9 @@ peg::parser! {
                 }
                 / kw("point") "(" _ x:expr(level) "," _ y:expr(level) ")" { Node::callable(Kind::Point,vec![x,y]) }
             ) end:position!() _ {? value.expression(start,end) }
-        rule charset_literal() -> Node = charset:((kw("_utf8") / kw("_utf8mb4") / kw("_utf8mb3")) { "utf8mb4" } / kw("_binary") { "binary" })
+        rule charset_literal() -> Node = start:position!() charset:((kw("_utf8") / kw("_utf8mb4") / kw("_utf8mb3")) { "utf8mb4" } / kw("_binary") { "binary" })
             value:(string() / binary_literal()) {
-                let (start,end)=(value.start,value.end);
+                let end=value.end;
                 Node::new(Kind::CharsetLiteral,vec![Node::new(Kind::Charset,vec![]).text(charset.into()),value]).at(start,end)
             }
         rule trim_arguments(level: usize) -> Vec<Node>
