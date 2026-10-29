@@ -933,11 +933,9 @@ peg::parser! {
                 qb:("(" _ qb:hint_qb()? ")" _ { qb })? { Node::new(kind,vec![Node::optional(qb.flatten())]).value(u64::MAX) }
             / kw("qb_name") "(" _ name:hint_qb_name() ")" _ { Node::new(Kind::QbName,vec![name]) }
             / kw("opt_param") "(" _ name:string() ("," _)? value:(string() / number()) ")" _ { Node::new(Kind::OptParam,vec![name,value]) }
-        rule ignored_hint_arguments(level: usize) = depth(level) "(" _
-            (ignored_hint_arguments(level+1) / string() / hint_name() / !['('|')'|'\''|'"'|'`'] !"*/" [_])* ")" _
         rule hints() -> Vec<Node> = "/*+" _ options:((value:hint_option() { value }
-                / word() _ ignored_hint_arguments(0)? { Node::missing() }
-                / !['('|')'|'\''|'"'|'`'|','|'@'|'0'..='9'] !"*/" [_] _ { Node::missing() }) ** (("," _)?)) "*/" _ {
+                / (&['\''|'"'|'`'] opaque_comment_token() / cont()+
+                    / !['\''|'"'|'`'] !"*/" [_]) _ { Node::missing() }) ** (("," _)?)) "*/" _ {
             options.into_iter().filter(|value| value.kind!=Kind::Missing).collect()
         }
         rule select(level: usize) -> Node = value:query_expression(level) {? Node::select(value) }
