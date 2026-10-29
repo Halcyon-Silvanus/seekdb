@@ -429,6 +429,11 @@ peg::parser! {
             }
         rule string_function(level: usize) -> Node = start:position!() function:(
                 kw("position") "(" _ needle:bit_or(level) kw("in") haystack:expr(level) { ("position",vec![needle,haystack]) }
+                / (kw("substr") / kw("substring")) "(" _ value:expr(level)
+                    rest:("," _ position:expr(level) length:("," _ value:expr(level) { value })? { (position,length) }
+                        / kw("from") position:expr(level) length:(kw("for") value:expr(level) { value })? { (position,length) }) {
+                    let mut args=vec![value,rest.0];args.extend(rest.1);("substr",args)
+                }
                 / kw("convert") "(" _ value:expr(level) kw("using") !kw("default") charset:charset_name() { ("convert",vec![value,charset]) }
                 / (kw("char") / kw("character")) "(" _ args:expr_list(level) charset:(kw("using") value:charset_name() { value })? {
                     let mut args=args;args.push(charset.unwrap_or_else(|| Node::new(Kind::CharsetName,vec![]).text("binary".into())));("char",args)

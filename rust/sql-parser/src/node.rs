@@ -558,6 +558,9 @@ impl Node {
         if function == "cast" && (arguments.len() != 2 || arguments[1].kind != Kind::CastType) {
             return Err("CAST requires an expression and AS type");
         }
+        if matches!(function.as_str(), "substr" | "substring") {
+            return Err("substring syntax");
+        }
         if matches!(
             function.as_str(),
             "first_value" | "last_value" | "nth_value" | "lead" | "lag"
