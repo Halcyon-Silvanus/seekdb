@@ -688,10 +688,17 @@ impl Node {
         if timestamp
             && (arguments.len() > 1
                 || arguments.first().is_some_and(|arg| {
-                    !(matches!(arg.kind, Kind::Int | Kind::Uint) && arg.value <= 6)
+                    !matches!(arg.kind, Kind::Int | Kind::Uint)
                 }))
         {
-            return Err("time precision must be an integer from 0 to 6");
+            return Err("time precision must be an integer");
+        }
+        if timestamp {
+            name.text = match kind {
+                Kind::CurrentTimestamp => "now",
+                Kind::CurrentTime => "current_time",
+                _ => function.as_str(),
+            }.into();
         }
         let approximate = matches!(
             kind,

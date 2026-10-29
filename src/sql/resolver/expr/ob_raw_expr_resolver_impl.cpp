@@ -15,6 +15,7 @@
  */
 
 #define USING_LOG_PREFIX SQL_RESV
+#include <cinttypes>
 #include "ob_raw_expr_resolver_impl.h"
 #include "sql/engine/expr/cast_type_descriptor.h"
 #include "sql/resolver/expr/ob_raw_expr_util.h"
@@ -2529,15 +2530,16 @@ int ObRawExprResolverImpl::process_timestamp_node(const peg::Node &node, ObRawEx
   int ret = OB_SUCCESS;
   ObSysFunRawExpr *function = nullptr;
   const auto arguments = peg::call_arguments(node);
-  const int16_t scale = arguments.empty() ? 0 : static_cast<int16_t>(peg::integer_literal_value(arguments[0]));
+  const uint64_t scale = arguments.empty() ? 0 : peg::integer_literal_value(arguments[0]);
   if (scale > OB_MAX_DATETIME_PRECISION) {
     ret = OB_ERR_TOO_BIG_PRECISION;
     const auto name = peg::call_name(node);
-    ObCStringHelper helper;
-    LOG_USER_ERROR(OB_ERR_TOO_BIG_PRECISION, scale, helper.convert(ObString(name.size(), name.data())), OB_MAX_DATETIME_PRECISION);
+    _LOG_USER_MSG(USER_ERROR, OB_ERR_TOO_BIG_PRECISION,
+        "Too big precision %" PRIu64 " specified for column '%.*s'. Maximum is %ld.",
+        scale, static_cast<int>(name.size()), name.data(), OB_MAX_DATETIME_PRECISION);
   } else {
     OZ(ctx_.expr_factory_.create_raw_expr(callable_expression_type(node.kind()), function));
-    OX(function->set_scale(scale));
+    OX(function->set_scale(static_cast<int16_t>(scale)));
     if (OB_SUCC(ret)) {
       switch (node.kind()) {
         case peg::NodeKind::CurrentTimestamp: function->set_func_name(N_CUR_TIMESTAMP); break;
