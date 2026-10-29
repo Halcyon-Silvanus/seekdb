@@ -1085,9 +1085,14 @@ int ObSelectResolver::resolve_for_update_clause_mysql(const peg::Node &node)
   } else if (peg::lock_wait(node) == peg::LockWait::NoWait) {
     wait_us = 0;
   } else if (peg::lock_wait(node) == peg::LockWait::Duration) {
-    const auto duration = peg::lock_wait_seconds(node);
-    const ObString time_str(duration.size(), duration.data());
-    OZ(ObTimeUtility2::str_to_time(time_str, wait_us, ObTimeUtility2::DIGTS_SENSITIVE));
+    if (node.kind() == peg::NodeKind::LockWait) {
+      const uint64_t wait_seconds = peg::integer_literal_value(node);
+      wait_us = static_cast<int64_t>(wait_seconds * 1000000ULL);
+    } else {
+      const auto duration = peg::lock_wait_seconds(node);
+      const ObString time_str(duration.size(), duration.data());
+      OZ(ObTimeUtility2::str_to_time(time_str, wait_us, ObTimeUtility2::DIGTS_SENSITIVE));
+    }
   }
   if (OB_SUCC(ret) && OB_FAIL(set_for_update_mysql(*select_stmt, wait_us, skip_locked))) {
   }
