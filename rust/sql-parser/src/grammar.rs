@@ -149,6 +149,35 @@ enum Tail {
     Is(bool, Node),
 }
 
+impl Tail {
+    fn apply(self, value: Node) -> Result<Node, &'static str> {
+        let start=value.start;
+        match self {
+            Tail::Compare(op, right) => Node::binary(op, value, right),
+            Tail::SoundsLike(right) => {
+                let soundex=|value:Node| {
+                    let (start,end)=(value.start,value.end);
+                    Node::named_call(Kind::Function,Node::new(Kind::Ident,vec![]).text("soundex".into()),vec![value]).expression(start,end)
+                };
+                Node::binary("=".into(),soundex(value)?,soundex(right)?)
+            },
+            Tail::Like(negated,right,escape) => {
+                let end=escape.as_ref().map_or(right.end,|value| value.end);
+                let mut children=vec![value,right];
+                if let Some(mut escape)=escape {
+                    if escape.kind==Kind::String && escape.text.is_empty() { escape.text="\\".into(); }
+                    children.push(escape);
+                }
+                Node::binary_operands(if negated { "not like" } else { "like" }.into(),children).expression(start,end)
+            },
+            Tail::Between(negated, low, high) => { let end=high.end; Node::new(Kind::Between, vec![value, low, high]).value(u64::from(negated)).expression(start, end) },
+            Tail::In(negated, right, end) => Node::new(Kind::In, vec![value, right]).value(u64::from(negated)).expression(start, end),
+            Tail::Member(right,end) => Node::named_call(Kind::Function,Node::new(Kind::Ident,vec![]).text("JSON_MEMBER_OF".into()),vec![value,right]).expression(start,end),
+            Tail::Is(negated, test) => { let end=test.end; Node::new(Kind::Is, vec![value, test]).value(u64::from(negated)).expression(start, end) },
+        }
+    }
+}
+
 peg::parser! {
     pub grammar sql(mode: SqlMode, pl: bool) for str {
         rule opaque_comment_token()
@@ -575,20 +604,21 @@ peg::parser! {
             --
             left:(@) "^" _ right:@ { Node::binary("^".into(),left?,right?) }
             --
-            left:(@) enabled(mode.pipes_as_concat) "||" _ right:@ { Node::binary("concat".into(),left?,right?) }
-            --
-            value:unary(level) { Ok(value) }
+            value:simple_expr(level) { Ok(value) }
         } {? value }
-        rule tail(level: usize) -> Tail
+        rule simple_expr(level: usize) -> Node = left:unary(level)
+            rest:(enabled(mode.pipes_as_concat) "||" _ right:unary(level) { ("concat".into(),right) })* {? chain(left,rest) }
+        rule comparison_tail(level: usize) -> Tail
             = op:$("<=>" / "<=" / ">=" / "<>" / "!=" / "=" / "<" / ">") _
                 right:(enabled(op!="<=>") start:position!() kind:(kw("all") { Kind::All } / (kw("any") / kw("some")) { Kind::Any })
                     "(" _ query:select(level+1) ")" end:position!() _ {? Node::new(kind,vec![query]).expression(start,end) }
-                    / bit_or(level)) { Tail::Compare(op.into(), right) }
-            / kw("sounds") kw("like") right:unary(level) { Tail::SoundsLike(right) }
-            / kw("member") kw("of")? "(" _ value:atom(level+1) ")" end:position!() _ { Tail::Member(value,end) }
+                    / predicate(level)) { Tail::Compare(op.into(), right) }
             / kw("is") negated:kw("not")? test:null_literal() { Tail::Is(negated.is_some(), test) }
-            / negated:kw("not")? tail:(kw("between") low:bit_or(level) kw("and") high:bit_or(level) { Tail::Between(false, low, high) }
-                / kw("like") right:bit_or(level) escape:(kw("escape") value:bit_or(level) { value })? { Tail::Like(false,right,escape) }
+        rule predicate_tail(level: usize) -> Tail
+            = kw("sounds") kw("like") right:simple_expr(level) { Tail::SoundsLike(right) }
+            / kw("member") kw("of")? "(" _ value:simple_expr(level+1) ")" end:position!() _ { Tail::Member(value,end) }
+            / negated:kw("not")? tail:(kw("between") low:bit_or(level) kw("and") high:predicate(level+1) { Tail::Between(false, low, high) }
+                / kw("like") right:simple_expr(level) escape:(kw("escape") value:simple_expr(level) { value })? { Tail::Like(false,right,escape) }
                 / (kw("regexp") / kw("rlike")) right:bit_or(level) { Tail::Compare("regexp".into(),right) }
                 / kw("in") "(" _ values:(query:select(level+1) &")" { query } / values:expr_list(level+1) { Node::new(Kind::ExprList, values) }) ")" end:position!() _ { Tail::In(false, values, end) })
                 { match tail {
@@ -598,37 +628,15 @@ peg::parser! {
                     Tail::Compare(op, right) => Tail::Compare(if negated.is_some() { "not regexp".into() } else { op },right),
                     _ => unreachable!(),
                 } }
-        rule predicate(level: usize) -> Node = left:bit_or(level) tails:tail(level)*
+        rule predicate(level: usize) -> Node = depth(level) left:bit_or(level) tail:predicate_tail(level)? {?
+            match tail { Some(tail) => tail.apply(left), None => Ok(left) }
+        }
+        rule bool_primary(level: usize) -> Node = left:predicate(level) tails:comparison_tail(level)*
             truth:(kw("is") negated:kw("not")? test:(boolean_literal()
                 / start:position!() kw("unknown") { Node::new(Kind::DefaultNull,vec![]).at(start,start+7) }) { Tail::Is(negated.is_some(),test) })? {?
-            tails.into_iter().chain(truth).try_fold(left, |value, tail| {
-                let start=value.start;
-                match tail {
-                    Tail::Compare(op, right) => Node::binary(op, value, right),
-                    Tail::SoundsLike(right) => {
-                        let soundex=|value:Node| {
-                            let (start,end)=(value.start,value.end);
-                            Node::named_call(Kind::Function,Node::new(Kind::Ident,vec![]).text("soundex".into()),vec![value]).expression(start,end)
-                        };
-                        Node::binary("=".into(),soundex(value)?,soundex(right)?)
-                    },
-                    Tail::Like(negated,right,escape) => {
-                        let end=escape.as_ref().map_or(right.end,|value| value.end);
-                        let mut children=vec![value,right];
-                        if let Some(mut escape)=escape {
-                            if escape.kind==Kind::String && escape.text.is_empty() { escape.text="\\".into(); }
-                            children.push(escape);
-                        }
-                        Node::binary_operands(if negated { "not like" } else { "like" }.into(),children).expression(start,end)
-                    },
-                    Tail::Between(negated, low, high) => { let end=high.end; Node::new(Kind::Between, vec![value, low, high]).value(u64::from(negated)).expression(start, end) },
-                    Tail::In(negated, right, end) => Node::new(Kind::In, vec![value, right]).value(u64::from(negated)).expression(start, end),
-                    Tail::Member(right,end) => Node::named_call(Kind::Function,Node::new(Kind::Ident,vec![]).text("JSON_MEMBER_OF".into()),vec![value,right]).expression(start,end),
-                    Tail::Is(negated, test) => { let end=test.end; Node::new(Kind::Is, vec![value, test]).value(u64::from(negated)).expression(start, end) },
-                }
-            })
+            tails.into_iter().chain(truth).try_fold(left, |value, tail| tail.apply(value))
         }
-        rule not_expr(level: usize) -> Node = ops:(enabled(!mode.high_not_precedence) start:position!() kw("not") { start })* value:predicate(level) {?
+        rule not_expr(level: usize) -> Node = ops:(enabled(!mode.high_not_precedence) start:position!() kw("not") { start })* value:bool_primary(level) {?
             ops.into_iter().rev().try_fold(value, |value, start| { Node::unary("not", value, start) })
         }
         rule and_expr(level: usize) -> Node = left:not_expr(level) rest:((kw("and") / "&&" _) right:not_expr(level) { ("and".into(), right) })* {? chain(left, rest) }
