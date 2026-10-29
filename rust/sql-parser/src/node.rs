@@ -422,6 +422,7 @@ impl Node {
                 None,
                 vec![value, target],
                 None,
+                false,
                 start,
                 end,
             );
@@ -559,6 +560,7 @@ impl Node {
         modifier: Option<Kind>,
         mut arguments: Vec<Self>,
         window: Option<Self>,
+        followed_by_over: bool,
         start: usize,
         end: usize,
     ) -> Result<Self, &'static str> {
@@ -771,8 +773,10 @@ impl Node {
                 | Kind::CumeDist
                 | Kind::Ntile
         );
+        let supports_window = ranking || aggregate && kind != Kind::SumOpnsize;
         if (ranking && (window.is_none() || arguments.len() != usize::from(kind == Kind::Ntile)))
-            || (window.is_some() && !ranking && !aggregate)
+            || (window.is_some() && !supports_window)
+            || (window.is_none() && followed_by_over && supports_window)
         {
             return Err("invalid window function");
         }

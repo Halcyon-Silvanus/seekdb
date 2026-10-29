@@ -90,9 +90,6 @@ fn reserved(word: &str) -> bool {
         "div",
         "mod",
         "union",
-        "intersect",
-        "except",
-        "minus",
         "insert",
         "replace",
         "update",
@@ -112,21 +109,15 @@ fn reserved(word: &str) -> bool {
         "constraint",
         "foreign",
         "references",
-        "commit",
-        "rollback",
         "case",
         "when",
         "then",
         "else",
-        "end",
         "for",
         "lock",
         "convert",
-        "lateral",
-        "over",
         "partition",
         "range",
-        "window",
         "with",
         "check",
         "accessible", "add", "alter", "analyze", "asensitive", "before",
@@ -312,7 +303,8 @@ peg::parser! {
                 / kw("replace") { "replace" } / kw("insert") { "insert" } / kw("values") { "values" }
                 / kw("left") { "left" } / kw("right") { "right" } / kw("mod") { "mod" } / kw("if") { "if" } / kw("repeat") { "repeat" }) &"("
                 { vec![Name { text: name.into(), quoted: false, start, end: start + name.len() }] }
-        rule alias() -> Name = kw("as")? value:ident() { value }
+        rule implicit_alias_keyword() = kw("except") / kw("intersect") / kw("minus") / kw("window")
+        rule alias() -> Name = (kw("as") / !implicit_alias_keyword()) value:ident() { value }
         rule table_alias() -> Name = !(kw("full") kw("outer")? kw("join") / (kw("use") / kw("force") / kw("ignore"))) value:alias() { value }
         rule number() -> Node
             = start:position!() text:$(
@@ -411,7 +403,7 @@ peg::parser! {
             / depth(level) start:position!() value:(kw("cast") "(" _ value:expr(level+1) kw("as") target:cast_type() array:kw("array")? ignore:kw("ignore")? { (value,target,ignore.is_some(),array.is_some()) }
                 / kw("convert") "(" _ value:expr(level+1) "," _ target:cast_type() { (value,target,false,false) }) ")" end:position!() _ {?
                 if value.3 { value.0.cast_array(value.1,start,end) }
-                else { Ok(Node::call(vec![Name { text:"cast".into(),quoted:false,start,end:start+4 }],None,vec![value.0,value.1],None,start,end)?.value(u64::from(value.2))) }
+                else { Ok(Node::call(vec![Name { text:"cast".into(),quoted:false,start,end:start+4 }],None,vec![value.0,value.1],None,false,start,end)?.value(u64::from(value.2))) }
             }
             / depth(level) start:position!() kw("case") operand:expr(level+1)?
                 branches:(kw("when") condition:expr(level+1) kw("then") value:expr(level+1)
@@ -454,7 +446,7 @@ peg::parser! {
                 modifier:((kw("distinct") / kw("unique")) { Node::new(Kind::Distinct,vec![]) })?
                 arguments:expr_list(level+1) order:(kw("order") kw("by") values:(order_item(level+1) ++ ("," _)) { values })?
                 separator:(kw("separator") value:string() { Node::new(Kind::Separator,vec![value]) })? ")" close:position!() _
-                window:(kw("over") value:window(level+1) { value })? {?
+                window:(kw("over") value:window(level+1) { value })? !(enabled(window.is_none()) kw("over")) {?
                     let end=window.as_ref().map_or(close,|value| value.end);
                     if listagg && window.is_none() { return Err("OVER clause for LISTAGG"); }
                     let mut value=Node::callable(Kind::GroupConcat,arguments);
@@ -478,17 +470,17 @@ peg::parser! {
                 / enabled(parts.len()!=1 || parts[0].quoted || !["row","match","point","json_query","json_value","trim","position","weight_string","char","character","array","map","array_agg",
                     "array_map","array_filter","array_first","array_sortby","vector_distance","vector_similarity","group_concat","listagg","get_format"].iter().any(|name| parts[0].text.eq_ignore_ascii_case(name)))
                     "(" _ modifier:((kw("distinct") / kw("unique")) { Kind::Distinct } / kw("all") { Kind::All })? args:expr_list(level+1)? ")" close:position!() _
-                    window:(kw("over") value:window(level+1) { value })?
-                    { let end=window.as_ref().map_or(close,|value| value.end); (Some((modifier, args.unwrap_or_default(),window)), end) })?
+                    window:(kw("over") value:window(level+1) { value })? followed_by_over:(&kw("over") { true } / { false })
+                    { let end=window.as_ref().map_or(close,|value| value.end); (Some((modifier, args.unwrap_or_default(),window,followed_by_over)), end) })?
                 {? match tail {
                     None => {
                         let end=parts.last().unwrap().end;
                         let keyword_function=parts.len()==1 && !parts[0].quoted && keyword_function(&parts[0].text);
-                        if keyword_function { Node::call(parts,None,vec![],None,start,end) }
+                        if keyword_function { Node::call(parts,None,vec![],None,false,start,end) }
                         else { Node::column(parts,false,start,end) }
                     },
                     Some((None, end)) => Node::column(parts, true, start, end),
-                    Some((Some((modifier, arguments, window)), end)) => Node::call(parts, modifier, arguments, window, start, end),
+                    Some((Some((modifier, arguments, window, followed_by_over)), end)) => Node::call(parts, modifier, arguments, window, followed_by_over, start, end),
                 } }
             / enabled(pl) depth(level) start:position!() text:$(keyword("force") / keyword("cascade")) end:position!() _ {?
                 Node::column(vec![Name { text:text.to_owned(),quoted:false,start,end }],false,start,end)
@@ -710,7 +702,7 @@ peg::parser! {
         rule xor_expr(level: usize) -> Node = left:and_expr(level) rest:(kw("xor") right:and_expr(level) { ("xor".into(), right) })* {? chain(left, rest) }
         rule expr(level: usize) -> Node = left:xor_expr(level) rest:((kw("or") / enabled(!mode.pipes_as_concat) "||" _) right:xor_expr(level) { ("or".into(), right) })* {? chain(left, rest) }
         rule expr_list(level: usize) -> Vec<Node> = values:(expr(level) ++ ("," _)) { values }
-        rule item(level: usize) -> Node = expression:expr(level) alias:(enabled(!expression.is_wildcard()) kw("as")? value:(name:ident() { Node::name(name) } / string()) { value })? { Node::projection(expression, alias) }
+        rule item(level: usize) -> Node = expression:expr(level) alias:(enabled(!expression.is_wildcard()) (kw("as") / !implicit_alias_keyword()) value:(name:ident() { Node::name(name) } / string()) { value })? { Node::projection(expression, alias) }
         rule json_response() -> (Node,Node) = kw("error") { (Node::new(Kind::HiddenInt,vec![]),Node::new(Kind::HiddenNull,vec![])) }
             / start:position!() kw("null") { (Node::new(Kind::NullClause,vec![]).value(1).at(start,start+4),Node::new(Kind::HiddenNull,vec![])) }
             / kw("default") value:(string() / number() / bool_null()) { (Node::new(Kind::HiddenInt,vec![]).value(2),value) }
@@ -763,7 +755,7 @@ peg::parser! {
                 }
                 Node::new(Kind::UnnestTable,children).expression(start,end)
             }
-        rule relation(level: usize) -> Node = json_table(level) / table_collection(level) / unnest_table(level) / lateral:kw("lateral")? source:("(" _ query:select(level+1) ")" _ { query }
+        rule relation(level: usize) -> Node = json_table(level) / table_collection(level) / unnest_table(level) / lateral:(kw("lateral") &"(")? source:("(" _ query:select(level+1) ")" _ { query }
             / name:name() {? Node::relation(name) }) partition:use_partition()? sample:sample()? snapshot:snapshot(level)?
             alias:table_alias()?
             columns:("(" _ names:(ident() ++ ("," _)) ")" _ { names })? indexes:table_index_hint()* {?
@@ -881,7 +873,8 @@ peg::parser! {
                 children.extend(bounds.1);
                 Node::new(Kind::WindowFrame,children).value(bounds.0)
             }
-        rule window_name() -> Name = !kw("rows") name:ident() { name }
+        rule window_name() -> Name = !(kw("rows") / kw("commit") / kw("end") / kw("except")
+            / kw("intersect") / kw("lateral") / kw("minus") / kw("over") / kw("rollback") / kw("window")) name:ident() { name }
         rule window_spec(level: usize) -> Node = start:position!() "(" _ name:window_name()?
             partition:(kw("partition") kw("by") values:expr_list(level) { values })?
             order:(kw("order") kw("by") values:(order_item(level) ++ ("," _)) { values })?
