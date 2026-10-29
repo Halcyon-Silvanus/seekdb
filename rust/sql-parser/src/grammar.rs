@@ -488,12 +488,12 @@ peg::parser! {
             --
             left:(@) op:$("<<" / ">>") _ right:@ { Node::binary(op.into(),left?,right?) }
             --
-            left:(@) op:$("+" / "-") _ kw("interval") quantity:expr(level) unit:date_unit() {
+            left:(@) op:$("+" / "-") _ kw("interval") depth(level) quantity:expr(level+1) unit:date_unit() {
                 let date=left?;let (start,end)=(date.start,unit.end);
                 let function=if op=="+" { "date_add" } else { "date_sub" };
                 Node::named_call(Kind::Function,Node::new(Kind::Ident,vec![]).text(function.into()),vec![date,quantity,unit]).expression(start,end)
             }
-            start:position!() kw("interval") quantity:expr(level) unit:date_unit() "+" _ right:@ {
+            start:position!() kw("interval") depth(level) quantity:expr(level+1) unit:date_unit() "+" _ right:@ {
                 let date:Node=right?;let end=date.end;
                 Node::named_call(Kind::Function,Node::new(Kind::Ident,vec![]).text("date_add".into()),vec![date,quantity,unit]).expression(start,end)
             }
