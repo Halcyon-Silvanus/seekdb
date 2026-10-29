@@ -155,6 +155,8 @@ pub(crate) mod ffi {
         SetCollation,
         Compression,
         TableMode,
+        Engine,
+        ProgressiveMergeNum,
         StoreFormat,
         TableAutoIncrement,
         BlockSize,
@@ -415,6 +417,9 @@ pub(crate) mod ffi {
         UniqueKey,
         AutoIncrement,
         ColumnDefault,
+        ColumnSkipIndex,
+        SkipIndexMinMax,
+        SkipIndexSum,
         OnUpdate,
         ForeignKey,
         ForeignKeyDrop,
@@ -1600,6 +1605,11 @@ pub(crate) mod ffi {
         select_mode: TableSelectMode,
         has_partition: bool,
     }
+    struct ColumnSkipIndexSyntax {
+        min_max: bool,
+        sum: bool,
+    }
+
     struct ColumnDefinition<'a> {
         name: &'a Node,
         data_type: &'a Node,
@@ -1798,6 +1808,7 @@ pub(crate) mod ffi {
         fn column_attribute_expression(attribute: &Node) -> &Node;
         fn column_attribute_text(attribute: &Node) -> &str;
         fn column_srid(attribute: &Node) -> u64;
+        fn column_skip_index(attribute: &Node) -> ColumnSkipIndexSyntax;
         unsafe fn index_definition<'a>(node: &'a Node) -> IndexDefinition<'a>;
         fn index_definition_name(node: &Node) -> &Node;
         fn index_definition_table(node: &Node) -> &Node;
@@ -1822,6 +1833,7 @@ pub(crate) mod ffi {
         fn referential_action(node: &Node) -> ReferentialAction;
         fn table_option_text(node: &Node) -> &str;
         fn table_option_number(node: &Node) -> u64;
+        fn table_option_engine_name(node: &Node) -> &Node;
         fn table_option_names(node: &Node) -> &[Node];
         fn table_option_properties(node: &Node) -> &[Node];
         fn table_option_charset(node: &Node) -> &Node;
@@ -2386,7 +2398,8 @@ use crate::ddl::{
     alter_partition_names, alter_table_actions, alter_table_relation, alter_table_renamed_relation,
     check_constraint_enforced, check_constraint_expression, check_constraint_has_name,
     check_constraint_name, column_attribute_expression, column_attribute_text, column_definition,
-    column_generation_expression, column_position_name, column_srid, database_if_not_exists,
+    column_generation_expression, column_position_name, column_skip_index, column_srid,
+    database_if_not_exists,
     database_name, database_options, drop_if_exists, drop_index_name, drop_index_relation,
     drop_relations, drop_temporary, foreign_key_definition, foreign_key_index_name,
     foreign_key_name, fork_destination, fork_source, index_column_descending,
@@ -2396,7 +2409,8 @@ use crate::ddl::{
     primary_key_method, primary_key_options, referential_action, rename_actions,
     rename_destination, rename_source, table_definition, table_definition_partition,
     table_definition_query, table_like_if_not_exists, table_like_relation, table_like_source,
-    table_like_temporary, table_option_charset, table_option_names, table_option_number,
+    table_like_temporary, table_option_charset, table_option_engine_name, table_option_names,
+    table_option_number,
     table_option_organization, table_option_properties, table_option_row_format, table_option_text,
     truncate_relation,
 };

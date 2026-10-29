@@ -58,7 +58,8 @@ pub(crate) fn view_definition(node: &Node) -> ViewDefinition<'_> {
 }
 
 use crate::bridge::ffi::{
-    ColumnDefinition, ColumnGeneration, ColumnPosition, DropBehavior, ForeignKeyDefinition,
+    ColumnDefinition, ColumnGeneration, ColumnPosition, ColumnSkipIndexSyntax, DropBehavior,
+    ForeignKeyDefinition,
     IndexDefinition, IndexKind, IndexMethod, PartitionDefinition, PartitionElement, PartitionKind,
     PartitionValues, ReferenceAction, ReferenceEvent, ReferentialAction, TableDefinition,
     TableOrganization, TableRowFormat, TableSelectMode,
@@ -334,6 +335,12 @@ pub(crate) fn column_attribute_text(attribute: &Node) -> &str {
 }
 pub(crate) fn column_srid(attribute: &Node) -> u64 {
     attribute.children[0].value
+}
+pub(crate) fn column_skip_index(attribute: &Node) -> ColumnSkipIndexSyntax {
+    ColumnSkipIndexSyntax {
+        min_max: child(attribute, Kind::SkipIndexMinMax).is_some(),
+        sum: child(attribute, Kind::SkipIndexSum).is_some(),
+    }
 }
 
 pub(crate) struct Index {
@@ -612,6 +619,9 @@ pub(crate) fn table_option_text(node: &Node) -> &str {
 }
 pub(crate) fn table_option_number(node: &Node) -> u64 {
     node.children[0].value
+}
+pub(crate) fn table_option_engine_name(node: &Node) -> &Node {
+    &node.children[0]
 }
 pub(crate) fn table_option_names(node: &Node) -> &[Node] {
     &node.children

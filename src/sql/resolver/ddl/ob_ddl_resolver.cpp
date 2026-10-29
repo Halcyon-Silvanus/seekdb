@@ -727,6 +727,42 @@ int ObDDLResolver::resolve_table_option(const peg::Node &option, const bool is_i
   } else if (OB_FAIL(schema_checker_->get_database_id(database_name_, database_id))) {
   } else {
     switch (option.kind()) {
+      case peg::NodeKind::ProgressiveMergeNum: {
+        if (is_index_option) {
+          ret = OB_NOT_SUPPORTED;
+          LOG_USER_ERROR(OB_NOT_SUPPORTED, "specify progressive merge num in index option");
+        } else {
+          progressive_merge_num_ = peg::table_option_number(option);
+          if (progressive_merge_num_ < 0 || progressive_merge_num_ > MAX_PROGRESSIVE_MERGE_NUM) {
+            ret = OB_INVALID_ARGUMENT;
+            LOG_USER_ERROR(OB_INVALID_ARGUMENT, "progressive_merge_num");
+          } else if (stmt::T_ALTER_TABLE == stmt_->get_stmt_type()) {
+            OZ(alter_table_bitset_.add_member(ObAlterTableArg::PROGRESSIVE_MERGE_NUM));
+          } else if (stmt::T_CREATE_TABLE == stmt_->get_stmt_type()) {
+            const auto &schema = static_cast<ObCreateTableStmt *>(stmt_)->get_create_table_arg().schema_;
+            if (!schema.is_user_table()) {
+              ret = OB_OP_NOT_ALLOW;
+            }
+          } else {
+            ret = OB_ERR_PARSE_SQL;
+          }
+        }
+        break;
+      }
+      case peg::NodeKind::Engine: {
+        const auto &name = peg::table_option_engine_name(option);
+        const auto text = name.text();
+        const ObString engine_name(text.size(), text.data());
+        if (0 == engine_name.case_compare("InnoDB") || 0 == engine_name.case_compare("MyISAM")) {
+          LOG_USER_WARN(OB_ERR_UNKNOWN_STORAGE_ENGINE, engine_name.length(), engine_name.ptr());
+        } else {
+          ret = OB_ERR_PARSE_SQL;
+          const ObString spelling = params_.syntax_->source(name);
+          LOG_USER_ERROR(OB_ERR_PARSE_SQL, ob_errpkt_strerror(OB_ERR_PARSER_SYNTAX),
+                         spelling.length(), spelling.ptr(), 1);
+        }
+        break;
+      }
       case peg::NodeKind::BlockSize: {
         const int64_t block_size = peg::table_option_number(option);
         if (block_size < MIN_BLOCK_SIZE || block_size > MAX_BLOCK_SIZE) {
@@ -1502,6 +1538,23 @@ int ObDDLResolver::resolve_normal_column_attribute(ObColumnSchemaV2 &column,
       }
       case peg::NodeKind::Srid: {
         if (OB_FAIL(resolve_srid_node(column, attribute))) {
+        }
+        break;
+      }
+      case peg::NodeKind::ColumnSkipIndex: {
+        const auto syntax = peg::column_skip_index(attribute);
+        // Nonempty attributes validate earlier SUM state before replacing it.
+        if ((syntax.min_max || syntax.sum)
+            && (blocksstable::is_skip_index_black_list_type(column.get_data_type())
+                || (column.get_skip_index_attr().has_sum()
+                    && !blocksstable::can_agg_sum(column.get_data_type())))) {
+          ret = OB_NOT_SUPPORTED;
+          LOG_USER_ERROR(OB_NOT_SUPPORTED, "build skip index on invalid type");
+        } else {
+          ObSkipIndexColumnAttr attr;
+          if (syntax.min_max) { attr.set_min_max(); }
+          if (syntax.sum) { attr.set_sum(); }
+          column.set_skip_index_attr(attr.get_packed_value());
         }
         break;
       }

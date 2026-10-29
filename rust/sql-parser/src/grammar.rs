@@ -1140,6 +1140,12 @@ peg::parser! {
                 if value.kind==Kind::CurrentTimestamp { Ok(Node::new(Kind::OnUpdate,vec![value])) } else { Err("current timestamp") }
             }
             / kw("collate") value:collation_name() { Node { kind:Kind::Collation,..value } }
+            / kw("skip_index") "(" _ kinds:(skip_index_kind() ** ("," _)) ")" _ {
+                Node::new(Kind::ColumnSkipIndex,kinds)
+            }
+        rule skip_index_kind() -> Node
+            = kw("min_max") { Node::new(Kind::SkipIndexMinMax,vec![]) }
+            / kw("sum") { Node::new(Kind::SkipIndexSum,vec![]) }
         rule table_element() -> Node
             = check_constraint()
             / foreign_key()
@@ -1196,6 +1202,11 @@ peg::parser! {
             = kw("organization") ("=" _)? kind:(kw("index") { Kind::OrganizationIndex } / kw("heap") { Kind::OrganizationHeap }) { Node::new(Kind::Organization,vec![Node::new(kind,vec![])]) }
             / kw("default")? charset_keyword() ("=" _)? value:charset_name() { Node::new(Kind::TableCharset,vec![value]) }
             / kw("default")? kw("collate") ("=" _)? value:collation_name() { Node { kind:Kind::Collation,..value } }
+            / kw("engine") ("=" _)? value:collation_name() { Node::new(Kind::Engine,vec![value]) }
+            / kw("progressive_merge_num") ("=" _)? value:type_size() {?
+                if matches!(value.kind,Kind::Int|Kind::Uint) { Ok(Node::new(Kind::ProgressiveMergeNum,vec![value])) }
+                else { Err("integer") }
+            }
             / kind:(kw("compression") { Kind::Compression } / kw("comment") { Kind::ColumnComment }
                 / kw("table_mode") { Kind::TableMode }) ("=" _)? value:string() { Node::new(kind,vec![value]) }
             / kind:(kw("auto_increment") { Kind::TableAutoIncrement } / kw("block_size") { Kind::BlockSize }
