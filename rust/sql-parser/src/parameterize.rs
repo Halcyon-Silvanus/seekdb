@@ -444,31 +444,30 @@ impl<'a> Collector<'a> {
         let mut path = UnaryPath::new(node);
         for step in path.by_ref() {
             let Some(operator) = step.operator else { continue };
-            scope.direct_value = false;
             scope.ignore_scale = false;
             let negative = (operator == UnaryOperator::Minus)
                 .then(|| negative_operand(step.operand));
-            if !scope.excluded {
-                if let Some(NegativeOperand::DirectLiteral(operand)) = negative {
-                    let value = expression_literal(operand);
-                    if numeric(value.kind) {
-                        self.literal(operand, step.node, scope, ParameterOrigin::UnaryNegation);
-                    } else {
-                        scope.arithmetic = false;
-                        self.literal(
-                            operand,
-                            operand,
-                            scope,
-                            if value.kind == LiteralKind::String {
-                                ParameterOrigin::UnaryNegation
-                            } else {
-                                ParameterOrigin::Literal
-                            },
-                        );
-                    }
-                    return Ok(());
+            if let Some(NegativeOperand::DirectLiteral(operand)) = negative {
+                let value = expression_literal(operand);
+                if numeric(value.kind) {
+                    self.literal(operand, step.node, scope, ParameterOrigin::UnaryNegation);
+                } else {
+                    scope.direct_value = false;
+                    scope.arithmetic = false;
+                    self.literal(
+                        operand,
+                        operand,
+                        scope,
+                        if value.kind == LiteralKind::String {
+                            ParameterOrigin::UnaryNegation
+                        } else {
+                            ParameterOrigin::Literal
+                        },
+                    );
                 }
+                return Ok(());
             }
+            scope.direct_value = false;
             scope.arithmetic = false;
             if matches!(negative, Some(NegativeOperand::ParenthesizedUnsigned(_))) {
                 scope.excluded = true;
@@ -535,7 +534,7 @@ impl<'a> Collector<'a> {
                         | BinaryOperator::Divide
                 );
                 self.collect(binary_left(node), scope)?;
-                if like_has_escape(node) {
+                if op == BinaryOperator::Like && like_has_escape(node) {
                     scope.excluded = true;
                     self.ps_eligible = false;
                 }
