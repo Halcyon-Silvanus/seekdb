@@ -138,6 +138,7 @@ fn chain(first: Node, rest: Vec<(String, Node)>) -> Result<Node, &'static str> {
 enum Tail {
     Compare(String, Node),
     Like(bool, Node, Option<Node>),
+    SoundsLike(Node),
     Between(bool, Node, Node),
     In(bool, Node, usize),
     Member(Node, usize),
@@ -231,10 +232,13 @@ peg::parser! {
                 Node::named_call(Kind::StringConcat,Node::new(Kind::Ident,vec![]).text("concat".into()),args).expression(start,end)
             }
         }
-        rule bool_null() -> Node
+        rule null_literal() -> Node
             = start:position!() kw("null") {? Node::new(Kind::Null, vec![]).expression(start, start+4) }
-            / start:position!() kw("true") {? Node::new(Kind::Bool, vec![]).value(1).expression(start, start+4) }
+            / start:position!() "\\N" end:position!() _ {? Node::new(Kind::Null, vec![]).expression(start,end) }
+        rule boolean_literal() -> Node
+            = start:position!() kw("true") {? Node::new(Kind::Bool, vec![]).value(1).expression(start, start+4) }
             / start:position!() kw("false") {? Node::new(Kind::Bool, vec![]).value(0).expression(start, start+5) }
+        rule bool_null() -> Node = null_literal() / boolean_literal()
         rule temporal_literal() -> Node = start:position!() kind:(kw("date") { Kind::DateLiteral }
                 / kw("time") { Kind::TimeLiteral } / kw("timestamp") { Kind::TimestampLiteral })
             text:("'" text:$([^'\'']*) "'" { text } / "\"" text:$([^'"']*) "\"" { text }) end:position!() _ {?
@@ -269,9 +273,9 @@ peg::parser! {
         }
         rule user_variable() -> Node = start:position!() "@" !"@" name:(string()
             / start:position!() text:$((cont() / ".")+) end:position!() _ { Node::new(Kind::Ident,vec![]).text(text.into()).at(start,end) }
-            / name:ident() { Node::name(name) }) {
-            let end=name.end;
-            Node::new(Kind::UserVariable, vec![]).text(name.text).at(start,end)
+            / name:ident() { Node::name(name) })? _ {
+            let (text,end)=name.map_or_else(|| (String::new(),start+1),|name| (name.text,name.end));
+            Node::new(Kind::UserVariable, vec![]).text(text).at(start,end)
         }
         rule atom(level: usize) -> Node
             = depth(level) value:collection_expression(level+1) { value }
@@ -339,6 +343,9 @@ peg::parser! {
                 let value=Node::named_call(Kind::Function,Node::new(Kind::Ident,vec![]).text("JSON_EXTRACT".into()),vec![Node::column(names,false,start,column_end)?,path]);
                 let value=if op=="->>" { Node::named_call(Kind::Function,Node::new(Kind::Ident,vec![]).text("JSON_UNQUOTE".into()),vec![value]) } else { value };
                 value.expression(start,end)
+            }
+            / depth(level) start:position!() "." _ table:ident() "." _ column:ident() {?
+                let end=column.end;Node::column(vec![table,column],false,start,end)
             }
             / depth(level) start:position!() !(['x'|'X'] "'" hex_digit()* "'") parts:expression_name() tail:("." _ "*" end:position!() _ { (None, end) }
                 / enabled(parts.len()!=1 || parts[0].quoted || !["row","match","point","json_query","json_value","trim","position","weight_string","char","character","array","map","array_agg",
@@ -532,8 +539,9 @@ peg::parser! {
                 right:(enabled(op!="<=>") start:position!() kind:(kw("all") { Kind::All } / (kw("any") / kw("some")) { Kind::Any })
                     "(" _ query:select(level+1) ")" end:position!() _ {? Node::new(kind,vec![query]).expression(start,end) }
                     / bit_or(level)) { Tail::Compare(op.into(), right) }
+            / kw("sounds") kw("like") right:unary(level) { Tail::SoundsLike(right) }
             / kw("member") kw("of")? "(" _ value:atom(level+1) ")" end:position!() _ { Tail::Member(value,end) }
-            / kw("is") negated:kw("not")? test:(bool_null() / start:position!() kw("unknown") { Node::new(Kind::DefaultNull,vec![]).at(start,start+7) }) { Tail::Is(negated.is_some(), test) }
+            / kw("is") negated:kw("not")? test:null_literal() { Tail::Is(negated.is_some(), test) }
             / negated:kw("not")? tail:(kw("between") low:bit_or(level) kw("and") high:bit_or(level) { Tail::Between(false, low, high) }
                 / kw("like") right:bit_or(level) escape:(kw("escape") value:bit_or(level) { value })? { Tail::Like(false,right,escape) }
                 / (kw("regexp") / kw("rlike")) right:bit_or(level) { Tail::Compare("regexp".into(),right) }
@@ -545,11 +553,20 @@ peg::parser! {
                     Tail::Compare(op, right) => Tail::Compare(if negated.is_some() { "not regexp".into() } else { op },right),
                     _ => unreachable!(),
                 } }
-        rule predicate(level: usize) -> Node = left:bit_or(level) tails:tail(level)* {?
-            tails.into_iter().try_fold(left, |value, tail| {
+        rule predicate(level: usize) -> Node = left:bit_or(level) tails:tail(level)*
+            truth:(kw("is") negated:kw("not")? test:(boolean_literal()
+                / start:position!() kw("unknown") { Node::new(Kind::DefaultNull,vec![]).at(start,start+7) }) { Tail::Is(negated.is_some(),test) })? {?
+            tails.into_iter().chain(truth).try_fold(left, |value, tail| {
                 let start=value.start;
                 match tail {
                     Tail::Compare(op, right) => Node::binary(op, value, right),
+                    Tail::SoundsLike(right) => {
+                        let soundex=|value:Node| {
+                            let (start,end)=(value.start,value.end);
+                            Node::named_call(Kind::Function,Node::new(Kind::Ident,vec![]).text("soundex".into()),vec![value]).expression(start,end)
+                        };
+                        Node::binary("=".into(),soundex(value)?,soundex(right)?)
+                    },
                     Tail::Like(negated,right,escape) => {
                         let end=escape.as_ref().map_or(right.end,|value| value.end);
                         let mut children=vec![value,right];
