@@ -6798,6 +6798,7 @@ ObItemType semantic_hint_type(peg::NodeKind kind)
     case peg::NodeKind::IndexAsc: return T_INDEX_ASC_HINT;
     case peg::NodeKind::IndexDesc: return T_INDEX_DESC_HINT;
     case peg::NodeKind::IndexScan: return T_INDEX_HINT;
+    case peg::NodeKind::UnionMerge: return T_UNION_MERGE_HINT;
     case peg::NodeKind::Inline: return T_INLINE;
     case peg::NodeKind::JoinFirstUnnest: return T_JOIN_FIRST_UNNEST;
     case peg::NodeKind::Leading: return T_LEADING;
@@ -7309,6 +7310,9 @@ int ObDMLResolver::resolve_optimize_hint(const peg::Node &hint_node,
     case peg::NodeKind::IndexDesc:
       OZ(resolve_index_hint(hint_node, opt_hint));
       break;
+    case peg::NodeKind::UnionMerge:
+      OZ(resolve_union_merge_hint(hint_node, opt_hint));
+      break;
     case peg::NodeKind::UseNl:
     case peg::NodeKind::NoUseNl:
     case peg::NodeKind::UseNlMaterialization:
@@ -7417,6 +7421,28 @@ int ObDMLResolver::resolve_index_hint(const peg::Node &hint_node, ObOptHint *&op
       hint->set_qb_name(qb_name);
       opt_hint = hint;
     }
+  }
+  return ret;
+}
+
+int ObDMLResolver::resolve_union_merge_hint(const peg::Node &hint_node, ObOptHint *&opt_hint)
+{
+  int ret = OB_SUCCESS;
+  opt_hint = nullptr;
+  ObUnionMergeHint *hint = nullptr;
+  ObString qb_name;
+  OZ(ObQueryHint::create_hint(allocator_, T_UNION_MERGE_HINT, hint));
+  OZ(resolve_qb_name_node(query_block_in_hint(hint_node), qb_name));
+  OZ(resolve_table_relation_in_hint(peg::hint_tables(hint_node)[0], hint->get_table()));
+  for (const peg::Node &name : peg::hint_index_names(hint_node)) {
+    const auto text = name.text();
+    ObString index_name;
+    OZ(ob_write_string(*allocator_, ObString(text.size(), text.data()), index_name));
+    OZ(hint->get_index_name_list().push_back(index_name));
+  }
+  if (OB_SUCC(ret)) {
+    hint->set_qb_name(qb_name);
+    opt_hint = hint;
   }
   return ret;
 }

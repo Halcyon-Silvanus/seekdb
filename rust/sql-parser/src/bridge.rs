@@ -866,6 +866,7 @@ pub(crate) mod ffi {
         IndexScan,
         IndexAsc,
         IndexDesc,
+        UnionMerge,
         ApproxCountDistinct,
         ApproxCountDistinctSynopsis,
         ApproxCountDistinctSynopsisMerge,
@@ -2472,6 +2473,7 @@ pub(crate) mod ffi {
         fn hint_has_sampling_blocks(hint: &Node) -> bool;
         fn hint_sampling_blocks(hint: &Node) -> &Node;
         fn hint_index_name(hint: &Node) -> &Node;
+        fn hint_index_names(hint: &Node) -> &[Node];
         fn hint_has_index_prefix(hint: &Node) -> bool;
         fn hint_index_prefix(hint: &Node) -> &Node;
         fn hint_has_condition(hint: &Node) -> bool;
@@ -2541,7 +2543,7 @@ use crate::query::{
     explain_has_statement_id, explain_into_table, explain_statement, explain_statement_id,
     grouping_keys, grouping_with_rollup, hint_condition, hint_distribution_methods,
     hint_has_condition, hint_has_index_prefix, hint_has_query_block, hint_has_sampling_blocks,
-    hint_has_sort_method, hint_has_target, hint_index_name, hint_index_prefix, hint_leading,
+    hint_has_sort_method, hint_has_target, hint_index_name, hint_index_names, hint_index_prefix, hint_leading,
     hint_leading_group, hint_merge_direction, hint_parallel_degree, hint_parallel_policy, hint_aggregation_sort,
     hint_parameter_name, hint_parameter_value, hint_plan_cache_policy, hint_query_block,
     hint_query_block_groups, hint_query_block_names, hint_subquery_names, hint_read_consistency, hint_sampling_blocks,

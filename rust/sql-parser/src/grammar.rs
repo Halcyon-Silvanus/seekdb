@@ -1016,6 +1016,11 @@ peg::parser! {
                 / qb:hint_qb()? table:hint_relation() ("," _)? value:type_size() { Node::new(Kind::TableParallel,vec![Node::optional(qb),table,value]) }) ")" _ { value }
             / kind:(kw("full") { Kind::FullScan } / kw("use_das") { Kind::UseDas } / kw("no_use_das") { Kind::NoUseDas })
                 "(" _ qb:hint_qb()? table:hint_relation() ")" _ { Node::new(kind,vec![Node::optional(qb),table]) }
+            / kw("union_merge") "(" _ qb:hint_qb()? table:hint_relation()
+                names:(hint_name() ++ (("," _)?)) ")" _ {
+                    Node::new(Kind::UnionMerge,vec![Node::optional(qb),table,
+                        Node::list(Kind::Names,names.into_iter().map(Node::name).collect())])
+                }
             / kind:(kw("index") { Kind::IndexScan } / kw("index_asc") { Kind::IndexAsc } / kw("index_desc") { Kind::IndexDesc })
                 "(" _ qb:hint_qb()? table:hint_relation() ("," _)? index:hint_name()
                 prefix:(negative:("-" _)? value:type_size() {

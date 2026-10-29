@@ -666,6 +666,7 @@ private:
                             ObIArray<ObHint*> &hints);
   int resolve_table_parallel_hint(const peg::Node &hint_node, ObOptHint *&opt_hint);
   int resolve_index_hint(const peg::Node &hint_node, ObOptHint *&opt_hint);
+  int resolve_union_merge_hint(const peg::Node &hint_node, ObOptHint *&opt_hint);
   int resolve_index_hint(const TableItem &table, rust::Slice<const peg::Node> hints);
   int resolve_join_order_hint(const peg::Node &hint_node, ObOptHint *&opt_hint);
   int resolve_join_hint(const peg::Node &hint_node, ObIArray<ObHint*> &hints);

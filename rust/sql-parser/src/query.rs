@@ -586,6 +586,7 @@ fn query_block(hint: &Node) -> Option<&Node> {
             | Kind::IndexScan
             | Kind::IndexAsc
             | Kind::IndexDesc
+            | Kind::UnionMerge
             | Kind::UseNl
             | Kind::NoUseNl
             | Kind::UseNlMaterialization
@@ -768,6 +769,9 @@ pub(crate) fn hint_sampling_blocks(hint: &Node) -> &Node {
 }
 pub(crate) fn hint_index_name(hint: &Node) -> &Node {
     &hint.children[2]
+}
+pub(crate) fn hint_index_names(hint: &Node) -> &[Node] {
+    list(hint, Kind::Names)
 }
 pub(crate) fn hint_has_index_prefix(hint: &Node) -> bool {
     hint.children[3].kind != Kind::Missing
