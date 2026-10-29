@@ -872,6 +872,13 @@ peg::parser! {
                 / kw("list") { Kind::DistributeList }
                 / kw("basic") { Kind::DistributeBasic }
                 / kw("hash_local") { Kind::DistributeHashLocal }) { Node::new(kind,vec![]) }
+        rule window_distribution() -> Node =
+            indexes:("(" _ ids:((("+" _)? value:hint_integer() { value }) ++ (("," _)?)) ")" _ { ids })?
+            method:distribute_method()
+            flags:(kw("partition_sort") { 1 } / kw("pushdown") { 2 } / kw("wf_topn") { 4 })* {
+                let mut children=vec![method];children.extend(indexes.unwrap_or_default());
+                Node::new(Kind::WindowDistribution,children).value(flags.into_iter().fold(0,|flags,value| flags|value))
+            }
         rule hint_option() -> Node
             = kw("leading") "(" _ qb:hint_qb()? tables:hint_leading(0) ")" _ { Node::new(Kind::Leading,vec![Node::optional(qb),tables]) }
             / kind:(kw("begin_outline_data") { Kind::BeginOutline } / kw("end_outline_data") { Kind::EndOutline }) { Node::new(kind,vec![]) }
@@ -886,6 +893,11 @@ peg::parser! {
                 build:(tables:hint_join_item() target:hint_relation()? { (tables,target) })? ")" _ {
                     let (tables,target)=build.map_or((None,None),|(tables,target)| (Some(tables),target));
                     Node::new(kind,vec![Node::optional(qb),table,Node::optional(tables),Node::optional(target)])
+                }
+            / kw("pq_distribute_window") "(" _ qb:hint_qb()? ("," _)?
+                options:(window_distribution() ++ (("," _)?)) ")" _ {
+                    let mut children=vec![Node::optional(qb)];children.extend(options);
+                    Node::new(Kind::PqDistributeWindow,children)
                 }
             / kw("pq_map") "(" _ qb:hint_qb()? tables:hint_join_item() ")" _ { Node::new(Kind::PqMap,vec![Node::optional(qb),tables]) }
             / kw("pq_set") "(" _ qb:hint_qb() target:(!distribute_method() value:hint_qb_name() { value })?

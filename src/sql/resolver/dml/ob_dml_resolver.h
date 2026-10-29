@@ -670,6 +670,7 @@ private:
   int resolve_join_order_hint(const peg::Node &hint_node, ObOptHint *&opt_hint);
   int resolve_join_hint(const peg::Node &hint_node, ObIArray<ObHint*> &hints);
   int resolve_join_filter_hint(const peg::Node &hint_node, ObOptHint *&opt_hint);
+  int resolve_window_distribution_hint(const peg::Node &hint_node, ObOptHint *&opt_hint);
   int resolve_pq_map_hint(const peg::Node &hint_node, ObOptHint *&opt_hint);
   int resolve_pq_distribute_hint(const peg::Node &hint_node, ObOptHint *&opt_hint);
   int resolve_pq_set_hint(const peg::Node &hint_node, ObOptHint *&opt_hint);

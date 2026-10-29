@@ -7319,6 +7319,9 @@ int ObDMLResolver::resolve_optimize_hint(const peg::Node &hint_node,
     case peg::NodeKind::NoPartJoinFilter:
       OZ(resolve_join_filter_hint(hint_node, opt_hint));
       break;
+    case peg::NodeKind::PqDistributeWindow:
+      OZ(resolve_window_distribution_hint(hint_node, opt_hint));
+      break;
     case peg::NodeKind::PqMap:
       OZ(resolve_pq_map_hint(hint_node, opt_hint));
       break;
@@ -7492,6 +7495,62 @@ int ObDMLResolver::resolve_join_filter_hint(const peg::Node &hint_node, ObOptHin
   if (OB_SUCC(ret)) {
     hint->set_qb_name(qb_name);
     opt_hint = hint;
+  }
+  return ret;
+}
+
+int ObDMLResolver::resolve_window_distribution_hint(const peg::Node &hint_node, ObOptHint *&opt_hint)
+{
+  int ret = OB_SUCCESS;
+  opt_hint = nullptr;
+  ObSEArray<ObWindowDistHint::WinDistOption, 2> options;
+  for (const auto &option : peg::hint_window_distributions(hint_node)) {
+    if (OB_SUCC(ret)) {
+      ObWindowDistHint::WinDistOption resolved;
+      const auto flags = peg::window_distribution_options(option);
+      switch (distribution_method(peg::window_distribution_method(option))) {
+        case T_DISTRIBUTE_NONE:
+          resolved.algo_ = WinDistAlgo::WIN_DIST_NONE;
+          resolved.use_hash_sort_ = flags.partition_sort;
+          resolved.use_topn_sort_ = flags.topn;
+          break;
+        case T_DISTRIBUTE_HASH:
+        case T_DISTRIBUTE_HASH_LOCAL:
+          resolved.algo_ = peg::window_distribution_method(option) == peg::NodeKind::DistributeHash
+              ? WinDistAlgo::WIN_DIST_HASH : WinDistAlgo::WIN_DIST_HASH_LOCAL;
+          resolved.use_hash_sort_ = flags.partition_sort;
+          resolved.is_push_down_ = flags.pushdown;
+          resolved.use_topn_sort_ = flags.topn;
+          break;
+        case T_DISTRIBUTE_RANGE:
+          resolved.algo_ = WinDistAlgo::WIN_DIST_RANGE;
+          break;
+        case T_DISTRIBUTE_LIST:
+          resolved.algo_ = WinDistAlgo::WIN_DIST_LIST;
+          break;
+        default:
+          break;
+      }
+      for (const auto &index : peg::window_distribution_indexes(option)) {
+        OZ(resolved.win_func_idxs_.push_back(peg::integer_literal_value(index)));
+      }
+      if (!resolved.is_valid()) {
+        options.reuse();
+        break;
+      }
+      OZ(options.push_back(resolved));
+    }
+  }
+  if (OB_SUCC(ret) && !options.empty()) {
+    ObWindowDistHint *hint = nullptr;
+    ObString qb_name;
+    OZ(resolve_qb_name_node(query_block_in_hint(hint_node), qb_name));
+    OZ(ObQueryHint::create_hint(allocator_, T_PQ_DISTRIBUTE_WINDOW, hint));
+    OZ(hint->set_win_dist_options(options));
+    if (OB_SUCC(ret)) {
+      hint->set_qb_name(qb_name);
+      opt_hint = hint;
+    }
   }
   return ret;
 }

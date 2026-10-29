@@ -561,6 +561,8 @@ pub(crate) mod ffi {
         HashSet,
         NoHashSet,
         PqDistribute,
+        PqDistributeWindow,
+        WindowDistribution,
         JoinFilter,
         NoJoinFilter,
         PartJoinFilter,
@@ -1349,6 +1351,12 @@ pub(crate) mod ffi {
         on_error: JsonResponse,
         on_empty: JsonResponse,
         on_mismatch: JsonResponse,
+    }
+
+    struct WindowDistributionOptions {
+        partition_sort: bool,
+        pushdown: bool,
+        topn: bool,
     }
 
     enum AggregationSort {
@@ -2412,6 +2420,10 @@ pub(crate) mod ffi {
         fn hint_query_block_groups(hint: &Node) -> &[Node];
         fn hint_query_block_names(group: &Node) -> &[Node];
         fn hint_distribution_methods(hint: &Node) -> &[Node];
+        fn hint_window_distributions(hint: &Node) -> &[Node];
+        fn window_distribution_indexes(option: &Node) -> &[Node];
+        fn window_distribution_method(option: &Node) -> NodeKind;
+        fn window_distribution_options(option: &Node) -> WindowDistributionOptions;
         fn hint_has_target(hint: &Node) -> bool;
         fn hint_target(hint: &Node) -> &Node;
         fn hint_aggregation_sort(hint: &Node) -> AggregationSort;
@@ -2493,7 +2505,8 @@ fn parse_sql(sql: &[u8], mode: SqlMode, parse_mode: ffi::ParseMode) -> Box<Parse
 }
 
 use crate::query::{
-    hint_operator_ids,
+    hint_window_distributions, window_distribution_indexes,
+    window_distribution_method, window_distribution_options,
     hint_filter_table, hint_filter_left_tables, hint_filter_has_pushdown_table, hint_filter_pushdown_table,
     assignment_target, assignment_value, collection_table_expression, unnest_arguments, cte_columns, cte_name,
     cte_query, delete_targets, explain_display, explain_format, explain_has_into_table,
@@ -2506,7 +2519,7 @@ use crate::query::{
     hint_query_block_groups, hint_query_block_names, hint_read_consistency, hint_sampling_blocks,
     hint_sampling_level, hint_sort_method, hint_table_has_query_block, hint_table_query_block,
     hint_table_relation, hint_tables, hint_target, hint_timeout,
-    hint_log_level, hint_load_batch_size, hint_load_buffer_size, hint_has_load_buffer_size, hint_topk_minimum,
+    hint_operator_ids, hint_log_level, hint_load_batch_size, hint_load_buffer_size, hint_has_load_buffer_size, hint_topk_minimum,
     hint_topk_precision, identifier_is_quoted, index_hint_kind, index_hint_names,
     insert_assignments, insert_columns, insert_on_duplicate, insert_query, insert_replace,
     insert_rows, insert_source, insert_target, join_columns, join_condition, join_kind, join_left,

@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::bridge::ffi::{
-    AggregationSort, AliasForm, ExplainDisplay, ExplainFormat, IndexHintKind, InsertSource, IntoPosition,
+    WindowDistributionOptions, AggregationSort, AliasForm, ExplainDisplay, ExplainFormat, IndexHintKind, InsertSource, IntoPosition,
     JoinCondition, JoinKind, LockKind, LockWait, MergeDirection, NullPlacement, ParallelPolicy, PlanCachePolicy,
     ReadConsistency, SampleMethod, SampleScope, SetOperator, SortDirection,
 };
@@ -569,6 +569,7 @@ fn query_block(hint: &Node) -> Option<&Node> {
         Kind::QbName
             | Kind::Leading
             | Kind::PqDistribute
+            | Kind::PqDistributeWindow
             | Kind::JoinFilter
             | Kind::NoJoinFilter
             | Kind::PartJoinFilter
@@ -678,6 +679,22 @@ pub(crate) fn hint_distribution_methods(hint: &Node) -> &[Node] {
         Kind::PqDistribute if hint.children[2].kind != Kind::Missing => &hint.children[2..4],
         Kind::PqGroupBy | Kind::PqDistinct => &hint.children[1..2],
         _ => &[],
+    }
+}
+pub(crate) fn hint_window_distributions(hint: &Node) -> &[Node] {
+    &hint.children[1..]
+}
+pub(crate) fn window_distribution_indexes(option: &Node) -> &[Node] {
+    &option.children[1..]
+}
+pub(crate) fn window_distribution_method(option: &Node) -> Kind {
+    option.children[0].kind
+}
+pub(crate) fn window_distribution_options(option: &Node) -> WindowDistributionOptions {
+    WindowDistributionOptions {
+        partition_sort: option.value & 1 != 0,
+        pushdown: option.value & 2 != 0,
+        topn: option.value & 4 != 0,
     }
 }
 pub(crate) fn hint_has_target(hint: &Node) -> bool {
