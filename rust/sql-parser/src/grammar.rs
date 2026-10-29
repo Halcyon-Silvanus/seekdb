@@ -61,6 +61,7 @@ fn reserved(word: &str) -> bool {
         "desc",
         "join",
         "natural",
+        "straight_join",
         "inner",
         "left",
         "right",
@@ -644,19 +645,20 @@ peg::parser! {
                 / kw("inner") { Kind::InnerJoin })? kw("join") relation:relation(level) {
                 (kind.unwrap_or(Kind::InnerJoin),relation,Node::new(Kind::NaturalJoin,vec![]))
             }
-            / kind:((kw("left") kw("outer")?) { Kind::LeftJoin }
-            / (kw("right") kw("outer")?) { Kind::RightJoin } / (kw("full") kw("outer")?) { Kind::FullJoin }
-            / kw("inner") { Kind::InnerJoin } / kw("cross") { Kind::InnerJoin })?
-            kw("join") relation:relation(level)
+            / kind:(kw("straight_join") { Kind::StraightJoin }
+                / kind:((kw("left") kw("outer")?) { Kind::LeftJoin }
+                    / (kw("right") kw("outer")?) { Kind::RightJoin } / (kw("full") kw("outer")?) { Kind::FullJoin }
+                    / kw("inner") { Kind::InnerJoin } / kw("cross") { Kind::InnerJoin })?
+                    kw("join") { kind.unwrap_or(Kind::InnerJoin) })
+            relation:table(level+1)
             condition:(kw("on") value:expr(level) { Node::new(Kind::JoinOn,vec![value]) }
                 / kw("using") "(" _ names:(ident() ++ ("," _)) ")" _ { Node::new(Kind::ColumnList, names.into_iter().map(Node::name).collect()) })? {?
-                let kind=kind.unwrap_or(Kind::InnerJoin);
                 if matches!(kind, Kind::LeftJoin | Kind::RightJoin | Kind::FullJoin) && condition.is_none() { Err("join condition") }
                 else { Ok((kind, relation, condition.unwrap_or_else(Node::missing))) }
             }
-        rule table(level: usize) -> Node = relation:relation(level) joins:join(level)* {?
+        rule table(level: usize) -> Node = depth(level) relation:relation(level) joins:join(level)* {?
             joins.into_iter().try_fold(relation, |left, (kind, right, condition)| {
-                crate::query::joined_table(kind,left,right,condition)
+                crate::query::associate_join(kind,left,right,condition)
             })
         }
         rule order_item(level: usize) -> Node = expression:expr(level) direction:(kw("asc") { Kind::Asc } / kw("desc") { Kind::Desc })? {

@@ -2336,6 +2336,10 @@ int ObDMLResolver::resolve_joined_table_item(const peg::Node &parse_node, Joined
     case peg::JoinKind::Inner:
       cur_table->joined_type_ = INNER_JOIN;
       break;
+    case peg::JoinKind::Straight:
+      cur_table->joined_type_ = INNER_JOIN;
+      cur_table->is_straight_join_ = true;
+      break;
     default:
       /* won't be here */
       ret = OB_ERR_UNEXPECTED;

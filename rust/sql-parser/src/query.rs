@@ -497,9 +497,24 @@ pub(crate) fn joined_table(kind: Kind, left: Node, right: Node, condition: Node)
     Node::new(Kind::JoinedTable, children).expression(0, 0)
 }
 
+pub(crate) fn associate_join(kind: Kind, left: Node, mut right: Node, condition: Node) -> Result<Node, &'static str> {
+    if matches!(kind, Kind::InnerJoin | Kind::StraightJoin)
+        && condition.kind == Kind::Missing
+        && right.kind == Kind::JoinedTable
+        && !table_parenthesized(&right)
+    {
+        let right_left = std::mem::replace(&mut right.children[1], Node::missing());
+        right.children[1] = associate_join(kind, left, right_left, condition)?;
+        Node::new(Kind::JoinedTable, right.children).expression(0, 0)
+    } else {
+        joined_table(kind, left, right, condition)
+    }
+}
+
 pub(crate) fn join_kind(join: &Node) -> JoinKind {
     match join.children[0].kind {
         Kind::InnerJoin => JoinKind::Inner,
+        Kind::StraightJoin => JoinKind::Straight,
         Kind::LeftJoin => JoinKind::Left,
         Kind::RightJoin => JoinKind::Right,
         Kind::FullJoin => JoinKind::Full,

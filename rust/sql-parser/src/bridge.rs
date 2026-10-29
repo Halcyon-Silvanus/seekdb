@@ -998,6 +998,7 @@ pub(crate) mod ffi {
 
     enum JoinKind {
         Inner,
+        Straight,
         Left,
         Right,
         Full,
