@@ -1394,6 +1394,7 @@ SQL_UNITY_GROUPS = [
             "src/sql/resolver/dml/ob_insert_stmt.cpp",
             "src/sql/resolver/dml/ob_raw_expr_sets.cpp",
             "src/sql/resolver/dml/ob_select_resolver.cpp",
+            "src/sql/resolver/dml/select_into_resolver.cpp",
             "src/sql/resolver/dml/ob_select_stmt.cpp",
             "src/sql/resolver/dml/ob_sql_hint.cpp",
             "src/sql/resolver/dml/ob_stmt_expr_visitor.cpp",

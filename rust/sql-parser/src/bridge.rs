@@ -798,6 +798,32 @@ pub(crate) mod ffi {
         PlInto,
         IntoVariables,
         IntoVariableList,
+        IntoOutfile,
+        IntoDumpfile,
+        TrailingIntoOutfile,
+        TrailingIntoDumpfile,
+        OutputFilename,
+        OutputMetadata,
+        OutputCharset,
+        OutputFields,
+        OutputLines,
+        OutputFormat,
+        OutputFileOptions,
+        OutputSingle,
+        OutputMaxFileSize,
+        OutputBufferSize,
+        OutputFormatType,
+        OutputEncoding,
+        OutputSkipHeader,
+        OutputSkipBlankLines,
+        OutputTrimSpace,
+        OutputNullIf,
+        OutputEmptyFieldAsNull,
+        OutputCompression,
+        OutputBinaryFormat,
+        OutputFileExtension,
+        OutputParseHeader,
+        OutputIgnoreLastEmptyColumn,
         CreatePackage,
         CreatePackageBody,
         DropPackage,
@@ -1594,6 +1620,32 @@ pub(crate) mod ffi {
         output_end: usize,
     }
 
+    enum IntoKind { Absent, Variables, Outfile, Dumpfile }
+    struct FileOutputDefinition<'a> {
+        filename: &'a Node,
+        has_charset: bool,
+        charset: &'a str,
+        fields: &'a [Node],
+        lines: &'a [Node],
+        external_format: &'a [Node],
+        file_options: &'a [Node],
+    }
+    enum FileOptionKind { Single, MaxFileSize, BufferSize }
+    struct FileOption<'a> {
+        kind: FileOptionKind,
+        value: &'a Node,
+    }
+    enum ExternalFormatKind {
+        Type, Encoding, FieldTerminated, LineTerminated, Escaped, Enclosed, OptionallyEnclosed,
+        SkipHeader, SkipBlankLines, TrimSpace, NullIf, EmptyFieldAsNull, Compression,
+        BinaryFormat, FileExtension, ParseHeader, IgnoreLastEmptyColumn,
+    }
+    struct ExternalFormatOption<'a> {
+        kind: ExternalFormatKind,
+        value: &'a Node,
+        values: &'a [Node],
+    }
+
     enum LoadLocation { Server, Client }
     enum LoadDuplicate { Stop, Ignore, Replace }
     enum LoadFormatKind {
@@ -2350,6 +2402,10 @@ pub(crate) mod ffi {
         fn hint_load_batch_size(hint: &Node) -> u64;
         fn hint_load_buffer_size(hint: &Node) -> &str;
         fn hint_has_load_buffer_size(hint: &Node) -> bool;
+        fn query_into_kind(query: &Node) -> IntoKind;
+        unsafe fn file_output_definition<'a>(query: &'a Node) -> FileOutputDefinition<'a>;
+        unsafe fn file_option<'a>(node: &'a Node) -> FileOption<'a>;
+        unsafe fn external_format_option<'a>(node: &'a Node) -> ExternalFormatOption<'a>;
         unsafe fn load_data_definition<'a>(node: &'a Node) -> LoadDataDefinition<'a>;
         unsafe fn load_format_option<'a>(node: &'a Node) -> LoadFormatOption<'a>;
         fn hint_topk_minimum(hint: &Node) -> &Node;
@@ -2381,6 +2437,7 @@ use crate::access::{
     privilege_name,
 };
 use crate::load_data::{load_data_definition, load_format_option};
+use crate::select_into::{query_into_kind, file_output_definition, file_option, external_format_option};
 use crate::defaults::{default_expression, default_literal, default_arguments, DefaultArguments};
 use crate::fts::{parse_search_query, SearchNode, SearchTree};
 use crate::inspect::inspect_expression;

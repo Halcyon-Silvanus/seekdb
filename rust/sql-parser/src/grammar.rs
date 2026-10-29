@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::{access, ddl, load_data, lex::decode_string as decode, node::*, SqlMode};
+use crate::{access, ddl, load_data, select_into, lex::decode_string as decode, node::*, SqlMode};
 use std::borrow::Cow;
 
 const WEIGHT_STRING_PAD_WITH_SPACE: u64 = 0x40;
@@ -1040,7 +1040,7 @@ peg::parser! {
             rest:((kind:set_operator() right:query_term(level) { (kind,right) })*)
             order:(kw("order") kw("by") values:(order_item(level) ++ ("," _)) { values })?
             approximate:((kw("approx") / kw("approximate")) { Node::new(Kind::Approximate,vec![]) })?
-            limit:limit()? parameters:(enabled(approximate.is_some()) value:vector_parameters() { value })? lock:lock()? into:select_into()? {?
+            limit:limit()? parameters:(enabled(approximate.is_some()) value:vector_parameters() { value })? lock:lock()? into:select_into(level)? {?
                 let value=rest.into_iter().try_fold(first,|left,(kind,right)| left.combine(kind,right))?;
                 let mut value=value.finish(order.unwrap_or_default(),limit,lock,into,approximate,parameters)?;
                 value.with=with.or(value.with);Ok(value)
@@ -1057,9 +1057,48 @@ peg::parser! {
         rule query_term(level: usize) -> Select
             = "(" _ value:query_expression(level+1) ")" _ { Select { parenthesized:true,..value } }
             / select_query(level) / values_query(level)
-        rule select_into() -> Node = start:position!() kw("into") variables:((user_variable() / name:ident() { Node::name(name) }) ++ ("," _)) end:position!() {
-            Node::new(Kind::IntoVariables,vec![Node::new(Kind::IntoVariableList,variables)]).at(start,end)
-        }
+        rule select_into(level: usize) -> Node = start:position!() kw("into") value:(
+                kw("outfile") filename:load_string() options:output_options(level) {
+                    options.into_node(Kind::IntoOutfile,filename)
+                }
+                / kw("dumpfile") filename:load_string() {
+                    select_into::FileOutput::default().into_node(Kind::IntoDumpfile,filename)
+                }
+                / !kw("outfile") variables:((user_variable() / name:ident() { Node::name(name) }) ++ ("," _)) {
+                    Node::new(Kind::IntoVariables,vec![Node::new(Kind::IntoVariableList,variables)])
+                }) end:position!() { value.at(start,end) }
+        rule output_options(level: usize) -> select_into::FileOutput
+            = kw("format") ("=" _)? "(" _ values:(output_format_option(level) ++ (("," _)?)) ")" _ file_options:output_file_option()* {
+                select_into::FileOutput { external_format:values,file_options,..Default::default() }
+            }
+            / charset:((kw("character") kw("set") / kw("charset")) value:(load_string()
+                    / !kw("default") name:ident() { Node::name(name) }) { value })?
+                fields:((kw("fields") / kw("columns")) values:load_field_option()+ { values })?
+                lines:(kw("lines") values:load_line_option()+ { values })? file_options:output_file_option()* {
+                    select_into::FileOutput { charset,fields:fields.unwrap_or_default(),lines:lines.unwrap_or_default(),file_options,..Default::default() }
+                }
+        rule output_bool() -> Node = value:bool_null() {? if value.kind==Kind::Bool { Ok(value) } else { Err("boolean file option") } }
+        rule output_file_option() -> Node
+            = kw("single") ("=" _)? value:output_bool() { Node::new(Kind::OutputSingle,vec![value]) }
+            / kind:(kw("max_file_size") { Kind::OutputMaxFileSize } / kw("buffer_size") { Kind::OutputBufferSize })
+                ("=" _)? value:(load_integer() / load_string()) { Node::new(kind,vec![value]) }
+        rule output_format_option(level: usize) -> Node
+            = kind:(kw("type") { Kind::OutputFormatType } / kw("encoding") { Kind::OutputEncoding }
+                    / kw("file_extension") { Kind::OutputFileExtension }) "=" _ value:load_string() { Node::new(kind,vec![value]) }
+            / kind:(kw("field_delimiter") { Kind::LoadFieldTerminated } / kw("line_delimiter") { Kind::LoadLineTerminated }
+                    / kw("escape") { Kind::LoadEscaped } / kw("field_optionally_enclosed_by") { Kind::LoadOptionallyEnclosed }
+                    / kw("field_enclosed_by") { Kind::LoadEnclosed }) "=" _ depth(level) start:position!() value:expr(level+1) end:position!() {
+                        Node::new(kind,vec![value]).at(start,end)
+                    }
+            / kw("skip_header") "=" _ value:load_integer() { Node::new(Kind::OutputSkipHeader,vec![value]) }
+            / kind:(kw("skip_blank_lines") { Kind::OutputSkipBlankLines } / kw("trim_space") { Kind::OutputTrimSpace }
+                    / kw("empty_field_as_null") { Kind::OutputEmptyFieldAsNull } / kw("parse_header") { Kind::OutputParseHeader }
+                    / kw("ignore_last_empty_column") { Kind::OutputIgnoreLastEmptyColumn }) "=" _ value:output_bool() { Node::new(kind,vec![value]) }
+            / kw("null_if") "=" _ "(" _ depth(level) start:position!() values:(expr(level+1) ++ ("," _)) end:position!() ")" _ {
+                Node::new(Kind::OutputNullIf,vec![Node::new(Kind::ValueList,values)]).at(start,end)
+            }
+            / kind:(kw("compression") { Kind::OutputCompression } / kw("binary_format") { Kind::OutputBinaryFormat })
+                "=" _ value:(load_string() / name:ident() { Node::name(name) }) { Node::new(kind,vec![value]) }
         rule select_option() -> Node
             = kind:((kw("distinct") / kw("distinctrow") / kw("unique")) { Kind::Distinct } / kw("all") { Kind::All }
                 / kw("sql_calc_found_rows") { Kind::FoundRows } / kw("straight_join") { Kind::StraightJoin }) { Node::new(kind,vec![]) }
@@ -1072,7 +1111,7 @@ peg::parser! {
                 }) ++ ("," _)) rollup:(kw("with") kw("rollup") { Node::new(Kind::Rollup,vec![]) })? {
                     let mut children=vec![Node::new(Kind::SortList,keys)];children.extend(rollup);Node::new(Kind::GroupBy,children)
                 }
-        rule select_query(level: usize) -> Select = depth(level) keyword("select") hints:hint_slot() options:select_option()* projection:(item(level) ++ ("," _)) into:select_into()?
+        rule select_query(level: usize) -> Select = depth(level) keyword("select") hints:hint_slot() options:select_option()* projection:(item(level) ++ ("," _)) into:select_into(level)?
             from:(kw("from") tables:(kw("dual") { vec![] } / tables:(table(level) ++ ("," _)) { tables }) { tables })?
             filter:(kw("where") value:expr(level) { value })?
             group_by:group_by(level)?

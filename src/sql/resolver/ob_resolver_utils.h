@@ -682,7 +682,8 @@ public:
 
   static common::ObString get_stmt_type_string(stmt::StmtType stmt_type);
 
-  static int get_select_into_variables(const peg::Node &query,
+  static int get_select_into_clause(const peg::Node &query,
+                                        peg::IntoKind &kind,
                                         rust::Slice<const peg::Node> &variables,
                                         bool top_level);
   static int check_duplicated_column(ObSelectStmt &select_stmt, bool can_skip = false);

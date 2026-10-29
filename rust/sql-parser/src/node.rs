@@ -885,7 +885,12 @@ impl Node {
         }
         if let Some(into) = query.into_end {
             children.push(Self {
-                kind: Kind::TrailingIntoVariables,
+                kind: match into.kind {
+                    Kind::IntoVariables => Kind::TrailingIntoVariables,
+                    Kind::IntoOutfile => Kind::TrailingIntoOutfile,
+                    Kind::IntoDumpfile => Kind::TrailingIntoDumpfile,
+                    _ => unreachable!(),
+                },
                 ..into
             });
         }

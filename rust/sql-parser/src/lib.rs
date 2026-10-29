@@ -19,6 +19,7 @@ mod prefix;
 mod bridge;
 mod command;
 mod load_data;
+mod select_into;
 mod ddl;
 mod defaults;
 mod embedded_sql;
@@ -62,6 +63,7 @@ pub use bridge::ffi::{
     DropBehavior, TableOrganization, TableRowFormat, TableDefinition, ColumnDefinition,
     IndexDefinition, PartitionDefinition, PartitionElement, ForeignKeyDefinition, ReferentialAction,
     LoadDataDefinition, LoadDuplicate, LoadLocation, LoadFormatKind, LoadFormatOption,
+    IntoKind, FileOutputDefinition, FileOptionKind, FileOption, ExternalFormatKind, ExternalFormatOption,
     ShowFilter, LiteralReference, StatisticsScope, StatisticsSizeKind, StatisticsColumnKind,
 };
 pub use node::Node;

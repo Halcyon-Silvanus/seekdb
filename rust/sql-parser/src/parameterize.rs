@@ -28,6 +28,7 @@ use crate::inspect::syntax_literals;
 use crate::node::{Kind, Node};
 use crate::numeric::{negative_operand, negative_unsigned_kind, NegativeOperand, UnaryPath};
 use crate::query::*;
+use crate::select_into::{query_into_kind, file_output_definition, output_metadata};
 use crate::routine::routine_call_arguments;
 
 type Result<T> = std::result::Result<T, ParameterError>;
@@ -254,6 +255,13 @@ impl<'a> Collector<'a> {
                 }
             }
             _ => {}
+        }
+        if matches!(query_into_kind(node), IntoKind::Outfile | IntoKind::Dumpfile) {
+            self.collect(file_output_definition(node).filename, scope)?;
+            if let Some(metadata) = output_metadata(node) {
+                self.exclude(metadata);
+            }
+            self.ps_eligible = false;
         }
         for source in query_sources(node) {
             self.table(source, scope)?;

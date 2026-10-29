@@ -1872,6 +1872,10 @@ int bind_embedded_sql(const ParsedSql &parsed, const peg::Node &origin, const Ob
   auto rewritten = peg::rewrite_embedded_sql(*parsed.statement(), text,
       rust::Slice<const peg::SqlSymbolBinding>(symbols.data(), symbols.size()), origin);
   CK (rewritten.parameters_match);
+  if (OB_SUCC(ret) && parsed.statement()->kind() == peg::NodeKind::CreateView
+      && !rewritten.bindings.empty()) {
+    ret = OB_ERR_VIEW_SELECT_CONTAIN_QUESTIONMARK;
+  }
   OZ (ob_write_string(allocator, ObString(rewritten.sql.size(), rewritten.sql.data()), sql));
   for (const auto &binding : rewritten.bindings) {
     OZ (bindings.push_back(&binding.node));
@@ -5886,12 +5890,13 @@ int ObSPIService::resolve_into_params(const peg::Node &statement,
                                       ObSPIPrepareResult &prepare_result)
 {
   int ret = OB_SUCCESS;
+  peg::IntoKind kind = peg::IntoKind::Absent;
   rust::Slice<const peg::Node> variables;
   if (statement.kind() == peg::NodeKind::CreateView) {
-    OZ (ObResolverUtils::get_select_into_variables(peg::view_definition(statement).query, variables, true));
-    if (OB_SUCC(ret) && !variables.empty()) { ret = OB_ERR_VIEW_SELECT_CONTAIN_INTO; }
+    OZ (ObResolverUtils::get_select_into_clause(peg::view_definition(statement).query, kind, variables, true));
+    if (OB_SUCC(ret) && kind != peg::IntoKind::Absent) { ret = OB_ERR_VIEW_SELECT_CONTAIN_INTO; }
   } else {
-    OZ (ObResolverUtils::get_select_into_variables(statement, variables, true));
+    OZ (ObResolverUtils::get_select_into_clause(statement, kind, variables, true));
     for (const auto &variable : variables) {
       if (OB_FAIL(ret)) { break; }
       ObRawExpr *expr = nullptr;

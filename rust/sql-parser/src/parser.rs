@@ -123,6 +123,13 @@ pub fn parse(sql: &[u8], mode: SqlMode, parse_mode: ParseMode) -> Result<Parsed,
             expanded_sql,
         });
     }
+    if root.kind == Kind::CreateView && parameters != 0 && parse_mode != ParseMode::PlSql {
+        return Err(ParseFailure {
+            message: "CREATE VIEW does not accept parameter markers".into(),
+            offset: root.start,
+            expanded_sql,
+        });
+    }
     let named_parameters = parameter_names.iter().any(|name| !name.as_bytes()[1].is_ascii_digit());
     Ok(Parsed { root, expanded_sql, parameters, parameter_names, named_parameters })
 }

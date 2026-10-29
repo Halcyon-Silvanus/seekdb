@@ -5646,21 +5646,26 @@ ObString ObResolverUtils::get_stmt_type_string(stmt::StmtType stmt_type)
           stmt_type_string[stmt::get_stmt_type_idx(stmt_type)] : ObString::make_empty_string());
 }
 
-int ObResolverUtils::get_select_into_variables(const peg::Node &query,
+int ObResolverUtils::get_select_into_clause(const peg::Node &query,
+                                                peg::IntoKind &kind,
                                                 rust::Slice<const peg::Node> &variables,
                                                 bool top_level)
 {
   int ret = OB_SUCCESS;
+  kind = peg::IntoKind::Absent;
   if (query.kind() == peg::NodeKind::Select) {
     const auto operands = peg::query_set_operands(query);
     if (operands.empty()) {
+      kind = peg::query_into_kind(query);
       variables = peg::query_into_variables(query);
     } else {
       for (size_t i = 0; OB_SUCC(ret) && i < operands.size(); ++i) {
+        peg::IntoKind child_kind = peg::IntoKind::Absent;
         rust::Slice<const peg::Node> child_variables;
-        OZ (SMART_CALL(get_select_into_variables(operands[i], child_variables, false)));
-        if (OB_SUCC(ret) && !child_variables.empty()) {
+        OZ (SMART_CALL(get_select_into_clause(operands[i], child_kind, child_variables, false)));
+        if (OB_SUCC(ret) && child_kind != peg::IntoKind::Absent) {
           if (top_level && i + 1 == operands.size()) {
+            kind = child_kind;
             variables = child_variables;
           } else {
             ret = OB_ERR_SET_USAGE;

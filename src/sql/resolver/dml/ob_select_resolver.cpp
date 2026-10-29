@@ -251,7 +251,7 @@ int ObSelectResolver::do_resolve_set_query_in_recursive_cte(const peg::Node &par
   }
 
   if (OB_FAIL(ret)) {
-  } else if (OB_FAIL(resolve_into_clause(peg::query_into_variables(parse_tree)))) {
+  } else if (OB_FAIL(resolve_into_clause(parse_tree))) {
   } else if (OB_FAIL(resolve_order_clause(peg::query_order(parse_tree)))) {
   } else if (OB_FAIL(resolve_limit_clause((peg::query_has_limit(parse_tree) ? &peg::query_limit(parse_tree) : nullptr)))) {
 
@@ -295,7 +295,7 @@ int ObSelectResolver::do_resolve_set_query_in_normal(const peg::Node &parse_tree
   if (OB_ISNULL(select_stmt) || OB_ISNULL(session_info_)) {
     ret = OB_ERR_UNEXPECTED;
   } else if (OB_FAIL(set_stmt_set_type(select_stmt, peg::query_set_operator(parse_tree)))) {
-  } else if (OB_FAIL(resolve_into_clause(peg::query_into_variables(parse_tree)))) {
+  } else if (OB_FAIL(resolve_into_clause(parse_tree))) {
   } else if (OB_FAIL(resolve_with_clause(parse_tree))) {
   } else {
     const int64_t num_child = operands.size();
@@ -856,7 +856,7 @@ int ObSelectResolver::resolve_normal_query(const peg::Node &parse_tree)
   OZ( resolve_approx_clause(peg::query_approximate(parse_tree)));
   OZ( resolve_limit_clause((peg::query_has_limit(parse_tree) ? &peg::query_limit(parse_tree) : nullptr)) );
   OZ( resolve_vector_index_params(peg::query_vector_parameters(parse_tree)));
-  OZ( resolve_into_clause(peg::query_into_variables(parse_tree)) );
+  OZ( resolve_into_clause(parse_tree) );
   OZ( resolve_for_update_clause((peg::query_has_lock(parse_tree) ? &peg::query_lock(parse_tree) : nullptr)) );
 
   if (OB_SUCC(ret)) {
@@ -2497,10 +2497,11 @@ int ObSelectResolver::resolve_named_windows_clause(rust::Slice<const peg::Node> 
   return ret;
 }
 
-int ObSelectResolver::resolve_into_clause(rust::Slice<const peg::Node> variables)
+int ObSelectResolver::resolve_into_clause(const peg::Node &query)
 {
   int ret = OB_SUCCESS;
-  if (!variables.empty()) {
+  const auto kind = peg::query_into_kind(query);
+  if (kind != peg::IntoKind::Absent) {
     current_scope_ = T_INTO_SCOPE;
     ObSelectIntoItem *into_item = NULL;
     ObSelectStmt *select_stmt = get_select_stmt();
@@ -2519,8 +2520,14 @@ int ObSelectResolver::resolve_into_clause(rust::Slice<const peg::Node> variables
       ret = OB_ERR_VIEW_SELECT_CONTAIN_INTO;
     } else {
       new(into_item) ObSelectIntoItem();
-      into_item->into_type_ = T_INTO_VARIABLES;
-      OZ(resolve_into_variables(variables, into_item->user_vars_, into_item->pl_vars_, select_stmt));
+      if (kind == peg::IntoKind::Variables) {
+        into_item->into_type_ = T_INTO_VARIABLES;
+        OZ(resolve_into_variables(peg::query_into_variables(query),
+            into_item->user_vars_, into_item->pl_vars_, select_stmt));
+      } else {
+        into_item->into_type_ = kind == peg::IntoKind::Outfile ? T_INTO_OUTFILE : T_INTO_DUMPFILE;
+        OZ(resolve_file_output(peg::file_output_definition(query), *into_item));
+      }
       if (OB_SUCC(ret)) {
         select_stmt->set_select_into(into_item);
       }
@@ -3802,7 +3809,7 @@ int ObSelectResolver::try_resolve_values_table_from_union(const peg::Node &parse
   } else if (!is_valid) {
     /* do nothing */
   } else {
-    if (OB_FAIL(resolve_into_clause(peg::query_into_variables(parse_node)))) {
+    if (OB_FAIL(resolve_into_clause(parse_node))) {
     } else if (OB_FAIL(resolve_with_clause(parse_node))) {
     } else if (OB_FAIL(resolve_values_table_from_union(leaf_nodes, table_def))) {
     } else if (OB_FAIL(ObResolverUtils::create_values_table_query(session_info_, allocator_,
@@ -3873,7 +3880,7 @@ int ObSelectResolver::check_union_leaf_to_values_table_valid(const peg::Node &pa
   is_valid = peg::query_sources(parse_node).empty()
       && peg::query_ctes(parse_node).empty() && peg::query_windows(parse_node).empty()
       && peg::query_order(parse_node).empty() && peg::query_hints(parse_node).empty()
-      && peg::query_into_variables(parse_node).empty()
+      && peg::query_into_kind(parse_node) == peg::IntoKind::Absent
       && peg::query_vector_parameters(parse_node).empty()
       && !peg::query_has_filter(parse_node) && !peg::query_has_grouping(parse_node)
       && !peg::query_has_having(parse_node) && !peg::query_has_limit(parse_node)

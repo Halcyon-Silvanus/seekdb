@@ -231,19 +231,21 @@ pub(crate) fn query_set_operator(query: &Node) -> SetOperator {
 pub(crate) fn query_set_operands(query: &Node) -> &[Node] {
     set(query).map_or(&[], |set| set.children.as_slice())
 }
-fn into(query: &Node) -> Option<&Node> {
+pub(crate) fn into(query: &Node) -> Option<&Node> {
     query.children.iter().find(|child| {
         matches!(
             child.kind,
             Kind::IntoVariables | Kind::TrailingIntoVariables
+                | Kind::IntoOutfile | Kind::TrailingIntoOutfile
+                | Kind::IntoDumpfile | Kind::TrailingIntoDumpfile
         )
     })
 }
 pub(crate) fn query_into_position(query: &Node) -> IntoPosition {
     match into(query).map(|into| into.kind) {
         None => IntoPosition::Absent,
-        Some(Kind::IntoVariables) => IntoPosition::AfterProjection,
-        Some(Kind::TrailingIntoVariables) => IntoPosition::AfterQuery,
+        Some(Kind::IntoVariables | Kind::IntoOutfile | Kind::IntoDumpfile) => IntoPosition::AfterProjection,
+        Some(Kind::TrailingIntoVariables | Kind::TrailingIntoOutfile | Kind::TrailingIntoDumpfile) => IntoPosition::AfterQuery,
         _ => unreachable!(),
     }
 }

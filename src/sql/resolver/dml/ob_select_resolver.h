@@ -29,6 +29,8 @@ namespace oceanbase
 {
 namespace sql
 {
+struct ObExternalFileFormat;
+
 // Provide an interface class for parsing various subqueries, including where subqueries, union subqueries, view subqueries, generated table subqueries
 // The purpose of this is to hide some details of subquery parsing, without passing the entire dml resolver structure to the subquery parsing function
 // Avoid seeing too many properties during the call, reduce coupling
@@ -151,7 +153,7 @@ protected:
   int check_recursive_cte_usage(const ObSelectStmt &select_stmt);
 
   //resolve select into
-  int resolve_into_clause(rust::Slice<const peg::Node> variables);
+  int resolve_into_clause(const peg::Node &query);
   // resolve_star related functions
   int resolve_star_for_table_groups();
   int find_joined_table_group_for_table(const uint64_t table_id, int64_t &jt_idx);
@@ -215,6 +217,15 @@ protected:
   int check_set_child_stmt_pullup(const ObSelectStmt &child_stmt, bool &enable_pullup);
   int check_set_child_into_pullup(ObSelectStmt &select_stmt, ObSelectStmt &child_stmt, bool is_first_child);
 private:
+  int resolve_file_output(const peg::FileOutputDefinition &output, ObSelectIntoItem &into_item);
+  int resolve_output_literal(const peg::Node &node, common::ObObj &value);
+  int resolve_output_fields(rust::Slice<const peg::Node> fields, ObSelectIntoItem &into_item);
+  int resolve_output_file_options(rust::Slice<const peg::Node> options, ObSelectIntoItem &into_item);
+  int resolve_output_format(rust::Slice<const peg::Node> options, ObSelectIntoItem &into_item);
+  int resolve_output_format_option(const peg::Node &node, ObExternalFileFormat &format);
+  int resolve_output_format_string(const peg::Node &node, common::ObCharsetType charset,
+                                   common::ObString &value);
+
   int get_refindex_from_named_windows(const peg::Node &reference,
                                       rust::Slice<const peg::Node> windows,
                                       int64_t& ref_idx);
