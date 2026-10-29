@@ -3006,7 +3006,8 @@ int ObPLResolver::resolve_signal(const peg::Node *node, ObPLSignalStmt *stmt, Ob
     OZ (stmt->get_item_to_expr_idx().set_refactored(item_type, func.get_expr_count() - 1));
     if (ret == OB_HASH_EXIST) {
       ret = OB_ERR_DUP_SIGNAL_SET;
-      LOG_USER_ERROR(OB_ERR_DUP_SIGNAL_SET, name.ptr());
+      ObCStringHelper item_name;
+      LOG_USER_ERROR(OB_ERR_DUP_SIGNAL_SET, item_name.convert(name));
     }
   }
   return ret;
