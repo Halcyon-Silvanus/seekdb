@@ -268,9 +268,9 @@ peg::parser! {
         rule enabled(value: bool) = {? if value { Ok(()) } else { Err("SQL mode") } }
         rule reserved_word() = text:$(word()) {? if reserved(text) { Ok(()) } else { Err("reserved keyword") } }
         rule ident() -> Name
-            = start:position!() text:$("`" ("``" / !"`" [_])+ "`") end:position!() _
+            = start:position!() text:$("`" ("``" / !"`" [_])* "`") end:position!() _
                 { Name { text: text[1..text.len()-1].replace("``", "`"), quoted: true, start, end } }
-            / enabled(mode.ansi_quotes) start:position!() text:$("\"" ("\"\"" / !"\"" [_])+ "\"") end:position!() _
+            / enabled(mode.ansi_quotes) start:position!() text:$("\"" ("\"\"" / !"\"" [_])* "\"") end:position!() _
                 { Name { text: text[1..text.len()-1].replace("\"\"", "\""), quoted: true, start, end } }
             / !reserved_word() start:position!() text:$(word()) end:position!() _
                 { Name { text: text.to_owned(), quoted: false, start, end } }
