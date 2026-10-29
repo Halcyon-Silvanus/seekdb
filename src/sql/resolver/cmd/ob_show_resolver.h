@@ -76,7 +76,7 @@ private:
       uint64_t &database_id, ObString &name, uint64_t &id, ObString &table_name);
   int parse_and_resolve_select_sql(const ObString &sql);
   int resolve_like_or_where_clause(ObShowResolverContext &context);
-  int process_select_type(ObSelectStmt *select, stmt::StmtType type);
+  int process_select_type(ObSelectStmt *select, stmt::StmtType type, bool count);
   int resolve_column_ref_expr(const ObQualifiedName &name, ObRawExpr *&expression) override;
   int check_db_access_for_show_sql(const ObShowResolverContext &context,
       ObSessionPrivInfo &privilege, const ObIArray<uint64_t> &roles);

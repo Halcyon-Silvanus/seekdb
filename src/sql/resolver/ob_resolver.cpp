@@ -394,6 +394,26 @@ int ObResolver::resolve(const peg::Node &statement, ObStmt *&stmt)
         params_.resolver_scope_stmt_type_ = T_SHOW_WARNINGS;
         ret = stmt_resolver_func<ObShowResolver>(params_, statement, stmt);
         break;
+      case peg::NodeKind::ShowEngines:
+        params_.resolver_scope_stmt_type_ = T_SHOW_ENGINES;
+        ret = stmt_resolver_func<ObShowResolver>(params_, statement, stmt);
+        break;
+      case peg::NodeKind::ShowEngine:
+        params_.resolver_scope_stmt_type_ = T_SHOW_ENGINE;
+        ret = stmt_resolver_func<ObShowResolver>(params_, statement, stmt);
+        break;
+      case peg::NodeKind::ShowOpenTables:
+        params_.resolver_scope_stmt_type_ = T_SHOW_OPEN_TABLES;
+        ret = stmt_resolver_func<ObShowResolver>(params_, statement, stmt);
+        break;
+      case peg::NodeKind::ShowPrivileges:
+        params_.resolver_scope_stmt_type_ = T_SHOW_PRIVILEGES;
+        ret = stmt_resolver_func<ObShowResolver>(params_, statement, stmt);
+        break;
+      case peg::NodeKind::ShowRecyclebin:
+        params_.resolver_scope_stmt_type_ = T_SHOW_RECYCLEBIN;
+        ret = stmt_resolver_func<ObShowResolver>(params_, statement, stmt);
+        break;
       case peg::NodeKind::ShowErrors:
         params_.resolver_scope_stmt_type_ = T_SHOW_ERRORS;
         ret = stmt_resolver_func<ObShowResolver>(params_, statement, stmt);

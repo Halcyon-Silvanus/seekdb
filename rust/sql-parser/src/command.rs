@@ -160,6 +160,9 @@ pub(crate) fn show_full(statement: &Node) -> bool {
 pub(crate) fn show_database_status(statement: &Node) -> bool {
     statement.value != 0
 }
+pub(crate) fn show_count(statement: &Node) -> bool {
+    matches!(statement.kind, Kind::ShowWarnings | Kind::ShowErrors) && statement.value != 0
+}
 pub(crate) fn show_extended(statement: &Node) -> bool {
     statement.kind == Kind::ShowIndexes && statement.children[3].value != 0
 }

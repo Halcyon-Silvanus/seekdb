@@ -504,6 +504,11 @@ pub(crate) mod ffi {
         ShowFunctionStatus,
         ShowTriggers,
         ShowProfile,
+        ShowEngines,
+        ShowEngine,
+        ShowOpenTables,
+        ShowPrivileges,
+        ShowRecyclebin,
         CheckTable,
         ShowColumns,
         ShowVariables,
@@ -1983,6 +1988,7 @@ pub(crate) mod ffi {
         fn package_replace(node: &Node) -> bool;
         fn show_full(statement: &Node) -> bool;
         fn show_database_status(statement: &Node) -> bool;
+        fn show_count(statement: &Node) -> bool;
         fn show_extended(statement: &Node) -> bool;
         fn show_global(statement: &Node) -> bool;
         fn show_if_not_exists(statement: &Node) -> bool;
@@ -2669,7 +2675,7 @@ use crate::ddl::{
 };
 
 use crate::command::{
-    show_account_has_host, show_account_host, show_account_name, show_database, show_database_status, show_extended,
+    show_account_has_host, show_account_host, show_account_name, show_database, show_database_status, show_count, show_extended,
     show_filter, show_filter_expression, show_full, show_global, show_has_account,
     show_has_database, show_has_limit, show_if_not_exists, show_like_escape, show_like_pattern,
     show_limit_count, show_limit_offset, show_object, check_tables,

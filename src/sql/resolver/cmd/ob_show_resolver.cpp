@@ -424,7 +424,13 @@ int ObShowResolver::resolve(const peg::Node &statement)
     case peg::NodeKind::ShowWarnings:
     case peg::NodeKind::ShowErrors:
       show_resv_ctx.stmt_type_ = statement.kind() == peg::NodeKind::ShowWarnings ? stmt::T_SHOW_WARNINGS : stmt::T_SHOW_ERRORS;
-      if (statement.kind() == peg::NodeKind::ShowWarnings) {
+      if (peg::show_count(statement) && statement.kind() == peg::NodeKind::ShowWarnings) {
+        GEN_SQL_STEP_1(ObShowSqlSet::SHOW_COUNT_WARNINGS);
+        GEN_SQL_STEP_2(ObShowSqlSet::SHOW_COUNT_WARNINGS, OB_SYS_DATABASE_NAME, OB_ALL_VIRTUAL_WARNING_TNAME);
+      } else if (peg::show_count(statement)) {
+        GEN_SQL_STEP_1(ObShowSqlSet::SHOW_COUNT_ERRORS);
+        GEN_SQL_STEP_2(ObShowSqlSet::SHOW_COUNT_ERRORS, OB_SYS_DATABASE_NAME, OB_ALL_VIRTUAL_WARNING_TNAME);
+      } else if (statement.kind() == peg::NodeKind::ShowWarnings) {
         GEN_SQL_STEP_1(ObShowSqlSet::SHOW_WARNINGS);
         GEN_SQL_STEP_2(ObShowSqlSet::SHOW_WARNINGS, OB_SYS_DATABASE_NAME, OB_ALL_VIRTUAL_WARNING_TNAME);
       } else {
@@ -442,6 +448,31 @@ int ObShowResolver::resolve(const peg::Node &statement)
       GEN_SQL_STEP_1(ObShowSqlSet::SHOW_PARAMETERS_WITH_DEFAULT_VALUE);
       GEN_SQL_STEP_2(ObShowSqlSet::SHOW_PARAMETERS_WITH_DEFAULT_VALUE, OB_SYS_DATABASE_NAME, OB_ALL_VIRTUAL_PARAMETER_STAT_TNAME);
       break;
+    case peg::NodeKind::ShowEngines:
+      show_resv_ctx.stmt_type_ = stmt::T_SHOW_ENGINES;
+      GEN_SQL_STEP_1(ObShowSqlSet::SHOW_ENGINES);
+      GEN_SQL_STEP_2(ObShowSqlSet::SHOW_ENGINES, OB_INFORMATION_SCHEMA_NAME, OB_ENGINES_TNAME);
+      break;
+    case peg::NodeKind::ShowEngine:
+      show_resv_ctx.stmt_type_ = stmt::T_SHOW_ENGINE;
+      GEN_SQL_STEP_1(ObShowSqlSet::SHOW_ENGINE);
+      GEN_SQL_STEP_2(ObShowSqlSet::SHOW_ENGINE);
+      break;
+    case peg::NodeKind::ShowOpenTables:
+      show_resv_ctx.stmt_type_ = stmt::T_SHOW_OPEN_TABLES;
+      GEN_SQL_STEP_1(ObShowSqlSet::SHOW_OPEN_TABLES);
+      GEN_SQL_STEP_2(ObShowSqlSet::SHOW_OPEN_TABLES);
+      break;
+    case peg::NodeKind::ShowPrivileges:
+      show_resv_ctx.stmt_type_ = stmt::T_SHOW_PRIVILEGES;
+      GEN_SQL_STEP_1(ObShowSqlSet::SHOW_PRIVILEGES);
+      GEN_SQL_STEP_2(ObShowSqlSet::SHOW_PRIVILEGES, OB_SYS_DATABASE_NAME, OB_ALL_VIRTUAL_PRIVILEGE_TNAME);
+      break;
+    case peg::NodeKind::ShowRecyclebin:
+      show_resv_ctx.stmt_type_ = stmt::T_SHOW_RECYCLEBIN;
+      GEN_SQL_STEP_1(ObShowSqlSet::SHOW_RECYCLEBIN);
+      GEN_SQL_STEP_2(ObShowSqlSet::SHOW_RECYCLEBIN, OB_SYS_DATABASE_NAME, OB_ALL_RECYCLEBIN_TNAME);
+      break;
     default: ret = OB_NOT_IMPLEMENT; break;
   }
   OZ(parse_and_resolve_select_sql(select_sql));
@@ -451,7 +482,7 @@ int ObShowResolver::resolve(const peg::Node &statement)
     CK(OB_NOT_NULL(select));
     OX(select->set_is_from_show_stmt(true));
     if (OB_SUCC(ret) && select->get_query_ctx() != nullptr) select->get_query_ctx()->set_literal_stmt_type(show_resv_ctx.stmt_type_);
-    OZ(process_select_type(select, show_resv_ctx.stmt_type_));
+    OZ(process_select_type(select, show_resv_ctx.stmt_type_, peg::show_count(statement)));
     OZ(select->formalize_stmt(session_info_));
   }
   return ret;
@@ -614,7 +645,7 @@ int ObShowResolver::get_database_info(const peg::Node *database, const ObString 
   return ret;
 }
 
-int ObShowResolver::process_select_type(ObSelectStmt *select, stmt::StmtType type)
+int ObShowResolver::process_select_type(ObSelectStmt *select, stmt::StmtType type, bool count)
 {
   switch (type) {
     case stmt::T_SHOW_CREATE_TABLE:
@@ -623,7 +654,7 @@ int ObShowResolver::process_select_type(ObSelectStmt *select, stmt::StmtType typ
     case stmt::T_SHOW_ERRORS:
     case stmt::T_SHOW_GRANTS:
     case stmt::T_SHOW_PROCESSLIST:
-    case stmt::T_SHOW_WARNINGS: select->set_select_type(NOT_AFFECT_FOUND_ROWS); break;
+    case stmt::T_SHOW_WARNINGS: select->set_select_type(count ? AFFECT_FOUND_ROWS : NOT_AFFECT_FOUND_ROWS); break;
     default: select->set_select_type(AFFECT_FOUND_ROWS); break;
   }
   return OB_SUCCESS;
