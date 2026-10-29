@@ -207,6 +207,8 @@ public:
 
 
   int resolve_using_columns(rust::Slice<const peg::Node> columns, common::ObIArray<common::ObString> &column_names);
+  int resolve_natural_join_columns(const JoinedTable &joined_table);
+  int collect_table_column_names(const TableItem &table_item, common::ObIArray<common::ObString> &column_names);
   int transfer_using_to_on_expr(JoinedTable *&joined_table);
   int resolve_table_column_expr(const ObQualifiedName &q_name, ObRawExpr *&real_ref_expr);
   int resolve_join_table_column_item(const JoinedTable &joined_table,

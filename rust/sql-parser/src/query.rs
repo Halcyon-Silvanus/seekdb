@@ -489,6 +489,14 @@ pub(crate) fn index_hint_kind(hint: &Node) -> IndexHintKind {
 pub(crate) fn index_hint_names(hint: &Node) -> &[Node] {
     list(hint, Kind::Names)
 }
+pub(crate) fn joined_table(kind: Kind, left: Node, right: Node, condition: Node) -> Result<Node, &'static str> {
+    let mut children = vec![Node::new(kind, vec![]), left, right];
+    if condition.kind != Kind::Missing {
+        children.push(condition);
+    }
+    Node::new(Kind::JoinedTable, children).expression(0, 0)
+}
+
 pub(crate) fn join_kind(join: &Node) -> JoinKind {
     match join.children[0].kind {
         Kind::InnerJoin => JoinKind::Inner,
@@ -509,6 +517,8 @@ pub(crate) fn join_condition(join: &Node) -> JoinCondition {
         JoinCondition::On
     } else if child(join, Kind::ColumnList).is_some() {
         JoinCondition::Using
+    } else if child(join, Kind::NaturalJoin).is_some() {
+        JoinCondition::Natural
     } else {
         JoinCondition::None
     }

@@ -101,6 +101,7 @@ pub(crate) mod ffi {
         Lateral,
         ParenthesizedTable,
         JoinOn,
+        NaturalJoin,
         HintQbGroups,
         VectorParameter,
         CallName,
@@ -1004,6 +1005,7 @@ pub(crate) mod ffi {
         None,
         On,
         Using,
+        Natural,
     }
 
     enum SampleMethod {

@@ -1955,6 +1955,10 @@ int ObDMLResolver::resolve_joined_table(const peg::Node &parse_node, JoinedTable
   }
   if (OB_FAIL(ret)) {
     // do noting;
+  } else if (peg::join_condition(parse_node) == peg::JoinCondition::Natural) {
+    if (OB_FAIL(resolve_natural_join_columns(*joined_table))) {
+    } else if (OB_FAIL(transfer_using_to_on_expr(joined_table))) {
+    }
   } else if (peg::join_condition(parse_node) != peg::JoinCondition::None) {
     if (peg::join_condition(parse_node) == peg::JoinCondition::Using) {
       ResolverJoinInfo *join_info = NULL;
@@ -1997,6 +2001,82 @@ int ObDMLResolver::resolve_using_columns(rust::Slice<const peg::Node> columns, O
         }
       }
     }
+  }
+  return ret;
+}
+
+int ObDMLResolver::resolve_natural_join_columns(const JoinedTable &joined_table)
+{
+  int ret = OB_SUCCESS;
+  ObSEArray<ObString, 8> left_columns;
+  ObSEArray<ObString, 8> right_columns;
+  ResolverJoinInfo *join_info = nullptr;
+  if (OB_ISNULL(joined_table.left_table_) || OB_ISNULL(joined_table.right_table_)
+      || !get_joininfo_by_id(joined_table.table_id_, join_info)) {
+    ret = OB_ERR_UNEXPECTED;
+  } else if (OB_FAIL(collect_table_column_names(*joined_table.left_table_, left_columns))) {
+  } else if (OB_FAIL(collect_table_column_names(*joined_table.right_table_, right_columns))) {
+  } else {
+    for (int64_t i = 0; OB_SUCC(ret) && i < left_columns.count(); ++i) {
+      const ObString &column = left_columns.at(i);
+      bool common = false;
+      for (int64_t j = 0; !common && j < right_columns.count(); ++j) {
+        common = ObCharset::case_insensitive_equal(column, right_columns.at(j));
+      }
+      bool added = false;
+      for (int64_t j = 0; common && !added && j < join_info->using_columns_.count(); ++j) {
+        added = ObCharset::case_insensitive_equal(column, join_info->using_columns_.at(j));
+      }
+      if (common && !added) {
+        OZ(join_info->using_columns_.push_back(column));
+      }
+    }
+  }
+  return ret;
+}
+
+int ObDMLResolver::collect_table_column_names(const TableItem &table_item, ObIArray<ObString> &column_names)
+{
+  int ret = OB_SUCCESS;
+  if (table_item.is_joined_table()) {
+    const auto &joined_table = static_cast<const JoinedTable &>(table_item);
+    if (OB_ISNULL(joined_table.left_table_) || OB_ISNULL(joined_table.right_table_)) {
+      ret = OB_ERR_UNEXPECTED;
+    } else {
+      OZ(SMART_CALL(collect_table_column_names(*joined_table.left_table_, column_names)));
+      OZ(SMART_CALL(collect_table_column_names(*joined_table.right_table_, column_names)));
+    }
+  } else if (table_item.is_generated_table() || table_item.is_temp_table()) {
+    const ObSelectStmt *query = table_item.ref_query_;
+    if (OB_ISNULL(query)) {
+      ret = OB_ERR_UNEXPECTED;
+    } else {
+      for (int64_t i = 0; OB_SUCC(ret) && i < query->get_select_item_size(); ++i) {
+        OZ(column_names.push_back(query->get_select_item(i).alias_name_));
+      }
+    }
+  } else if (table_item.is_function_table()) {
+    OZ(ObResolverUtils::get_all_function_table_column_names(table_item, params_, column_names));
+  } else if (table_item.is_basic_table() || table_item.is_fake_cte_table()) {
+    const ObTableSchema *schema = nullptr;
+    if (OB_ISNULL(schema_checker_)) {
+      ret = OB_NOT_INIT;
+    } else if (OB_FAIL(schema_checker_->get_table_schema(table_item.ref_id_, schema))) {
+    } else if (OB_ISNULL(schema)) {
+      ret = OB_ERR_UNEXPECTED;
+    } else {
+      for (int64_t i = 0; OB_SUCC(ret) && i < schema->get_column_count(); ++i) {
+        const ObColumnSchemaV2 *column = schema->get_column_schema_by_idx(i);
+        if (OB_ISNULL(column)) {
+          ret = OB_ERR_UNEXPECTED;
+        } else if (!column->is_hidden()) {
+          OZ(column_names.push_back(column->get_column_name_str()));
+        }
+      }
+    }
+  } else {
+    ret = OB_NOT_SUPPORTED;
+    LOG_USER_ERROR(OB_NOT_SUPPORTED, "current table item");
   }
   return ret;
 }
@@ -6397,9 +6477,6 @@ int ObDMLResolver::add_cte_table_to_children(ObChildStmtResolver& child_resolver
   }
   return ret;
 }
-
-// For natural join, put all columns that are the same on both sides of a joined table into the using_columns_ array.
-
 
 int ObDMLResolver::resolve_pseudo_column(
     const ObQualifiedName &q_name,

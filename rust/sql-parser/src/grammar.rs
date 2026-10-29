@@ -60,6 +60,7 @@ fn reserved(word: &str) -> bool {
         "asc",
         "desc",
         "join",
+        "natural",
         "inner",
         "left",
         "right",
@@ -605,8 +606,12 @@ peg::parser! {
                 if lateral.is_some() { table.children.push(Node::new(Kind::Lateral,vec![])); }
                 Ok(table)
             }
-            / depth(level) "(" _ value:table(level+1) ")" _ {
-                let mut value=value;value.children.push(Node::new(Kind::ParenthesizedTable,vec![]));value
+            / depth(level) "(" _ first:table(level+1) rest:("," _ value:table(level+1) { value })* ")" _ {?
+                let mut value=rest.into_iter().try_fold(first, |left,right| {
+                    crate::query::joined_table(Kind::InnerJoin,left,right,Node::missing())
+                })?;
+                value.children.push(Node::new(Kind::ParenthesizedTable,vec![]));
+                Ok(value)
             }
         rule snapshot(level: usize) -> Node = kw("as") kw("of") kw("snapshot") value:expr(level) {
             Node::new(Kind::Snapshot,vec![value,Node::new(Kind::Ident,vec![])])
@@ -629,7 +634,13 @@ peg::parser! {
                 if names.is_empty() && kind!=Kind::Use { Err("index name") }
                 else { Ok(Node::new(Kind::TableIndexHint,vec![Node::new(kind,vec![]),Node::list(Kind::Names,names)])) }
             }
-        rule join(level: usize) -> (Kind, Node, Node) = kind:((kw("left") kw("outer")?) { Kind::LeftJoin }
+        rule join(level: usize) -> (Kind, Node, Node)
+            = kw("natural") kind:((kw("left") kw("outer")?) { Kind::LeftJoin }
+                / (kw("right") kw("outer")?) { Kind::RightJoin } / (kw("full") kw("outer")?) { Kind::FullJoin }
+                / kw("inner") { Kind::InnerJoin })? kw("join") relation:relation(level) {
+                (kind.unwrap_or(Kind::InnerJoin),relation,Node::new(Kind::NaturalJoin,vec![]))
+            }
+            / kind:((kw("left") kw("outer")?) { Kind::LeftJoin }
             / (kw("right") kw("outer")?) { Kind::RightJoin } / (kw("full") kw("outer")?) { Kind::FullJoin }
             / kw("inner") { Kind::InnerJoin } / kw("cross") { Kind::InnerJoin })?
             kw("join") relation:relation(level)
@@ -641,9 +652,7 @@ peg::parser! {
             }
         rule table(level: usize) -> Node = relation:relation(level) joins:join(level)* {?
             joins.into_iter().try_fold(relation, |left, (kind, right, condition)| {
-                let mut children=vec![Node::new(kind,vec![]),left,right];
-                if condition.kind!=Kind::Missing { children.push(condition); }
-                Node::new(Kind::JoinedTable,children).expression(0,0)
+                crate::query::joined_table(kind,left,right,condition)
             })
         }
         rule order_item(level: usize) -> Node = expression:expr(level) direction:(kw("asc") { Kind::Asc } / kw("desc") { Kind::Desc })? {
