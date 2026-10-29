@@ -679,6 +679,7 @@ private:
   int resolve_or_expand_hint(const peg::Node &hint_node, ObTransHint *&result);
   int resolve_materialize_hint(const peg::Node &hint_node, ObTransHint *&result);
   int resolve_coalesce_sq_hint(const peg::Node &hint_node, ObTransHint *&result);
+  int resolve_count_to_exists_hint(const peg::Node &hint_node, ObTransHint *&result);
   int resolve_semi_to_inner_hint(const peg::Node &hint_node, ObTransHint *&result);
   int resolve_left_to_anti_hint(const peg::Node &hint_node, ObTransHint *&result);
   int resolve_eliminate_join_hint(const peg::Node &hint_node, ObTransHint *&result);

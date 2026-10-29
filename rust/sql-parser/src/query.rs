@@ -609,6 +609,8 @@ fn query_block(hint: &Node) -> Option<&Node> {
             | Kind::NoWindowMagic
             | Kind::Materialize
             | Kind::CoalesceSubqueries
+            | Kind::CountToExists
+            | Kind::NoCountToExists
     ) || hint.children.len() == 1
     {
         hint.children
@@ -672,6 +674,9 @@ pub(crate) fn hint_query_block_groups(hint: &Node) -> &[Node] {
 }
 pub(crate) fn hint_query_block_names(group: &Node) -> &[Node] {
     &group.children
+}
+pub(crate) fn hint_subquery_names(hint: &Node) -> &[Node] {
+    list(hint, Kind::HintQbNames)
 }
 pub(crate) fn hint_distribution_methods(hint: &Node) -> &[Node] {
     match hint.kind {

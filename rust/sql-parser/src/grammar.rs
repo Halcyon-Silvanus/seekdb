@@ -1013,6 +1013,12 @@ peg::parser! {
                     let (qb,tables)=args.unwrap_or_default();
                     Node::new(kind,vec![Node::optional(qb),Node::list(Kind::JoinHintTables,tables.unwrap_or_default())])
                 }
+            / kind:(kw("count_to_exists") { Kind::CountToExists } / kw("no_count_to_exists") { Kind::NoCountToExists })
+                args:("(" _ qb:hint_qb()? names:(enabled(kind==Kind::CountToExists)
+                    names:(hint_qb_name() ++ (("," _)?)) { names })? ")" _ { (qb,names) })? !"(" {
+                    let (qb,names)=args.unwrap_or_default();
+                    Node::new(kind,vec![Node::optional(qb),Node::list(Kind::HintQbNames,names.unwrap_or_default())])
+                }
             / kind:(kw("materialize") { Kind::Materialize } / kw("coalesce_sq") { Kind::CoalesceSubqueries })
                 args:("(" _ qb:hint_qb()? groups:hint_qb_names()* ")" _ { (qb,groups) })? {
                     let (qb,groups)=args.unwrap_or_default();

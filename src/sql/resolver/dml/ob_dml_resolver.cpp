@@ -6784,6 +6784,8 @@ ObItemType semantic_hint_type(peg::NodeKind kind)
   switch (kind) {
     case peg::NodeKind::AggrFirstUnnest: return T_AGGR_FIRST_UNNEST;
     case peg::NodeKind::CoalesceSubqueries: return T_COALESCE_SQ;
+    case peg::NodeKind::CountToExists: return T_COUNT_TO_EXISTS;
+    case peg::NodeKind::NoCountToExists: return T_NO_COUNT_TO_EXISTS;
     case peg::NodeKind::Decorrelate: return T_DECORRELATE;
     case peg::NodeKind::DistinctPushdown: return T_DISTINCT_PUSHDOWN;
     case peg::NodeKind::EliminateJoin: return T_ELIMINATE_JOIN;
@@ -7213,6 +7215,10 @@ int ObDMLResolver::resolve_transform_hint(const peg::Node &hint_node,
     case peg::NodeKind::CoalesceSubqueries:
     case peg::NodeKind::NoCoalesceSubqueries:
       OZ(resolve_coalesce_sq_hint(hint_node, trans_hint));
+      break;
+    case peg::NodeKind::CountToExists:
+    case peg::NodeKind::NoCountToExists:
+      OZ(resolve_count_to_exists_hint(hint_node, trans_hint));
       break;
     case peg::NodeKind::LeftToAnti:
     case peg::NodeKind::NoLeftToAnti:
@@ -7761,6 +7767,22 @@ int ObDMLResolver::resolve_coalesce_sq_hint(const peg::Node &hint_node, ObTransH
   OZ(ObQueryHint::create_hint(allocator_, semantic_hint_type(hint_node.kind()), hint));
   OZ(resolve_qb_name_node(query_block_in_hint(hint_node), qb_name));
   OZ(resolve_multi_qb_name_list(peg::hint_query_block_groups(hint_node), hint->get_qb_name_list()));
+  if (OB_SUCC(ret)) {
+    hint->set_qb_name(qb_name);
+    result = hint;
+  }
+  return ret;
+}
+
+int ObDMLResolver::resolve_count_to_exists_hint(const peg::Node &hint_node, ObTransHint *&result)
+{
+  int ret = OB_SUCCESS;
+  result = nullptr;
+  ObCountToExistsHint *hint = nullptr;
+  ObString qb_name;
+  OZ(ObQueryHint::create_hint(allocator_, semantic_hint_type(hint_node.kind()), hint));
+  OZ(resolve_qb_name_node(query_block_in_hint(hint_node), qb_name));
+  OZ(resolve_qb_name_list(peg::hint_subquery_names(hint_node), hint->get_qb_names()));
   if (OB_SUCC(ret)) {
     hint->set_qb_name(qb_name);
     result = hint;

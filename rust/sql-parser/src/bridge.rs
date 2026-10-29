@@ -622,6 +622,8 @@ pub(crate) mod ffi {
         NoProjectPrune,
         SemiToInner,
         NoSemiToInner,
+        CountToExists,
+        NoCountToExists,
         EliminateJoin,
         NoEliminateJoin,
         LeftToAnti,
@@ -2441,6 +2443,7 @@ pub(crate) mod ffi {
         fn hint_leading_group(group: &Node) -> &[Node];
         fn hint_query_block_groups(hint: &Node) -> &[Node];
         fn hint_query_block_names(group: &Node) -> &[Node];
+        fn hint_subquery_names(hint: &Node) -> &[Node];
         fn hint_distribution_methods(hint: &Node) -> &[Node];
         fn hint_window_distributions(hint: &Node) -> &[Node];
         fn window_distribution_indexes(option: &Node) -> &[Node];
@@ -2541,7 +2544,7 @@ use crate::query::{
     hint_has_sort_method, hint_has_target, hint_index_name, hint_index_prefix, hint_leading,
     hint_leading_group, hint_merge_direction, hint_parallel_degree, hint_parallel_policy, hint_aggregation_sort,
     hint_parameter_name, hint_parameter_value, hint_plan_cache_policy, hint_query_block,
-    hint_query_block_groups, hint_query_block_names, hint_read_consistency, hint_sampling_blocks,
+    hint_query_block_groups, hint_query_block_names, hint_subquery_names, hint_read_consistency, hint_sampling_blocks,
     hint_sampling_level, hint_sort_method, hint_table_has_query_block, hint_table_query_block,
     hint_table_relation, hint_tables, hint_target, hint_timeout,
     hint_operator_ids, hint_log_level, hint_load_batch_size, hint_load_buffer_size, hint_has_load_buffer_size, hint_topk_minimum,
