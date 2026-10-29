@@ -134,6 +134,27 @@ fn reserved(word: &str) -> bool {
     .any(|keyword| word.eq_ignore_ascii_case(keyword))
 }
 
+fn reserved_in_routine(word: &str) -> bool {
+    [
+        "alter", "analyze", "before", "bigint", "binary", "binlog", "blob", "cache", "call",
+        "change", "char", "character", "charset", "checksum", "collate", "condition", "continue",
+        "current_user", "cursor", "deallocate", "dec", "decimal", "declare", "describe",
+        "deterministic", "do", "double", "each", "elseif", "errors", "execute", "exit", "explain",
+        "fetch", "float", "float4", "float8", "flush", "get", "grant", "if", "inout", "int",
+        "int1", "int2", "int3", "int4", "int8", "integer", "iterate", "kill", "leave", "load",
+        "logs", "long", "longblob", "longtext", "loop", "master", "mediumblob", "mediumint",
+        "mediumtext", "middleint", "modifies", "numeric", "optimize", "out", "precision",
+        "prepare", "privileges", "procedure", "query", "read", "reads", "real", "release",
+        "rename", "repeat", "reset", "resignal", "return", "revoke", "savepoint", "show", "signal",
+        "slave", "smallint", "sql", "sqlexception", "sqlstate", "sqlwarning", "start", "stop",
+        "tables", "temporary", "tinyblob", "tinyint", "tinytext", "trigger", "truncate",
+        "unsigned", "until", "varbinary", "varchar", "varcharacter", "varying", "view", "warnings",
+        "while", "zerofill",
+    ]
+    .iter()
+    .any(|keyword| word.eq_ignore_ascii_case(keyword))
+}
+
 fn chain(first: Node, rest: Vec<(String, Node)>) -> Result<Node, &'static str> {
     rest.into_iter()
         .try_fold(first, |left, (op, right)| Node::binary(op, left, right))
@@ -2052,8 +2073,11 @@ peg::parser! {
                 children.extend(exists);
                 Node::new(Kind::Revoke,children)
             }
+        rule routine_reserved_word() = text:$(word()) {?
+            if reserved_in_routine(text) { Ok(()) } else { Err("routine keyword") }
+        }
         rule pl_ident() -> Name
-            = ident()
+            = !routine_reserved_word() value:(ident()
             / &reserved_word() !(kw("select") / kw("from") / kw("by") / kw("limit") / kw("desc")
                 / kw("on") / kw("using") / kw("index") / kw("or") / kw("not") / kw("in") / kw("is")
                 / kw("null") / kw("exists") / kw("insert") / kw("replace") / kw("update") / kw("delete")
@@ -2061,7 +2085,7 @@ peg::parser! {
                 / kw("database") / kw("unique") / kw("commit") / kw("rollback") / kw("case")
                 / kw("when") / kw("then") / kw("else") / kw("for") / kw("lock") / kw("with"))
                 start:position!() text:$(word()) end:position!() _
-                { Name { text: text.to_owned(), quoted: false, start, end } }
+                { Name { text: text.to_owned(), quoted: false, start, end } }) { value }
         rule package_routine() -> Node = start:position!() function:(kw("procedure") { false } / kw("function") { true }) name:pl_ident() params:routine_parameters(false,true)
             result:(enabled(function) kw("return") value:routine_data_type() { value })? end:position!() {?
                 if function && result.is_none() { return Err("function return type"); }
