@@ -1252,7 +1252,7 @@ peg::parser! {
                 if ignore.is_some() { children.push(Node::new(Kind::Ignore,vec![])); }
                 Node::new(Kind::Delete,children)
             }
-        rule transaction_access() -> Node
+        rule read_access() -> Node
             = start:position!() kw("read") kind:(kw("only") { Kind::ReadOnly } / kw("write") { Kind::ReadWrite }) end:position!() {
                 Node::new(kind,vec![]).at(start,end)
             }
@@ -1261,10 +1261,10 @@ peg::parser! {
                 Node::new(Kind::ConsistentSnapshot,vec![]).at(start,end)
             }
         rule transaction_options() -> Vec<Node>
-            = snapshot:consistent_snapshot() access:("," _ value:transaction_access() { value })? {
+            = snapshot:consistent_snapshot() access:("," _ value:read_access() { value })? {
                 let mut options=vec![snapshot]; options.extend(access); options
             }
-            / access:transaction_access() snapshot:("," _ value:consistent_snapshot() { value })? {
+            / access:read_access() snapshot:("," _ value:consistent_snapshot() { value })? {
                 let mut options=vec![access]; options.extend(snapshot); options
             }
         rule transaction() -> Node
@@ -1491,6 +1491,7 @@ peg::parser! {
             / kw("default")? charset_keyword() ("=" _)? value:charset_name() { Node::new(Kind::TableCharset,vec![value]) }
             / kw("default")? kw("collate") ("=" _)? value:collation_name() { Node { kind:Kind::Collation,..value } }
             / parallel_option()
+            / read_access()
             / kw("engine") ("=" _)? value:collation_name() { Node::new(Kind::Engine,vec![value]) }
             / kw("progressive_merge_num") ("=" _)? value:type_size() {?
                 if matches!(value.kind,Kind::Int|Kind::Uint) { Ok(Node::new(Kind::ProgressiveMergeNum,vec![value])) }
@@ -1510,7 +1511,7 @@ peg::parser! {
         rule database_option() -> Node
             = kw("default")? charset_keyword() ("=" _)? !kw("default") value:charset_name() { Node { kind:Kind::Charset,..value } }
             / kw("default")? kw("collate") ("=" _)? value:collation_name() { Node { kind:Kind::Collation,..value } }
-            / kw("read") kind:(kw("only") { Kind::ReadOnly } / kw("write") { Kind::ReadWrite }) { Node::new(kind,vec![]) }
+            / read_access()
         rule index_method() -> Node = kw("using") value:(kw("btree") { Node::missing() } / kw("hash") { Node::new(Kind::UsingHash,vec![]) }) { value }
         rule index_column(fulltext: bool) -> Node = value:(name:ident() prefix:("(" _ value:type_size() ")" _ { value })? { (Node::name(name),Node::optional(prefix)) }
                 / "(" _ start:position!() value:expr(0) end:position!() ")" _ { (value.at(start,end),Node::missing()) })
@@ -1818,11 +1819,11 @@ peg::parser! {
             Node::new(Kind::HiddenInt,vec![]).value(value)
         }
         rule transaction_characteristics() -> Node
-            = access:transaction_access() isolation:("," _ value:isolation_level() { value })? {
+            = access:read_access() isolation:("," _ value:isolation_level() { value })? {
                 let access=if access.kind==Kind::ReadOnly { 2 } else { 4 };
                 Node::new(Kind::TransactionCharacteristics,vec![Node::new(Kind::HiddenInt,vec![]).value(access),Node::optional(isolation)])
             }
-            / isolation:isolation_level() access:("," _ value:transaction_access() { value })? {
+            / isolation:isolation_level() access:("," _ value:read_access() { value })? {
                 let access=access.map(|node| Node::new(Kind::HiddenInt,vec![]).value(if node.kind==Kind::ReadOnly { 2 } else { 4 }));
                 Node::new(Kind::TransactionCharacteristics,vec![Node::optional(access),isolation])
             }

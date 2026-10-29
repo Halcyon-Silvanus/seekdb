@@ -1106,6 +1106,14 @@ int ObDDLResolver::resolve_table_option(const peg::Node &option, const bool is_i
         }
         break;
       }
+      case peg::NodeKind::ReadOnly:
+      case peg::NodeKind::ReadWrite: {
+        read_only_ = option.kind() == peg::NodeKind::ReadOnly;
+        if (stmt::T_ALTER_TABLE == stmt_->get_stmt_type()) {
+          OZ(alter_table_bitset_.add_member(ObAlterTableArg::READ_ONLY));
+        }
+        break;
+      }
       case peg::NodeKind::TableAutoIncrement: {
         if (is_index_option) {
           ret = OB_NOT_SUPPORTED;
