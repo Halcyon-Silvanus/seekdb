@@ -1500,9 +1500,11 @@ peg::parser! {
                     constraint, index_name:index.map(Node::name),
                 }.into_node())
             }
+        rule check_state() -> Kind
+            = kw("not") kw("enforced") { Kind::NotEnforced } / kw("enforced") { Kind::Enforced }
         rule check_constraint() -> Node = name:constraint_name()?
             kw("check") "(" _ start:position!() value:expr(0) end:position!() ")" _
-            state:(kw("not") kw("enforced") { Kind::NotEnforced } / kw("enforced") { Kind::Enforced })? {
+            state:check_state()? {
                 Node::new(Kind::CheckConstraint,vec![Node::optional(name),value.at(start,end),Node::new(state.unwrap_or(Kind::Enforced),vec![])]).value(1)
             }
         rule column_definition() -> Node
@@ -1722,6 +1724,10 @@ peg::parser! {
             = alter_partition()
             / kw("add") value:check_constraint() { value }
             / kw("drop") kw("check") name:ident() { Node::new(Kind::CheckConstraintDrop,vec![Node::name(name)]) }
+            / keyword("alter") hint_slot() check_only:(kw("check") { true } / kw("constraint") { false })
+                name:ident() state:check_state() {
+                Node::new(Kind::AlterCheckConstraint,vec![Node::name(name),Node::new(state,vec![])]).value(u64::from(check_only))
+            }
             / value:(kw("add") value:foreign_key() { value }
                 / kw("drop") kw("foreign") kw("key") name:ident() { Node::new(Kind::ForeignKeyDrop,vec![Node::name(name)]) }) {
                 value

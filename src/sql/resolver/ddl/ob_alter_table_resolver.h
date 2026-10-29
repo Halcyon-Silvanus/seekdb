@@ -144,6 +144,7 @@ private:
                          const share::schema::ObSubPartition &subpartition);
   int resolve_add_constraint(const peg::Node &node);
   int resolve_drop_constraint(const peg::Node &node);
+  int resolve_constraint_state(const peg::Node &node);
   int resolve_stored_partition_function(const share::schema::ObTableSchema &table_schema,
                            const bool is_sub_part,
                            common::ObIArray<ObRawExpr *> &expressions,

@@ -755,6 +755,12 @@ pub(crate) fn alter_column_drop_behavior(node: &Node) -> DropBehavior {
 pub(crate) fn alter_constraint_name(node: &Node) -> &Node {
     &node.children[0]
 }
+pub(crate) fn alter_constraint_check_only(node: &Node) -> bool {
+    node.value != 0
+}
+pub(crate) fn alter_constraint_enforced(node: &Node) -> bool {
+    node.children[1].kind == Kind::Enforced
+}
 pub(crate) fn alter_partition_names(node: &Node) -> &[Node] {
     &node.children[0].children
 }

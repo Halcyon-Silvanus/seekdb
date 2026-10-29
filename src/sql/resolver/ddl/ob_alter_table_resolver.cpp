@@ -459,6 +459,11 @@ int ObAlterTableResolver::resolve_action_list(rust::Slice<const peg::Node> actio
             }
             break;
           }
+        case peg::NodeKind::AlterCheckConstraint: {
+            alter_table_stmt->set_alter_table_index();
+            OZ(resolve_constraint_state(*action_node));
+            break;
+          }
         case peg::NodeKind::ForeignKey:
         case peg::NodeKind::ForeignKeyDrop: {
             alter_table_stmt->set_alter_table_index();
@@ -1498,6 +1503,67 @@ int ObAlterTableResolver::resolve_drop_constraint(const peg::Node &node)
       }
     } else {
       OZ(statement->get_alter_table_arg().alter_table_schema_.add_constraint(constraint));
+    }
+  }
+  return ret;
+}
+
+int ObAlterTableResolver::resolve_constraint_state(const peg::Node &node)
+{
+  int ret = OB_SUCCESS;
+  ObAlterTableStmt *statement = get_alter_table_stmt();
+  const auto name_text = peg::alter_constraint_name(node).text();
+  ObString name(name_text.size(), name_text.data());
+  const bool check_only = peg::alter_constraint_check_only(node);
+  const bool enforced = peg::alter_constraint_enforced(node);
+  ObConstraint constraint;
+  auto iter = table_schema_->constraint_begin();
+  for (; OB_SUCC(ret) && iter != table_schema_->constraint_end(); ++iter) {
+    if (0 == name.case_compare((*iter)->get_constraint_name_str())) {
+      OZ(constraint.assign(**iter));
+      break;
+    }
+  }
+  if (OB_SUCC(ret) && !check_only) {
+    uint64_t foreign_key_id = OB_INVALID_ID;
+    ObSchemaGetterGuard *schema_guard = schema_checker_->get_schema_guard();
+    OZ(schema_guard->get_foreign_key_id(table_schema_->get_database_id(), name, foreign_key_id));
+    if (OB_SUCC(ret) && foreign_key_id != OB_INVALID_ID) {
+      uint64_t constraint_id = OB_INVALID_ID;
+      OZ(schema_guard->get_constraint_id(table_schema_->get_database_id(), name, constraint_id));
+      if (OB_FAIL(ret)) {
+      } else if (constraint_id != OB_INVALID_ID) {
+        ret = OB_ERR_MULTIPLE_CONSTRAINTS_WITH_SAME_NAME;
+        ObString action("alter");
+        LOG_USER_ERROR(OB_ERR_MULTIPLE_CONSTRAINTS_WITH_SAME_NAME,
+                       name.length(), name.ptr(), action.length(), action.ptr());
+      } else {
+        ret = OB_ERR_ALTER_CONSTRAINT_ENFORCEMENT_NOT_SUPPORTED;
+        LOG_USER_ERROR(OB_ERR_ALTER_CONSTRAINT_ENFORCEMENT_NOT_SUPPORTED, name.length(), name.ptr());
+      }
+    }
+  }
+  if (OB_SUCC(ret)) {
+    if (iter == table_schema_->constraint_end()) {
+      if (check_only) {
+        ret = OB_ERR_CHECK_CONSTRAINT_NOT_FOUND;
+        LOG_USER_ERROR(OB_ERR_CHECK_CONSTRAINT_NOT_FOUND, name.length(), name.ptr());
+      } else {
+        ret = OB_ERR_NONEXISTENT_CONSTRAINT;
+        LOG_USER_ERROR(OB_ERR_NONEXISTENT_CONSTRAINT, name.length(), name.ptr());
+      }
+    } else {
+      if (constraint.get_enable_flag() != enforced) {
+        constraint.set_is_modify_enable_flag(true);
+        constraint.set_enable_flag(enforced);
+        constraint.set_is_modify_validate_flag(true);
+        constraint.set_validate_flag(enforced ? CST_FK_VALIDATED : CST_FK_NO_VALIDATE);
+      }
+      OZ(statement->get_alter_table_arg().alter_table_schema_.add_constraint(constraint));
+      if (OB_SUCC(ret)) {
+        statement->get_alter_table_arg().alter_constraint_type_ = ObAlterTableArg::ALTER_CONSTRAINT_STATE;
+        ++add_or_modify_check_cst_times_;
+      }
     }
   }
   return ret;
