@@ -2192,7 +2192,7 @@ peg::parser! {
             }
             / enabled(body) kw("pragma") kw("interface") "(" _ kw("c") "," _ name:pl_ident() ")" _ { Node::new(Kind::InterfacePragma,vec![Node::name(name)]) }
             / pl_declaration(0)
-        rule package_block() -> Node = start:position!() kw("package") body:kw("body")? name:routine_name(true)
+        rule package_block() -> Node = start:position!() kw("package") body:kw("body")? name:routine_name()
             rights:(enabled(body.is_none()) kw("authid") value:(kw("current_user") { 1 } / kw("definer") { 0 }) { Node::new(Kind::InvokeRights,vec![]).value(value) })?
             contents_start:position!() declarations:((value:package_declaration(body.is_some()) ";" _ { value })*)
             statements:(enabled(body.is_some()) value:pl_statements(0) { value })? kw("end") tail:pl_ident()? end:position!() {
@@ -2205,8 +2205,8 @@ peg::parser! {
             = kw("create") replace:(kw("or") kw("replace"))? value:package_block() {
                 Node::new(if value.kind==Kind::PackageBody { Kind::CreatePackageBody } else { Kind::CreatePackage },vec![value]).value(u64::from(replace.is_some()))
             }
-            / kw("drop") kw("package") body:kw("body")? name:routine_name(false) { Node::new(Kind::DropPackage,vec![name]).value(if body.is_some() { 2 } else { 0 }) }
-        rule routine_name(pl_names: bool) -> Node = parts:(enabled(pl_names) names:(pl_ident() ++ ("." _)) { names } / enabled(!pl_names) names:name() { names }) {?
+            / kw("drop") kw("package") body:kw("body")? name:routine_name() { Node::new(Kind::DropPackage,vec![name]).value(if body.is_some() { 2 } else { 0 }) }
+        rule routine_name() -> Node = parts:(pl_ident() ++ ("." _)) {?
             if parts.len()>2 { return Err("routine name has at most two parts"); }
             let mut names:Vec<_>=(parts.len()..2).map(|_| Node::missing()).collect();
             names.extend(parts.into_iter().map(Node::name));
@@ -2242,7 +2242,7 @@ peg::parser! {
             }
             / kw("sql") kw("security") value:(kw("definer") { 0 } / kw("invoker") { 2 }) { Node::new(Kind::InvokeRights,vec![]).value(value) }
         rule routine_definition(internal: bool) -> Node = start:position!() function:(kw("procedure") { false } / kw("function") { true })
-            absent:if_not_exists()? name:routine_name(true) params:routine_parameters(function,internal)
+            absent:if_not_exists()? name:routine_name() params:routine_parameters(function,internal)
             result:(enabled(function) kw("returns") value:routine_data_type() { value })?
             clauses:routine_characteristic()* body:pl_statement(0) end:position!() {?
                 if function && result.is_none() { return Err("function return type"); }
@@ -2252,11 +2252,11 @@ peg::parser! {
                 children.push(body);
                 Ok(Node::new(if function { Kind::CreateFunction } else { Kind::CreateProcedure },children).value(u64::from(absent.is_some())).at(start,end))
             }
-        rule trigger_source() -> Node = start:position!() kw("trigger") absent:if_not_exists()? name:routine_name(false)
+        rule trigger_source() -> Node = start:position!() kw("trigger") absent:if_not_exists()? name:routine_name()
             after:(kw("before") { false } / kw("after") { true })
             event:(kw("insert") { Kind::Insert } / kw("update") { Kind::Update } / kw("delete") { Kind::Delete })
-            kw("on") table:routine_name(false) kw("for") kw("each") kw("row")
-            order:(value:(kw("follows") { 1 } / kw("precedes") { 2 }) name:routine_name(false) { Node::new(Kind::TriggerOrder,vec![name]).value(value) })?
+            kw("on") table:routine_name() kw("for") kw("each") kw("row")
+            order:(value:(kw("follows") { 1 } / kw("precedes") { 2 }) name:routine_name() { Node::new(Kind::TriggerOrder,vec![name]).value(value) })?
             body:pl_statement(0) end:position!() {
                 Node::new(Kind::TriggerSource,vec![name,Node::new(Kind::TriggerDefinition,
                     vec![Node::new(event,vec![]),table,Node::optional(order),body]).value(u64::from(after)).at(start,end)])
@@ -2269,10 +2269,10 @@ peg::parser! {
             } / account()) { value })? mut_value:(routine_definition(false) / source:trigger_source() { Node::new(Kind::CreateTrigger,vec![Node::missing(),source]) }) {
                 let mut value=mut_value;value.children[0]=Node::optional(definer);value
             }
-            / kw("drop") kind:(kw("procedure") { Kind::DropProcedure } / kw("function") { Kind::DropFunction } / kw("trigger") { Kind::DropTrigger }) exists:if_exists()? name:routine_name(false) {
+            / kw("drop") kind:(kw("procedure") { Kind::DropProcedure } / kw("function") { Kind::DropFunction } / kw("trigger") { Kind::DropTrigger }) exists:if_exists()? name:routine_name() {
                 Node::new(kind,vec![name]).value(u64::from(exists.is_some()))
             }
-            / kw("alter") kind:(kw("procedure") { Kind::AlterProcedure } / kw("function") { Kind::AlterFunction }) name:routine_name(false) clauses:routine_characteristic()* {
+            / kw("alter") kind:(kw("procedure") { Kind::AlterProcedure } / kw("function") { Kind::AlterFunction }) name:routine_name() clauses:routine_characteristic()* {
                 Node::new(kind,vec![name,Node::list(Kind::RoutineClauses,clauses.into_iter().filter(|node| node.kind!=Kind::Missing).collect())])
             }
         rule pl_expression(level: usize) -> Node = value:expr(level) {? value.pl_expression() }
