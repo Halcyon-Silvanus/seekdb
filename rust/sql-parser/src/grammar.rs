@@ -1660,7 +1660,7 @@ peg::parser! {
             / sub:subpartition_option() count:partition_count()? { (count,Some(sub)) }
             / { (None,None) }
         rule partition_option() -> Node = kw("partition") kw("by") header:partition_header(false) options:partition_options()
-            elements:partition_elements(header.kind,options.1.as_ref().map_or(Kind::Missing,|sub| sub.kind))? {?
+            elements:partition_elements(header.kind,Some(options.1.as_ref().map_or(Kind::Missing,|sub| sub.kind)))? {?
                 if matches!(header.kind,Kind::ListPartition|Kind::ListColumnsPartition) && elements.is_none() { return Err("list partitions"); }
                 let partition=ddl::Partition { count:options.0, subpartition:options.1, elements, ..header };
                 Ok(Node::new(Kind::PartitionOption,vec![partition.into_node()]))
@@ -1670,12 +1670,12 @@ peg::parser! {
             count:(enabled(template.is_none() && matches!(header.kind,Kind::KeyPartition|Kind::HashPartition)) kw("subpartitions") value:type_size() { value })? {
                 ddl::Partition { template:template.is_some(), elements:template, count, ..header }.into_node()
             }
-        rule partition_elements(kind: Kind,subkind: Kind) -> Node = "(" _
+        rule partition_elements(kind: Kind,subkind: Option<Kind>) -> Node = "(" _
             elements:((kw("partition") value:partition_element(kind,subkind) { value }) ++ ("," _)) ")" _ {
                 Node::new(Kind::Partitions,elements)
             }
         rule subpartition_elements(kind: Kind) -> Node = "(" _
-            elements:((kw("subpartition") value:partition_element(kind,Kind::Missing) { value }) ++ ("," _)) ")" _ {
+            elements:((kw("subpartition") value:partition_element(kind,Some(Kind::Missing)) { value }) ++ ("," _)) ")" _ {
                 let list=match kind {
                     Kind::KeyPartition|Kind::HashPartition => Kind::HashSubpartitions,
                     Kind::RangePartition|Kind::RangeColumnsPartition => Kind::RangeSubpartitions,
@@ -1683,7 +1683,7 @@ peg::parser! {
                 };
                 Node::new(list,elements)
             }
-        rule partition_element(kind: Kind,subkind: Kind) -> Node = name:name()
+        rule partition_element(kind: Kind,subkind: Option<Kind>) -> Node = name:name()
             bound:(enabled(matches!(kind,Kind::RangePartition|Kind::RangeColumnsPartition)) kw("values") kw("less") kw("than")
                     values:("(" _ values:((kw("maxvalue") { Node::new(Kind::MaxValue,vec![]) } / expr(0)) ++ ("," _)) ")" _ { values }
                         / kw("maxvalue") { vec![Node::new(Kind::MaxValue,vec![])] }) { (Kind::RangePartitionElement,Node::new(Kind::ExprList,values)) }
@@ -1691,7 +1691,10 @@ peg::parser! {
                     value:(kw("default") { Node::new(Kind::Default,vec![]) } / values:expr_list(0) { Node::new(Kind::ExprList,values) }) ")" _ { (Kind::ListPartitionElement,value) }
                 / enabled(matches!(kind,Kind::KeyPartition|Kind::HashPartition)) { (Kind::HashPartitionElement,Node::missing()) })
             engine:(kw("engine") "=" _ value:collation_name() {? if value.text.eq_ignore_ascii_case("innodb") { Ok(()) } else { Err("InnoDB engine") } })?
-            elements:(enabled(subkind!=Kind::Missing) values:subpartition_elements(subkind) { values })? {?
+            elements:(enabled(subkind!=Some(Kind::Missing)) values:(
+                subpartition_elements(subkind.unwrap_or(Kind::RangePartition))
+                / enabled(subkind.is_none()) value:(subpartition_elements(Kind::ListPartition)
+                    / subpartition_elements(Kind::HashPartition)) { value }) { values })? {?
                 Ok(ddl::PartitionEntry { kind:bound.0, name:Node::relation(name)?, values:bound.1, subpartitions:elements }.into_node())
             }
         rule rename_table() -> Node = from:name() kw("to") to:name() {?
@@ -1731,8 +1734,8 @@ peg::parser! {
                 Ok(Node::new(Kind::PartitionExchange,vec![Node::name(name),Node::relation(table)?]))
             }
             / kw("add") kw("partition") start:position!()
-                values:(value:partition_elements(Kind::RangePartition,Kind::Missing) { Node { kind:Kind::RangePartitions,..value } }
-                    / partition_elements(Kind::ListPartition,Kind::Missing)) end:position!() {
+                values:(value:partition_elements(Kind::RangePartition,None) { Node { kind:Kind::RangePartitions,..value } }
+                    / partition_elements(Kind::ListPartition,None)) end:position!() {
                 Node::new(Kind::PartitionAdd,values.children).at(start,end)
             }
             / truncate:(kw("truncate") { true } / kw("drop") { false })

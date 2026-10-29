@@ -5185,6 +5185,10 @@ int ObDDLResolver::resolve_subpartition_elements(ObPartitionedStmt *stmt,
                                                        partition))) {
       }
     }
+  } else if ((is_hash_like_part(subpart_type) && elements[0].kind() != peg::NodeKind::HashPartitionElement)
+             || (is_range_part(subpart_type) && elements[0].kind() != peg::NodeKind::RangePartitionElement)
+             || (is_list_part(subpart_type) && elements[0].kind() != peg::NodeKind::ListPartitionElement)) {
+    ret = OB_INVALID_ARGUMENT;
   } else if (is_hash_like_part(subpart_type)) {
     if (OB_FAIL(resolve_hash_subpartition_elements(stmt, elements, table_schema, partition))) {
     }
