@@ -129,6 +129,32 @@ fn reserved(word: &str) -> bool {
         "window",
         "with",
         "check",
+        "accessible", "add", "alter", "analyze", "asensitive", "before",
+        "bigint", "binary", "blob", "both", "call", "cascade",
+        "change", "char", "character", "collate", "column", "condition",
+        "continue", "current_date", "current_time", "current_timestamp", "current_user", "cursor",
+        "databases", "day_hour", "day_microsecond", "day_minute", "day_second", "decimal",
+        "declare", "describe", "deterministic", "double", "dual", "each",
+        "elseif", "enclosed", "escaped", "exit", "explain", "fetch",
+        "float", "float4", "float8", "fulltext", "generated", "get",
+        "grant", "high_priority", "hour_microsecond", "hour_minute", "hour_second", "if",
+        "infile", "inout", "insensitive", "int", "int1", "int2",
+        "int3", "int4", "int8", "integer", "io_after_gtids", "io_before_gtids",
+        "iterate", "keys", "kill", "leading", "leave", "linear",
+        "lines", "load", "localtime", "localtimestamp", "long", "longblob",
+        "longtext", "loop", "low_priority", "master_bind", "master_ssl_verify_server_cert", "match",
+        "maxvalue", "mediumblob", "mediumint", "mediumtext", "middleint", "minute_microsecond",
+        "minute_second", "modifies", "no_write_to_binlog", "numeric", "optimize", "option",
+        "optionally", "out", "outfile", "precision", "procedure", "purge",
+        "read", "read_write", "reads", "real", "release", "rename",
+        "repeat", "require", "resignal", "restrict", "return", "revoke",
+        "schemas", "second_microsecond", "sensitive", "separator", "show", "signal",
+        "skip", "smallint", "spatial", "specific", "sql", "sql_big_result",
+        "sql_calc_found_rows", "sql_small_result", "sqlexception", "sqlstate", "sqlwarning", "ssl",
+        "starting", "stored", "terminated", "tinyblob", "tinyint", "tinytext",
+        "trailing", "trigger", "undo", "unlock", "unsigned", "usage",
+        "utc_date", "utc_time", "utc_timestamp", "varbinary", "varchar", "varcharacter",
+        "varying", "virtual", "while", "write", "year_month", "zerofill",
     ]
     .iter()
     .any(|keyword| word.eq_ignore_ascii_case(keyword))
@@ -136,6 +162,11 @@ fn reserved(word: &str) -> bool {
 
 fn reserved_in_routine(word: &str) -> bool {
     [
+        "select", "from", "by", "limit", "desc", "on", "using", "index",
+        "or", "not", "in", "is", "null", "exists", "insert", "replace",
+        "update", "delete", "set", "into", "default", "create", "drop", "table",
+        "database", "unique", "commit", "rollback", "case", "when", "then", "else",
+        "for", "lock", "with",
         "alter", "analyze", "before", "bigint", "binary", "binlog", "blob", "cache", "call",
         "change", "char", "character", "charset", "checksum", "collate", "condition", "continue",
         "current_user", "cursor", "deallocate", "dec", "decimal", "declare", "describe",
@@ -153,6 +184,12 @@ fn reserved_in_routine(word: &str) -> bool {
     ]
     .iter()
     .any(|keyword| word.eq_ignore_ascii_case(keyword))
+}
+
+fn keyword_function(word: &str) -> bool {
+    ["current_timestamp", "localtime", "localtimestamp", "current_date", "current_time",
+        "current_user", "utc_timestamp", "utc_date", "utc_time"]
+        .iter().any(|name| word.eq_ignore_ascii_case(name))
 }
 
 fn chain(first: Node, rest: Vec<(String, Node)>) -> Result<Node, &'static str> {
@@ -225,7 +262,7 @@ peg::parser! {
                 if input.get(pos..pos+word.len()).is_some_and(|text| text.eq_ignore_ascii_case(word)) {
                     peg::RuleResult::Matched(pos+word.len(), ())
                 } else { peg::RuleResult::Failed }
-            }} !cont()} / expected!(word)
+            }} !cont() !("." cont())} / expected!(word)
         rule kw(word: &'static str) -> () = keyword(word) _
         rule hint_slot() -> Option<Vec<Node>> = hint_gap() value:hints()? !"/*+" _ { value }
         pub rule last_token_start() -> usize = tokens:(space()* start:position!()
@@ -249,7 +286,8 @@ peg::parser! {
                 { Name { text: text.to_owned(), quoted: false, start, end } }
         rule name_keyword() -> Name
             = &reserved_word() !(kw("all") / kw("distinct") / kw("from") / kw("select")
-                / kw("straight_join") / kw("unique") / kw("when"))
+                / kw("straight_join") / kw("unique") / kw("when") / kw("both") / kw("leading") / kw("trailing")
+                / kw("high_priority") / kw("sql_big_result") / kw("sql_small_result") / kw("sql_calc_found_rows"))
                 start:position!() text:$(word()) end:position!() _
                 { Name { text: text.to_owned(), quoted: false, start, end } }
         rule dotted_ident() -> Name = ident() / name_keyword()
@@ -267,9 +305,10 @@ peg::parser! {
         rule expression_name() -> Vec<Name>
             = name()
             / first:name_keyword() "." _ last:name_keyword() { vec![first,last] }
+            / name:name_keyword() enabled(keyword_function(&name.text)) { vec![name] }
             / start:position!() name:(kw("database") { "database" } / kw("schema") { "schema" }
                 / kw("replace") { "replace" } / kw("insert") { "insert" } / kw("values") { "values" }
-                / kw("left") { "left" } / kw("right") { "right" } / kw("mod") { "mod" }) &"("
+                / kw("left") { "left" } / kw("right") { "right" } / kw("mod") { "mod" } / kw("if") { "if" } / kw("repeat") { "repeat" }) &"("
                 { vec![Name { text: name.into(), quoted: false, start, end: start + name.len() }] }
         rule alias() -> Name = kw("as")? value:ident() { value }
         rule table_alias() -> Name = !(kw("full") kw("outer")? kw("join") / (kw("use") / kw("force") / kw("ignore"))) value:alias() { value }
@@ -342,7 +381,11 @@ peg::parser! {
                 / "0b" text:$(['0'|'1']+) !cont() { text }) end:position!() _ {?
                 Node::new(Kind::BitString,vec![]).text(text.into()).expression(start,end)
             }
-        rule scope() -> u64 = kw("global") { 1 } / (kw("session") / kw("local")) { 2 }
+        rule scope() -> u64 = value:$(word()) _ {?
+            if value.eq_ignore_ascii_case("global") { Ok(1) }
+            else if value.eq_ignore_ascii_case("session") || value.eq_ignore_ascii_case("local") { Ok(2) }
+            else { Err("variable scope") }
+        }
         rule system_variable() -> Node = start:position!() "@@" scope:(value:scope() "." _ { value })? name:ident() {
             let end=name.end;
             Node::new(Kind::SystemVariable, vec![]).text(name.text).value(scope.unwrap_or(0)).at(start,end)
@@ -438,9 +481,7 @@ peg::parser! {
                 {? match tail {
                     None => {
                         let end=parts.last().unwrap().end;
-                        let keyword_function=parts.len()==1 && !parts[0].quoted && ["current_timestamp","localtime","localtimestamp",
-                            "current_date","current_time","current_user","utc_timestamp","utc_date","utc_time"]
-                            .iter().any(|name| parts[0].text.eq_ignore_ascii_case(name));
+                        let keyword_function=parts.len()==1 && !parts[0].quoted && keyword_function(&parts[0].text);
                         if keyword_function { Node::call(parts,None,vec![],None,start,end) }
                         else { Node::column(parts,false,start,end) }
                     },
@@ -1330,7 +1371,7 @@ peg::parser! {
                 / kw("double") { "double" } / kw("float") { "float" } / kw("json") { "json" }
                 / kw("datetime") { "datetime" } / kw("date") { "date" } / kw("time") { "time" } / kw("year") { "year" })
             parameters:("(" _ values:(type_size() ++ ("," _)) ")" _ { values })?
-            charset:(enabled(name=="char") charset_keyword() value:collation_name() {
+            charset:(enabled(name=="char") charset_keyword() !kw("default") value:charset_name() {
                 let literal=value.kind==Kind::String;Node { kind:Kind::Charset,..value }.value(u64::from(literal))
             })? end:position!() {?
                 let mut parameters=parameters.unwrap_or_default();
@@ -1375,7 +1416,7 @@ peg::parser! {
         rule scalar_type() -> Node
             = start:position!() kind:(kw("enum") { Kind::EnumType } / kw("set") { Kind::SetType })
                 "(" _ values:(string() ++ ("," _)) ")" _ binary:(kw("binary") { Node::new(Kind::BinaryAttribute,vec![]).value(1) })?
-                charset:(charset_keyword() value:collation_name() { Node { kind:Kind::Charset,..value } })? end:position!() {
+                charset:(charset_keyword() !kw("default") value:charset_name() { Node { kind:Kind::Charset,..value } })? end:position!() {
                     Node::new(kind,vec![Node::optional(charset),Node::missing(),Node::optional(binary),Node::new(Kind::StringList,values)]).at(start,end)
                 }
             / geometry_type()
@@ -1383,7 +1424,7 @@ peg::parser! {
             / start:position!() name:type_name()
             parameters:("(" _ values:(type_size() ++ ("," _)) ")" _ { values })?
             unsigned:(kw("unsigned") { true } / kw("signed") { false })? zerofill:kw("zerofill")? binary:kw("binary")?
-            charset:(charset_keyword() value:collation_name() { Node { kind:Kind::Charset,..value } })? end:position!() {?
+            charset:(charset_keyword() !kw("default") value:charset_name() { Node { kind:Kind::Charset,..value } })? end:position!() {?
                 let mut value=Node::data_type(name, parameters.unwrap_or_default(), unsigned, zerofill.is_some(), start, end)?;
                 if binary.is_some() || charset.is_some() {
                     if !matches!(name,"char"|"varchar"|"tinytext"|"text"|"mediumtext"|"longtext"|"string") { return Err("character type"); }
@@ -1802,7 +1843,9 @@ peg::parser! {
         rule setting_value() -> Node
             = start:position!() value:(kw("on") { "ON" } / kw("binary") { "BINARY" }) { Node::new(Kind::String,vec![]).text(value.into()).at(start,start+value.len()) }
             / expr_or_default()
-        rule charset_name() -> Node = kw("default") { Node::new(Kind::Default,vec![]) } / string() / name:ident() { Node { kind:Kind::CharsetName,..Node::name(name) } }
+        rule charset_name() -> Node = kw("default") { Node::new(Kind::Default,vec![]) }
+            / start:position!() kw("binary") { Node::new(Kind::CharsetName,vec![]).text("binary".into()).at(start,start+6) }
+            / string() / name:ident() { Node { kind:Kind::CharsetName,..Node::name(name) } }
         rule collation_name() -> Node = string() / name:ident() { Node::name(name) }
         rule assignment_name(scoped: bool) -> Name
             = (enabled(scoped) / !kw("password")) name:ident() { name }
@@ -2106,13 +2149,7 @@ peg::parser! {
         }
         rule pl_ident() -> Name
             = !routine_reserved_word() value:(ident()
-            / &reserved_word() !(kw("select") / kw("from") / kw("by") / kw("limit") / kw("desc")
-                / kw("on") / kw("using") / kw("index") / kw("or") / kw("not") / kw("in") / kw("is")
-                / kw("null") / kw("exists") / kw("insert") / kw("replace") / kw("update") / kw("delete")
-                / kw("set") / kw("into") / kw("default") / kw("create") / kw("drop") / kw("table")
-                / kw("database") / kw("unique") / kw("commit") / kw("rollback") / kw("case")
-                / kw("when") / kw("then") / kw("else") / kw("for") / kw("lock") / kw("with"))
-                start:position!() text:$(word()) end:position!() _
+            / &reserved_word() start:position!() text:$(word()) end:position!() _
                 { Name { text: text.to_owned(), quoted: false, start, end } }) { value }
         rule package_routine() -> Node = start:position!() function:(kw("procedure") { false } / kw("function") { true }) name:pl_ident() params:routine_parameters(false,true)
             result:(enabled(function) kw("return") value:routine_data_type() { value })? end:position!() {?
@@ -2248,6 +2285,7 @@ peg::parser! {
             / kw("repeat") body:pl_statements(level) kw("until") condition:pl_expression(level) kw("end") kw("repeat") { Node::new(Kind::PlRepeat,vec![body,condition]) }
         rule pl_setting(level: usize) -> Node = kw("set") assignments:((
             variable:(user_variable() / system_variable()
+                / start:position!() parts:compact_name() enabled(parts.len()==2) end:position!() {? Node::column(parts,false,start,end) }
                 / start:position!() first:ident() "." _ second:ident() end:position!() {? Node::column(vec![first,second],false,start,end) }
                 / name:assignment_name(false) { Node::name(name) }) (":=" / "=") _ value:expr(level) {?
                 let value=Node::routine_setting_value(&variable,value)?;
