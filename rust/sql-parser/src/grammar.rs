@@ -260,8 +260,9 @@ peg::parser! {
             = start:position!() kw("true") {? Node::new(Kind::Bool, vec![]).value(1).expression(start, start+4) }
             / start:position!() kw("false") {? Node::new(Kind::Bool, vec![]).value(0).expression(start, start+5) }
         rule bool_null() -> Node = null_literal() / boolean_literal()
-        rule temporal_literal() -> Node = start:position!() kind:(kw("date") { Kind::DateLiteral }
-                / kw("time") { Kind::TimeLiteral } / kw("timestamp") { Kind::TimestampLiteral })
+        rule temporal_kind() -> Kind = keyword("date") { Kind::DateLiteral }
+            / keyword("time") { Kind::TimeLiteral } / keyword("timestamp") { Kind::TimestampLiteral }
+        rule temporal_literal() -> Node = start:position!() kind:temporal_kind() _
             text:("'" text:$([^'\'']*) "'" { text } / "\"" text:$([^'"']*) "\"" { text }) end:position!() _ {?
                 Node::new(kind,vec![]).text(text.into()).expression(start,end)
             }
@@ -299,7 +300,12 @@ peg::parser! {
             Node::new(Kind::UserVariable, vec![]).text(text).at(start,end)
         }
         rule atom(level: usize) -> Node
-            = depth(level) value:collection_expression(level+1) { value }
+            = depth(level) start:position!() "{" _
+                !(temporal_kind() (space()+ / "--" ['\n'|'\r'])? ['\''|'"'])
+                action:ident() operand:expr(level+1) "}" end:position!() _ {?
+                Node::odbc_escape(&action.text,operand,start,end)
+            }
+            / depth(level) value:collection_expression(level+1) { value }
             / depth(level) value:date_function(level+1) { value }
             / depth(level) value:string_function(level+1) { value }
             / depth(level) value:json_function(level+1) { value }
@@ -736,11 +742,16 @@ peg::parser! {
                 if matches!(kind, Kind::LeftJoin | Kind::RightJoin | Kind::FullJoin) && condition.is_none() { Err("join condition") }
                 else { Ok((kind, relation, condition.unwrap_or_else(Node::missing))) }
             }
-        rule table(level: usize) -> Node = depth(level) relation:relation(level) joins:join(level)* {?
-            joins.into_iter().try_fold(relation, |left, (kind, right, condition)| {
-                crate::query::associate_join(kind,left,right,condition)
-            })
-        }
+        rule table(level: usize) -> Node = value:table_reference(level,false) { value }
+        rule table_reference(level: usize, escaped: bool) -> Node = depth(level)
+            head:(value:relation(level) { (value,false) }
+                / "{" _ kw("oj") value:table_reference(level+1,true) "}" _ { (value,true) })
+            joins:join(level)* {?
+                if escaped && head.1 && joins.is_empty() { return Err("table factor or joined table"); }
+                joins.into_iter().try_fold(head.0, |left, (kind, right, condition)| {
+                    crate::query::associate_join(kind,left,right,condition)
+                })
+            }
         rule array_order_item(level: usize) -> Node = key:order_item(level)
             nulls:(kw("nulls") value:(kw("first") { 1 } / kw("last") { 2 }) { value })? {
                 key.value(nulls.unwrap_or(0))

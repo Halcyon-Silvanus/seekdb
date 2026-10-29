@@ -78,6 +78,7 @@ private:
   int build_cast_argument(const ObRawExprResType &target,
       const ObString &charset_name, ObRawExpr *&expr);
   int build_implicit_literal(const LiteralToken &literal, ObRawExpr *&expr);
+  int process_odbc_escape(const peg::Node &node, ObRawExpr *&expr);
   int process_datatype_or_questionmark(const peg::Node &node, ObRawExpr *&expr);
   int process_system_variable_node(const peg::Node &node, ObRawExpr *&expr);
   int process_char_charset_node(const peg::Node &node, ObRawExpr *&expr);

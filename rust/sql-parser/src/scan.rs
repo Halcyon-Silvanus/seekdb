@@ -42,6 +42,7 @@ pub fn begin_scan(input: &[u8], options: ScanOptions) -> Box<Scanner<'_>> {
         options,
         result,
         inserts: 0,
+        brace_depth: 0,
     })
 }
 
@@ -55,6 +56,7 @@ pub struct Scanner<'a> {
     options: ScanOptions,
     result: ScanResult,
     inserts: usize,
+    brace_depth: usize,
 }
 
 impl Scanner<'_> {
@@ -560,6 +562,9 @@ impl Scanner<'_> {
                     {
                         self.pos += 1;
                     }
+                    if !self.options.format && self.brace_depth > 0 {
+                        self.normal(start, false);
+                    }
                 }
                 b'-' if self.byte(start + 1) == b'-'
                     && matches!(self.byte(start + 2), b' ' | b'\t' | b'\n' | b'\r') =>
@@ -569,10 +574,15 @@ impl Scanner<'_> {
                     {
                         self.pos += 1;
                     }
+                    if !self.options.format && self.brace_depth > 0 {
+                        self.normal(start, false);
+                    }
                 }
                 b'/' if self.byte(start + 1) == b'*' => {
                     self.pos = self.comment_end(start)?;
-                    if self.byte(start + 2) == b'!' {
+                    if self.byte(start + 2) == b'!'
+                        || !self.options.format && self.brace_depth > 0
+                    {
                         self.normal(start, false);
                     } else {
                         self.comment_separator();
@@ -633,8 +643,17 @@ impl Scanner<'_> {
                     self.word(start)?;
                 }
                 byte if identifier(byte) => self.word(start)?,
+                b'{' | b'}' => {
+                    self.brace_depth = if byte == b'{' {
+                        self.brace_depth + 1
+                    } else {
+                        self.brace_depth.saturating_sub(1)
+                    };
+                    self.pos += 1;
+                    self.normal(start, false);
+                }
                 b'!' | b'%' | b'&' | b'(' | b')' | b'*' | b'+' | b',' | b'.' | b'/' | b':'
-                | b'<' | b'=' | b'>' | b'[' | b']' | b'^' | b'{' | b'|' | b'}' | b'~' => {
+                | b'<' | b'=' | b'>' | b'[' | b']' | b'^' | b'|' | b'~' => {
                     self.pos += 1;
                     self.normal(start, false);
                 }

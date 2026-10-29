@@ -503,6 +503,7 @@ impl<'a> Collector<'a> {
             | Kind::Default
             | Kind::SystemVariable => {}
             Kind::Parenthesized => self.unary(node, scope)?,
+            Kind::OdbcEscape => self.collect(odbc_operand(node), scope.expression())?,
             Kind::UserVariable | Kind::GetUserVariable => {
                 self.user_variables.push(variable_name(node).into())
             }

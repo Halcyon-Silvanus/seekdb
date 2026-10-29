@@ -15,7 +15,7 @@
 use crate::bridge::ffi::{
     AggregateQuantifier, BinaryNotation, BinaryOperator, ComparisonQuantifier, ExpressionLiteral,
     FrameBound, FrameUnit, FulltextMode, GeometryType, JsonColumnKind, JsonOptions, JsonResponse,
-    JsonScalars, JsonWrapper, LiteralKind, MembershipSource, NthOrigin, NullTreatment, TypeName,
+    JsonScalars, JsonWrapper, LiteralKind, MembershipSource, NthOrigin, NullTreatment, OdbcAction, TypeName,
     TypeSyntax, UnaryOperator, VariableScope, VectorMetric,
 };
 use crate::node::{Kind, Node};
@@ -28,6 +28,19 @@ pub struct Binary<'a>(&'a Node);
 pub struct Unary<'a>(&'a Node);
 
 impl Node {
+    pub(crate) fn odbc_escape(action: &str, operand: Self, start: usize, end: usize) -> Result<Self, &'static str> {
+        let action = if action.eq_ignore_ascii_case("d") {
+            OdbcAction::Date
+        } else if action.eq_ignore_ascii_case("t") {
+            OdbcAction::Time
+        } else if action.eq_ignore_ascii_case("ts") {
+            OdbcAction::Timestamp
+        } else {
+            OdbcAction::Expression
+        };
+        Self::new(Kind::OdbcEscape, vec![operand]).value(action.repr as u64).expression(start, end)
+    }
+
     pub fn as_binary(&self) -> Option<Binary<'_>> {
         (self.kind == Kind::Binary).then_some(Binary(self))
     }
@@ -50,6 +63,28 @@ impl<'a> Binary<'a> {
 impl<'a> Unary<'a> {
     pub fn operator(self) -> UnaryOperator { unary_operator(self.0) }
     pub fn operand(self) -> &'a Node { unary_operand(self.0) }
+}
+
+pub(crate) fn odbc_operand(expression: &Node) -> &Node {
+    let mut operand = &expression.children[0];
+    while operand.kind == Kind::Parenthesized {
+        operand = parenthesized_expression(operand);
+    }
+    operand
+}
+
+pub(crate) fn odbc_action(expression: &Node) -> OdbcAction {
+    let operand = odbc_operand(expression);
+    if !matches!(operand.kind, Kind::String | Kind::Parameter | Kind::CharsetLiteral) {
+        return OdbcAction::Expression;
+    }
+    match expression.value {
+        0 => OdbcAction::Expression,
+        1 => OdbcAction::Date,
+        2 => OdbcAction::Time,
+        3 => OdbcAction::Timestamp,
+        _ => unreachable!(),
+    }
 }
 
 pub(crate) fn is_literal(expression: &Node) -> bool {
@@ -244,8 +279,14 @@ pub(crate) fn call_name(call: &Node) -> &str {
 pub(crate) fn call_qualifiers(call: &Node) -> &[Node] {
     child(call, Kind::CallName).map_or(&[], |name| &name.children[..name.children.len() - 1])
 }
-pub(crate) fn call_arguments(call: &Node) -> &[Node] {
-    list(call, Kind::CallArguments)
+pub(crate) fn call_arguments(mut call: &Node) -> &[Node] {
+    loop {
+        call = match call.kind {
+            Kind::Parenthesized => parenthesized_expression(call),
+            Kind::OdbcEscape => odbc_operand(call),
+            _ => return list(call, Kind::CallArguments),
+        };
+    }
 }
 pub(crate) fn aggregate_quantifier(aggregate: &Node) -> AggregateQuantifier {
     if child(aggregate, Kind::Distinct).is_some() {

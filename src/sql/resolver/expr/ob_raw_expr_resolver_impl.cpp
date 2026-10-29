@@ -442,6 +442,9 @@ int ObRawExprResolverImpl::do_recursive_resolve(const peg::Node &node,
     OZ (process_datatype_or_questionmark(node, expr));
   } else {
     switch (node.kind()) {
+      case peg::NodeKind::OdbcEscape:
+        OZ (process_odbc_escape(node, expr));
+        break;
       case peg::NodeKind::Parenthesized:
         OZ (recursive_resolve(peg::parenthesized_expression(node), expr, is_root_expr));
         break;
@@ -1012,6 +1015,66 @@ int ObRawExprResolverImpl::build_implicit_literal(const LiteralToken &literal, O
       constant->set_result_flag(value.get_result_flag());
       expr = constant;
     }
+  }
+  return ret;
+}
+
+int ObRawExprResolverImpl::process_odbc_escape(const peg::Node &node, ObRawExpr *&expr)
+{
+  int ret = OB_SUCCESS;
+  const auto action = peg::odbc_action(node);
+  const auto &operand = peg::odbc_operand(node);
+  bool converted = false;
+  if (action != peg::OdbcAction::Expression) {
+    const auto literal = peg::expression_literal(operand);
+    const ParameterBinding *binding = ctx_.parameterization_ != nullptr
+        ? ctx_.parameterization_->find(&operand) : nullptr;
+    const int64_t index = binding != nullptr ? static_cast<int64_t>(binding->parameter_index)
+        : literal.kind == peg::LiteralKind::Placeholder
+        ? static_cast<int64_t>(peg::placeholder_index(operand)) : -1;
+    ObString text;
+    rust::Vec<uint8_t> decoded;
+    if (index < 0) {
+      converted = true;
+      if (literal.kind == peg::LiteralKind::Binary) {
+        decoded = peg::decode_binary_literal(literal.text, literal.binary_notation);
+        text.assign_ptr(reinterpret_cast<const char *>(decoded.data()), decoded.size());
+      } else {
+        text.assign_ptr(literal.text.data(), literal.text.size());
+      }
+    } else if (OB_ISNULL(ctx_.param_list_)) {
+      ret = OB_ERR_UNEXPECTED;
+    } else if (ctx_.param_list_->empty()) {
+      // The prepare phase has no value to convert.
+    } else if (index >= ctx_.param_list_->count()) {
+      ret = OB_ERR_UNEXPECTED;
+    } else if (ctx_.param_list_->at(index).is_varchar()) {
+      converted = true;
+      text = ctx_.param_list_->at(index).get_varchar();
+    }
+    if (OB_SUCC(ret) && converted) {
+      const auto kind = action == peg::OdbcAction::Date ? peg::LiteralKind::Date
+          : action == peg::OdbcAction::Time ? peg::LiteralKind::Time : peg::LiteralKind::Timestamp;
+      const LiteralToken temporal{kind, 0, text, {}, false, 0};
+      if (OB_FAIL(build_implicit_literal(temporal, expr))) {
+        if (ret == OB_ERR_WRONG_VALUE) {
+          ret = OB_SUCCESS;
+          converted = false;
+        }
+      } else if (index >= 0) {
+        ObPCConstParamInfo constraint;
+        if (OB_ISNULL(ctx_.query_ctx_)) {
+          ret = OB_ERR_UNEXPECTED;
+        } else {
+          OZ (constraint.const_idx_.push_back(index));
+          OZ (constraint.const_params_.push_back(ctx_.param_list_->at(index)));
+          OZ (ctx_.query_ctx_->all_plan_const_param_constraints_.push_back(constraint));
+        }
+      }
+    }
+  }
+  if (OB_SUCC(ret) && !converted) {
+    OZ (recursive_resolve(operand, expr));
   }
   return ret;
 }

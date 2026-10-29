@@ -36,6 +36,13 @@ pub(crate) mod ffi {
         batch_statement: bool,
     }
 
+    enum OdbcAction {
+        Expression,
+        Date,
+        Time,
+        Timestamp,
+    }
+
     enum LiteralKind {
         Integer,
         Unsigned,
@@ -250,6 +257,7 @@ pub(crate) mod ffi {
         Null,
         Parameter,
         Parenthesized,
+        OdbcEscape,
         Unary,
         Binary,
         Where,
@@ -2225,6 +2233,8 @@ pub(crate) mod ffi {
         fn placeholder_index(parameter: &Node) -> usize;
         fn placeholder_name(parameter: &Node) -> &str;
         fn parenthesized_expression(expression: &Node) -> &Node;
+        fn odbc_action(expression: &Node) -> OdbcAction;
+        fn odbc_operand(expression: &Node) -> &Node;
         fn unary_operator(expression: &Node) -> UnaryOperator;
         fn unary_operand(expression: &Node) -> &Node;
         fn binary_operator(expression: &Node) -> BinaryOperator;
@@ -2443,7 +2453,7 @@ use crate::expression::{
     json_table_columns, lambda_body, lambda_parameters, like_escape, like_has_escape,
     membership_expressions, membership_query, membership_source, named_argument_name,
     named_argument_value, named_window_definition, named_window_name, parenthesized_expression,
-    placeholder_index, placeholder_name, predicate_negated, predicate_subject,
+    odbc_action, odbc_operand, placeholder_index, placeholder_name, predicate_negated, predicate_subject,
     quantified_comparison, quantified_query, type_charset, type_collation, type_element, type_key,
     type_members, type_name, type_parameters, type_syntax, type_unsigned, type_value,
     type_zerofill, unary_operand, unary_operator, variable_assignment_value, variable_name,
