@@ -46,6 +46,7 @@ pub(crate) fn access_options(statement: &Node) -> AccessOptions {
         grant_option: child(statement, Kind::WithGrantOption).is_some(),
         admin_option: child(statement, Kind::WithAdminOption).is_some(),
         ignore_unknown_user: child(statement, Kind::IgnoreUnknownUser).is_some(),
+        locked: statement.kind == Kind::LockUser && statement.value != 0,
     }
 }
 

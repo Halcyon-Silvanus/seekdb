@@ -715,6 +715,7 @@ pub(crate) mod ffi {
         NamedWindow,
         CreateUser,
         DropUser,
+        LockUser,
         CreateRole,
         DropRole,
         GrantRole,
@@ -1032,6 +1033,7 @@ pub(crate) mod ffi {
         grant_option: bool,
         admin_option: bool,
         ignore_unknown_user: bool,
+        locked: bool,
     }
 
     struct PrivilegeTarget {

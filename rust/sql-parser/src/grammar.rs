@@ -2180,6 +2180,11 @@ peg::parser! {
                 children.extend(exists);
                 Node::new(Kind::DropUser,children)
             }
+            / kw("alter") kw("user") users:((kw("current_user") ("(" _ ")" _)? {
+                Node::new(Kind::UserSpec,vec![Node::new(Kind::CurrentUser,vec![])])
+            } / user_spec(false)) ++ ("," _)) kw("account") locked:(kw("lock") { true } / kw("unlock") { false }) {
+                Node::new(Kind::LockUser,vec![Node::new(Kind::Users,users)]).value(u64::from(locked))
+            }
             / kw("alter") kw("user") user:account() auth:authentication() {
                 Node::new(Kind::SetPassword,vec![Node::new(Kind::Users,vec![Node::new(Kind::UserSpec,vec![user,auth])])])
             }

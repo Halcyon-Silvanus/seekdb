@@ -22,6 +22,7 @@
 #include "sql/resolver/dcl/access_control_common.h"
 #include "sql/resolver/dcl/ob_create_user_stmt.h"
 #include "sql/resolver/dcl/ob_drop_user_stmt.h"
+#include "sql/resolver/dcl/ob_lock_user_stmt.h"
 #include "sql/resolver/dcl/ob_set_password_stmt.h"
 #include "sql/engine/expr/ob_expr_validate_password_strength.h"
 #include "sql/ob_sql_utils.h"
@@ -258,6 +259,26 @@ int resolve_drop_user(const peg::Node &node, ObResolverParams &params, ObStmt *&
   return ret;
 }
 
+int resolve_account_lock(const peg::Node &node, ObResolverParams &params, ObStmt *&stmt)
+{
+  int ret = OB_SUCCESS;
+  ObLockUserStmt *changed = nullptr;
+  OZ (create_resolved_statement(params, changed));
+  if (OB_SUCC(ret)) {
+    changed->set_locked(peg::access_options(node).locked);
+    for (const auto &account : peg::access_accounts(node)) {
+      if (OB_FAIL(ret)) { break; }
+      ObString name;
+      ObString host;
+      OZ (resolve_account(account, params, AccountNameMode::Verbatim, name, host));
+      OZ (check_reserved_account(params, name, host));
+      OZ (changed->add_user(name, host));
+    }
+  }
+  if (OB_SUCC(ret)) { stmt = changed; }
+  return ret;
+}
+
 int resolve_password(const peg::Node &node, ObResolverParams &params, ObStmt *&stmt)
 {
   int ret = OB_SUCCESS;
@@ -307,6 +328,9 @@ int resolve_access_control(const peg::Node &node, ObResolverParams &params, ObSt
         break;
       case peg::NodeKind::DropUser:
         ret = access_control::resolve_drop_user(node, params, stmt);
+        break;
+      case peg::NodeKind::LockUser:
+        ret = access_control::resolve_account_lock(node, params, stmt);
         break;
       case peg::NodeKind::SetPassword:
         ret = access_control::resolve_password(node, params, stmt);
