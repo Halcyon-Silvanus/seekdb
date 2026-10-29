@@ -1689,6 +1689,19 @@ pub(crate) mod ffi {
         contains_sensitive_data: bool,
     }
 
+    enum AnalyzeAction {
+        Gather,
+        UpdateHistogram,
+        DropHistogram,
+    }
+    struct AnalyzeDefinition<'a> {
+        action: AnalyzeAction,
+        relations: &'a [Node],
+        columns: &'a [Node],
+        has_bucket_count: bool,
+        bucket_count: u64,
+    }
+
     enum TableSelectMode {
         None,
         Select,
@@ -1912,7 +1925,7 @@ pub(crate) mod ffi {
         fn statistics_column_kind(node: &Node) -> StatisticsColumnKind;
         fn statistics_column_name(node: &Node) -> &str;
         fn optimize_relations(node: &Node) -> &[Node];
-        fn analyze_relations(node: &Node) -> &[Node];
+        unsafe fn analyze_definition<'a>(node: &'a Node) -> AnalyzeDefinition<'a>;
         fn partition_element_values(node: &Node) -> &Node;
         fn purge_relation(node: &Node) -> &Node;
         fn query_has_mixed_string_array(node: &Node) -> bool;
@@ -2649,7 +2662,7 @@ use crate::query::vector_parameters;
 
 use crate::inspect::query_has_mixed_string_array;
 
-use crate::ddl::{analyze_relations, optimize_relations, purge_relation};
+use crate::ddl::{analyze_definition, optimize_relations, purge_relation};
 use crate::statistics::{
     statistics_bucket_count, statistics_clauses, statistics_column_kind, statistics_column_name,
     statistics_columns, statistics_scope, statistics_size,

@@ -77,12 +77,53 @@ int ObAnalyzeStmtResolver::resolve_analyze_table(const peg::Node &statement,
                                                  ObAnalyzeStmt &analyze_stmt)
 {
   int ret = OB_SUCCESS;
-  for (const auto &relation : peg::analyze_relations(statement)) {
+  const auto definition = peg::analyze_definition(statement);
+  for (const auto &relation : definition.relations) {
     if (OB_FAIL(ret)) { break; }
     OZ (resolve_table_info(&relation, analyze_stmt));
   }
   OZ (resolve_partition_info(analyze_stmt));
-  OZ (resolve_default_column_info(analyze_stmt));
+  if (definition.action == peg::AnalyzeAction::Gather) {
+    OZ (resolve_default_column_info(analyze_stmt));
+  } else if (OB_SUCC(ret)) {
+    ObAnalyzeTableInfo &table_info = analyze_stmt.get_tables().at(0);
+    const ObTableSchema *table_schema = nullptr;
+    const bool is_drop = definition.action == peg::AnalyzeAction::DropHistogram;
+    const int64_t bucket_count = is_drop ? 0 : definition.has_bucket_count
+        ? static_cast<int64_t>(definition.bucket_count)
+        : ObColumnStatParam::DEFAULT_HISTOGRAM_BUCKET_NUM;
+    if (is_drop) {
+      analyze_stmt.set_is_drop();
+    }
+    if (OB_FAIL(schema_checker_->get_table_schema(table_info.get_table_id(), table_schema))) {
+    } else if (OB_ISNULL(table_schema)) {
+      ret = OB_ERR_UNEXPECTED;
+    }
+    for (const auto &column : definition.columns) {
+      if (OB_FAIL(ret)) { break; }
+      const auto text = column.text();
+      const ObString column_name(text.size(), text.data());
+      const ObColumnSchemaV2 *column_schema = table_schema->get_column_schema(column_name);
+      if (OB_ISNULL(column_schema)) {
+        ret = OB_ERR_COLUMN_NOT_FOUND;
+      } else {
+        ObColumnStatParam *column_param = table_info.get_column_param(column_schema->get_column_id());
+        if (column_param != nullptr && column_param->is_valid_opt_col()) {
+          column_param->set_need_basic_stat();
+          column_param->bucket_num_ = bucket_count;
+          column_param->set_size_manual();
+        }
+      }
+    }
+    if (OB_SUCC(ret) && !is_drop) {
+      constexpr int64_t sample_rows_per_bucket = 512;
+      ObAnalyzeSampleInfo sample_info;
+      sample_info.is_sample_ = true;
+      sample_info.sample_type_ = SampleType::RowSample;
+      sample_info.sample_value_ = bucket_count * sample_rows_per_bucket;
+      analyze_stmt.set_sample_info(sample_info);
+    }
+  }
   return ret;
 }
 

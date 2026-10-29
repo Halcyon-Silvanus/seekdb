@@ -2262,9 +2262,27 @@ peg::parser! {
                 Node::new(Kind::Execute,args.unwrap_or_default()).text(name.text)
             }
             / (kw("deallocate") / kw("drop")) kw("prepare") name:ident() { Node::new(Kind::Deallocate,vec![]).text(name.text) }
-        rule analyze() -> Node = kw("analyze") kw("table") tables:((names:name() {? Node::relation(names) }) ++ ("," _)) {
-            Node::new(Kind::Analyze,vec![Node::new(Kind::TableList,tables)])
-        }
+        rule analyze() -> Node = kw("analyze") kw("table") value:(
+                table:(names:name() {? Node::relation(names) }) kw("update") kw("histogram") kw("on")
+                columns:(ident() ++ ("," _)) buckets:(kw("with") value:type_size() kw("buckets") {?
+                    if value.kind==Kind::Int && (1..=1024).contains(&value.value) {
+                        Ok(Node::new(Kind::StatsBucketCount,vec![value]))
+                    } else { Err("histogram bucket count between 1 and 1024") }
+                })? {
+                    let mut children=vec![Node::new(Kind::TableList,vec![table]),
+                        Node::new(Kind::ColumnList,columns.into_iter().map(Node::name).collect())];
+                    children.extend(buckets);
+                    Node::new(Kind::Analyze,children).value(1)
+                }
+                / table:(names:name() {? Node::relation(names) }) kw("drop") kw("histogram") kw("on")
+                columns:(ident() ++ ("," _)) {
+                    Node::new(Kind::Analyze,vec![Node::new(Kind::TableList,vec![table]),
+                        Node::new(Kind::ColumnList,columns.into_iter().map(Node::name).collect())]).value(2)
+                }
+                / tables:((names:name() {? Node::relation(names) }) ++ ("," _)) {
+                    Node::new(Kind::Analyze,vec![Node::new(Kind::TableList,tables)])
+                }
+            ) { value }
         rule stats_size() -> Node = kw("size") value:(
                 value:(kw("auto") { 0 } / kw("repeat") { 1 } / kw("skewonly") { 2 }) { Node::new(Kind::HiddenInt,vec![]).value(value) }
                 / value:number() { Node::new(Kind::StatsBucketCount,vec![value]) }

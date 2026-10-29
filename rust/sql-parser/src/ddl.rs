@@ -58,7 +58,7 @@ pub(crate) fn view_definition(node: &Node) -> ViewDefinition<'_> {
 }
 
 use crate::bridge::ffi::{
-    ColumnDefinition, ColumnGeneration, ColumnPosition, ColumnSkipIndexSyntax, DropBehavior,
+    AnalyzeAction, AnalyzeDefinition, ColumnDefinition, ColumnGeneration, ColumnPosition, ColumnSkipIndexSyntax, DropBehavior,
     ForeignKeyDefinition, JsonStorageDefinition,
     IndexDefinition, IndexKind, IndexMethod, PartitionDefinition, PartitionElement, PartitionKind,
     PartitionValues, ReferenceAction, ReferenceEvent, ReferentialAction, TableDefinition,
@@ -786,8 +786,20 @@ pub(crate) fn alter_charset_collation(node: &Node) -> &Node {
 pub(crate) fn optimize_relations(node: &Node) -> &[Node] {
     &node.children[0].children
 }
-pub(crate) fn analyze_relations(node: &Node) -> &[Node] {
-    &node.children[0].children
+pub(crate) fn analyze_definition(node: &Node) -> AnalyzeDefinition<'_> {
+    let buckets = child(node, Kind::StatsBucketCount);
+    AnalyzeDefinition {
+        action: match node.value {
+            0 => AnalyzeAction::Gather,
+            1 => AnalyzeAction::UpdateHistogram,
+            2 => AnalyzeAction::DropHistogram,
+            _ => unreachable!(),
+        },
+        relations: list(node, Kind::TableList),
+        columns: list(node, Kind::ColumnList),
+        has_bucket_count: buckets.is_some(),
+        bucket_count: buckets.map_or(0, |buckets| buckets.children[0].value),
+    }
 }
 pub(crate) fn purge_relation(node: &Node) -> &Node {
     &node.children[0]
