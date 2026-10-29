@@ -7790,6 +7790,10 @@ int ObDMLResolver::resolve_aggregation_hint(const peg::Node &hint_node, ObOptHin
 
   if (OB_SUCC(ret)) {
     hint->set_qb_name(qb_name);
+    const auto sort = peg::hint_aggregation_sort(hint_node);
+    if (sort != peg::AggregationSort::Default) {
+      hint->set_use_partition_sort(sort == peg::AggregationSort::Partition);
+    }
     result = hint;
   }
   return ret;

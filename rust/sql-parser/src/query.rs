@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::bridge::ffi::{
-    AliasForm, ExplainDisplay, ExplainFormat, IndexHintKind, InsertSource, IntoPosition,
+    AggregationSort, AliasForm, ExplainDisplay, ExplainFormat, IndexHintKind, InsertSource, IntoPosition,
     JoinCondition, JoinKind, LockKind, LockWait, MergeDirection, NullPlacement, ParallelPolicy, PlanCachePolicy,
     ReadConsistency, SampleMethod, SampleScope, SetOperator, SortDirection,
 };
@@ -669,6 +669,14 @@ pub(crate) fn hint_has_target(hint: &Node) -> bool {
 }
 pub(crate) fn hint_target(hint: &Node) -> &Node {
     &hint.children[1]
+}
+pub(crate) fn hint_aggregation_sort(hint: &Node) -> AggregationSort {
+    match hint.value {
+        0 => AggregationSort::Normal,
+        1 => AggregationSort::Partition,
+        u64::MAX => AggregationSort::Default,
+        _ => unreachable!(),
+    }
 }
 pub(crate) fn hint_parallel_policy(hint: &Node) -> ParallelPolicy {
     match hint.value {

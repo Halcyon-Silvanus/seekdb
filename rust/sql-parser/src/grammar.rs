@@ -988,7 +988,13 @@ peg::parser! {
                 / kw("inline") { Kind::Inline })
                 qb:("(" _ qb:hint_qb()? ")" _ { qb })? { Node::new(kind,vec![Node::optional(qb.flatten())]) }
             / kind:(kw("use_hash_aggregation") { Kind::HashAggregate } / kw("no_use_hash_aggregation") { Kind::NoHashAggregate })
-                qb:("(" _ qb:hint_qb()? ")" _ { qb })? { Node::new(kind,vec![Node::optional(qb.flatten())]).value(u64::MAX) }
+                args:("(" _ qb:hint_qb()?
+                    sort:(enabled(kind==Kind::NoHashAggregate)
+                        value:(kw("no_partition_sort") { 0 } / kw("partition_sort") { 1 }) { value })?
+                    ")" _ { (qb,sort.unwrap_or(u64::MAX)) })? {
+                    let (qb,sort)=args.unwrap_or((None,u64::MAX));
+                    Node::new(kind,vec![Node::optional(qb)]).value(sort)
+                }
             / kw("qb_name") "(" _ name:hint_qb_name() ")" _ { Node::new(Kind::QbName,vec![name]) }
             / kw("opt_param") "(" _ name:string() ("," _)? value:(string() / number()) ")" _ { Node::new(Kind::OptParam,vec![name,value]) }
         rule hints() -> Vec<Node> = "/*+" _ options:((value:hint_option() { value }
