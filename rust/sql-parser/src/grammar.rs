@@ -893,7 +893,13 @@ peg::parser! {
         rule named_window(level: usize) -> Node = name:window_name() kw("as") window:window_spec(level) {
             Node::new(Kind::NamedWindow,vec![Node::name(name),window])
         }
-        rule limit_value() -> Node = parameter() / start:position!() text:$(['0'..='9']+) !cont() end:position!() _ {? Node::number(text, start, end) }
+        rule limit_value() -> Node = parameter() / start:position!() text:$(['0'..='9']+) !cont() end:position!() _ {?
+            let value=Node::number(text,start,end)?;
+            match value.kind {
+                Kind::Int | Kind::Uint => Ok(value),
+                _ => Err("unsigned integer"),
+            }
+        }
         rule limit_expr() -> Node = limit_value() / enabled(pl) value:column() { value }
         rule limit() -> Node = kw("limit") first:limit_expr() tail:(kw("offset") value:limit_expr() { (false, value) } / "," _ value:limit_expr() { (true, value) })? {
             match tail {
