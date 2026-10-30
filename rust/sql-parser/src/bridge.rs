@@ -412,6 +412,7 @@ pub(crate) mod ffi {
         PurgeRecyclebin,
         PurgeTable,
         RestoreTable,
+        RestoreDatabase,
         PurgeIndex,
         PurgeDatabase,
         RenameTables,
@@ -1740,6 +1741,11 @@ pub(crate) mod ffi {
         bucket_count: u64,
     }
 
+    struct RestoreDatabaseDefinition<'a> {
+        source: &'a str,
+        target: &'a str,
+    }
+
     enum TableSelectMode {
         None,
         Select,
@@ -1967,6 +1973,7 @@ pub(crate) mod ffi {
         unsafe fn analyze_definition<'a>(node: &'a Node) -> AnalyzeDefinition<'a>;
         fn partition_element_values(node: &Node) -> &Node;
         fn purge_relation(node: &Node) -> &Node;
+        unsafe fn restore_database_definition<'a>(node: &'a Node) -> RestoreDatabaseDefinition<'a>;
         fn restore_table_source(node: &Node) -> &Node;
         fn restore_table_has_target(node: &Node) -> bool;
         fn restore_table_target(node: &Node) -> &Node;
@@ -2722,7 +2729,7 @@ use crate::query::vector_parameters;
 
 use crate::inspect::query_has_mixed_string_array;
 
-use crate::ddl::{analyze_definition, optimize_relations, purge_relation,
+use crate::ddl::{analyze_definition, optimize_relations, purge_relation, restore_database_definition,
     restore_table_source, restore_table_has_target, restore_table_target};
 use crate::statistics::{
     statistics_bucket_count, statistics_clauses, statistics_column_kind, statistics_column_name,

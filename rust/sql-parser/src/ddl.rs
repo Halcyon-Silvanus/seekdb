@@ -59,7 +59,7 @@ pub(crate) fn view_definition(node: &Node) -> ViewDefinition<'_> {
 
 use crate::bridge::ffi::{
     AnalyzeAction, AnalyzeDefinition, ColumnDefinition, ColumnGeneration, ColumnPosition, ColumnSkipIndexSyntax, DropBehavior,
-    ForeignKeyDefinition, JsonStorageDefinition,
+    ForeignKeyDefinition, JsonStorageDefinition, RestoreDatabaseDefinition,
     IndexDefinition, IndexKind, IndexMethod, PartitionDefinition, PartitionElement, PartitionKind,
     PartitionValues, ReferenceAction, ReferenceEvent, ReferentialAction, TableDefinition,
     TableOrganization, TableRowFormat, TableSelectMode,
@@ -809,6 +809,13 @@ pub(crate) fn analyze_definition(node: &Node) -> AnalyzeDefinition<'_> {
 }
 pub(crate) fn purge_relation(node: &Node) -> &Node {
     &node.children[0]
+}
+
+pub(crate) fn restore_database_definition(node: &Node) -> RestoreDatabaseDefinition<'_> {
+    RestoreDatabaseDefinition {
+        source: &node.children[0].text,
+        target: node.children.get(1).map_or("", |target| target.text.as_str()),
+    }
 }
 
 pub(crate) fn restore_table_source(node: &Node) -> &Node {

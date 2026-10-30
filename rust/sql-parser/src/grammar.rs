@@ -2177,6 +2177,11 @@ peg::parser! {
                 let mut children=vec![source];children.extend(target);
                 Node::new(Kind::RestoreTable,children)
             }
+        rule restore_database() -> Node = kw("flashback") (kw("database") / kw("schema")) source:ident()
+            kw("to") kw("before") kw("drop") target:(kw("rename") kw("to") name:ident() { name })? {
+                let mut children=vec![Node::name(source)];children.extend(target.map(Node::name));
+                Node::new(Kind::RestoreDatabase,children)
+            }
         rule purge() -> Node = kw("purge") value:(kw("recyclebin") { Node::new(Kind::PurgeRecyclebin,vec![]) }
             / kind:(kw("table") { Kind::PurgeTable } / kw("index") { Kind::PurgeIndex }) name:name() {? Ok(Node::new(kind,vec![Node::relation(name)?])) }
             / (kw("database") / kw("schema")) name:ident() { Node::new(Kind::PurgeDatabase,vec![Node::name(name)]) }) { value }
@@ -2569,7 +2574,7 @@ peg::parser! {
                     partitions:partitions.unwrap_or_default(),hints:hints.unwrap_or_default(),
                 }.into_node())
             }
-        rule sql_statement() -> Node = select(0) / insert() / update() / delete() / transaction() / ddl() / account_statement() / role_statement() / setting() / explain() / show() / alter_system() / prepared_statement() / diagnostics() / analyze() / lock_tables() / load_data() / kill() / purge() / restore_table()
+        rule sql_statement() -> Node = select(0) / insert() / update() / delete() / transaction() / ddl() / account_statement() / role_statement() / setting() / explain() / show() / alter_system() / prepared_statement() / diagnostics() / analyze() / lock_tables() / load_data() / kill() / purge() / restore_table() / restore_database()
         rule statement() -> Node = _ value:(package_statement() / routine_statement() / pl_call() / anonymous_statement() / sql_statement()) { value }
         #[no_eof]
         pub rule statement_end() -> usize = (statement() / _) (";" / ![_]) end:position!() { end }

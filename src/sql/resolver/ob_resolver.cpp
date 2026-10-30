@@ -53,6 +53,7 @@
 #include "sql/resolver/ddl/ob_drop_package_resolver.h"
 #include "sql/resolver/ddl/ob_purge_resolver.h"
 #include "sql/resolver/ddl/restore_table_resolver.h"
+#include "sql/resolver/ddl/restore_database_resolver.h"
 #include "sql/resolver/ddl/ob_analyze_stmt_resolver.h"
 #include "sql/resolver/cmd/ob_variable_set_resolver.h"
 #include "sql/resolver/cmd/ob_show_resolver.h"
@@ -289,6 +290,10 @@ int ObResolver::resolve(const peg::Node &statement, ObStmt *&stmt)
       case peg::NodeKind::RestoreTable:
         params_.resolver_scope_stmt_type_ = T_RECYCLEBIN_RESTORE_TABLE;
         ret = stmt_resolver_func<RestoreTableResolver>(params_, statement, stmt);
+        break;
+      case peg::NodeKind::RestoreDatabase:
+        params_.resolver_scope_stmt_type_ = T_RECYCLEBIN_RESTORE_DATABASE;
+        ret = stmt_resolver_func<RestoreDatabaseResolver>(params_, statement, stmt);
         break;
       case peg::NodeKind::PurgeTable:
         params_.resolver_scope_stmt_type_ = T_PURGE_TABLE;
