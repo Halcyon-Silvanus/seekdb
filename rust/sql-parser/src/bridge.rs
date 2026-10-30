@@ -628,6 +628,7 @@ pub(crate) mod ffi {
         HintTables,
         JoinHintTables,
         Leading,
+        Ordered,
         UseNl,
         NoUseNl,
         UseNlMaterialization,

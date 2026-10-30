@@ -6852,6 +6852,7 @@ ObItemType semantic_hint_type(peg::NodeKind kind)
     case peg::NodeKind::Inline: return T_INLINE;
     case peg::NodeKind::JoinFirstUnnest: return T_JOIN_FIRST_UNNEST;
     case peg::NodeKind::Leading: return T_LEADING;
+    case peg::NodeKind::Ordered: return T_ORDERED;
     case peg::NodeKind::LeftToAnti: return T_LEFT_TO_ANTI;
     case peg::NodeKind::Materialize: return T_MATERIALIZE;
     case peg::NodeKind::MergeView: return T_MERGE_HINT;
@@ -7407,6 +7408,7 @@ int ObDMLResolver::resolve_optimize_hint(const peg::Node &hint_node,
       OZ(resolve_join_hint(hint_node, hints));
       break;
     case peg::NodeKind::Leading:
+    case peg::NodeKind::Ordered:
       OZ(resolve_join_order_hint(hint_node, opt_hint));
       break;
     case peg::NodeKind::JoinFilter:
@@ -7568,9 +7570,11 @@ int ObDMLResolver::resolve_join_order_hint(const peg::Node &hint_node, ObOptHint
   opt_hint = nullptr;
   ObJoinOrderHint *hint = nullptr;
   ObString qb_name;
-  OZ(ObQueryHint::create_hint(allocator_, T_LEADING, hint));
+  OZ(ObQueryHint::create_hint(allocator_, semantic_hint_type(hint_node.kind()), hint));
   OZ(resolve_qb_name_node(query_block_in_hint(hint_node), qb_name));
-  OZ(resolve_tables_in_leading_hint(peg::hint_leading(hint_node), hint->get_table()));
+  if (hint_node.kind() == peg::NodeKind::Leading) {
+    OZ(resolve_tables_in_leading_hint(peg::hint_leading(hint_node), hint->get_table()));
+  }
   if (OB_SUCC(ret)) {
     hint->set_qb_name(qb_name);
     opt_hint = hint;

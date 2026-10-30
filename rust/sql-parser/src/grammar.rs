@@ -1056,6 +1056,9 @@ peg::parser! {
             }
         rule hint_option() -> Node
             = kw("leading") "(" _ qb:hint_qb()? tables:hint_leading(0) ")" _ { Node::new(Kind::Leading,vec![Node::optional(qb),tables]) }
+            / kw("ordered") qb:("(" _ value:hint_qb()? ")" _ { value })? {
+                Node::new(Kind::Ordered,vec![Node::optional(qb.flatten())])
+            }
             / kind:(kw("begin_outline_data") { Kind::BeginOutline } / kw("end_outline_data") { Kind::EndOutline }) { Node::new(kind,vec![]) }
             / kw("pq_distribute") "(" _ qb:hint_qb()? tables:hint_join_item()
                 methods:(("," _)? outer:distribute_method() ("," _)? inner:distribute_method() { (outer,inner) })? ")" _ {

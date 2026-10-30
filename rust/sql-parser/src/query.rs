@@ -574,6 +574,7 @@ fn query_block(hint: &Node) -> Option<&Node> {
         hint.kind,
         Kind::QbName
             | Kind::Leading
+            | Kind::Ordered
             | Kind::PqDistribute
             | Kind::PqDistributeWindow
             | Kind::JoinFilter
