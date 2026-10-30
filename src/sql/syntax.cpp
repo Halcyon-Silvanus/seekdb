@@ -25,21 +25,23 @@ using namespace common;
 namespace {
 using Kind = peg::NodeKind;
 
-// Leave room for parser entry and native allocation before switching stacks.
 constexpr size_t ENTRY_RESERVE = 512 * 1024;
+constexpr size_t PARSER_STACK_SIZE = (4UL << 20) - ACHUNK_PRESERVE_SIZE * 2;
 constexpr size_t HOST_ADMISSION_RESERVE = 68 * 1024;
 
 template <typename Operation>
 int run_parser(Operation &&operation)
 {
-  auto invoke = [&operation]() -> int {
+  bool stack_limit = false;
+  auto invoke = [&]() -> int {
+    stack_limit = false;
     void *address = nullptr;
     size_t size = 0;
     int ret = get_stackattr(address, size);
     if (ret != OB_SUCCESS) return ret;
     const uintptr_t low = reinterpret_cast<uintptr_t>(address);
     if (size == 0 || low > UINTPTR_MAX - size) return OB_ERR_UNEXPECTED;
-    return operation(peg::StackBounds{low, low + size});
+    return operation(peg::StackBounds{low, low + size}, stack_limit);
   };
 #if defined(__EMSCRIPTEN__)
   // Native stack switching cannot extend the Wasm execution stack.
@@ -60,11 +62,15 @@ int run_parser(Operation &&operation)
   if (current < low || current > low + size) return OB_SIZE_OVERFLOW;
   const size_t remaining = current - low;
   if (remaining < HOST_ADMISSION_RESERVE) return OB_SIZE_OVERFLOW;
-  if (remaining >= ENTRY_RESERVE) return invoke();
-  void *stack = nullptr;
-  if (OB_FAIL(alloc_stack(STACK_PER_EXTEND, stack))) return ret;
-  DEFER(dealloc_stack(stack, STACK_PER_EXTEND));
-  return CALL_WITH_NEW_STACK(invoke(), stack, STACK_PER_EXTEND);
+  auto extend = [&](size_t stack_size) -> int {
+    void *stack = nullptr;
+    int ret = alloc_stack(stack_size, stack);
+    if (ret != OB_SUCCESS) return ret;
+    DEFER(dealloc_stack(stack, stack_size));
+    return CALL_WITH_NEW_STACK(invoke(), stack, stack_size);
+  };
+  ret = remaining >= ENTRY_RESERVE ? invoke() : extend(STACK_PER_EXTEND);
+  return stack_limit && remaining < PARSER_STACK_SIZE ? extend(PARSER_STACK_SIZE) : ret;
 #else
   return OB_NOT_SUPPORTED;
 #endif
@@ -232,7 +238,7 @@ int report_parse_error(const common::ObString &sql, size_t offset)
 int ObParser::parse_entry(const ObString &query, ParsedSql &owner, peg::ParseMode mode,
                           bool dynamic_sql)
 {
-  return run_parser([&](peg::StackBounds bounds) -> int {
+  return run_parser([&](peg::StackBounds bounds, bool &stack_limit) -> int {
     owner.reset();
     ObString sql = query;
     if (mode == peg::ParseMode::Sql || mode == peg::ParseMode::Trigger
@@ -242,7 +248,8 @@ int ObParser::parse_entry(const ObString &query, ParsedSql &owner, peg::ParseMod
       sql = ObString(length, query.ptr());
     }
     auto parsed = peg::parse_sql(sql_bytes(sql), parser_mode(sql_mode_), mode, bounds);
-    if (parsed->error_kind() == peg::ParseErrorKind::StackLimit) return OB_SIZE_OVERFLOW;
+    stack_limit = parsed->error_kind() == peg::ParseErrorKind::StackLimit;
+    if (stack_limit) return OB_SIZE_OVERFLOW;
     if (!parsed->error().empty()) {
       const auto expanded_sql = parsed->expanded_sql();
       const ObString source = expanded_sql.empty() ? sql
@@ -323,14 +330,17 @@ int ObParser::split_multiple_stmt(const ObString &stmt, ObIArray<ObString> &quer
                                   ObMPParseStat &parse_stat, bool first_only)
 {
   parse_stat.reset();
-  return run_parser([&](peg::StackBounds bounds) -> int {
+  if (peg::is_single_statement(sql_bytes(stmt))) return queries.push_back(stmt);
+  return run_parser([&](peg::StackBounds bounds, bool &stack_limit) -> int {
     int ret = OB_SUCCESS;
     const auto split = peg::split_sql(sql_bytes(stmt), parser_mode(sql_mode_), first_only, bounds);
-    if (split.failed && split.error_kind == peg::ParseErrorKind::StackLimit) {
+    stack_limit = split.failed && split.error_kind == peg::ParseErrorKind::StackLimit;
+    if (stack_limit) {
       parse_stat.parse_fail_ = true;
       parse_stat.fail_ret_ = OB_SIZE_OVERFLOW;
       return OB_SIZE_OVERFLOW;
     }
+    parse_stat.reset();
     size_t offset = 0;
     for (size_t end : split.ends) {
       if (OB_FAIL(queries.push_back(ObString(end - offset, stmt.ptr() + offset)))) break;
@@ -347,9 +357,10 @@ int ObParser::split_multiple_stmt(const ObString &stmt, ObIArray<ObString> &quer
 
 int ObParser::inspect_expression(const ObString &text, peg::ExpressionInfo &info)
 {
-  return run_parser([&](peg::StackBounds bounds) -> int {
+  return run_parser([&](peg::StackBounds bounds, bool &stack_limit) -> int {
     info = peg::inspect_expression(sql_bytes(text), parser_mode(sql_mode_), bounds);
-    return info.error_kind == peg::ParseErrorKind::StackLimit ? OB_SIZE_OVERFLOW : OB_SUCCESS;
+    stack_limit = info.error_kind == peg::ParseErrorKind::StackLimit;
+    return stack_limit ? OB_SIZE_OVERFLOW : OB_SUCCESS;
   });
 }
 

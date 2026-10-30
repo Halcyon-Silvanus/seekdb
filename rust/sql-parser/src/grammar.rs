@@ -270,7 +270,7 @@ peg::parser! {
         rule depth(level: usize)
             = offset:position!() {?
                 budget.checkpoint(offset)?;
-                if level < MAX_DEPTH { Ok(()) } else { Err("SQL nesting below 128 levels") }
+                if level < MAX_DEPTH { Ok(()) } else { Err("SQL nesting below 1024 levels") }
             }
         rule enabled(value: bool) = {? if value { Ok(()) } else { Err("SQL mode") } }
         rule reserved_word() = text:$(word()) {? if reserved(text) { Ok(()) } else { Err("reserved keyword") } }

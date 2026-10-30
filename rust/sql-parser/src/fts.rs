@@ -13,7 +13,8 @@
 // limitations under the License.
 
 use crate::bridge::ffi::SearchOccurrence;
-use crate::node::MAX_DEPTH;
+
+const MAX_DEPTH: usize = 128;
 
 enum SearchValue {
     Term(String),

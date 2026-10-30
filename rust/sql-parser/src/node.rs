@@ -40,7 +40,7 @@ pub(crate) enum Operator {
     Binary(ffi::BinaryOperator),
 }
 
-pub(crate) const MAX_DEPTH: usize = 128;
+pub(crate) const MAX_DEPTH: usize = 1024;
 
 pub(crate) struct Name {
     pub text: String,
@@ -376,7 +376,7 @@ impl Node {
 
     pub(crate) fn expression(mut self, start: usize, end: usize) -> Result<Self, &'static str> {
         if self.depth >= MAX_DEPTH {
-            return Err("expression depth below 128 levels");
+            return Err("expression depth below 1024 levels");
         }
         self.depth += 1;
         Ok(self.at(start, end))
