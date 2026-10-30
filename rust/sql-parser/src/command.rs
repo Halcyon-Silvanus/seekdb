@@ -93,6 +93,10 @@ pub(crate) fn freeze_tablet_id(statement: &Node) -> u64 {
     statement.children[2].value
 }
 
+pub(crate) fn cancel_task_id(statement: &Node) -> &str {
+    &statement.children[0].text
+}
+
 pub(crate) fn cache_flush_kind(statement: &Node) -> CacheKind {
     match statement.children[0].text.as_str() {
         "plan" => CacheKind::Plan,

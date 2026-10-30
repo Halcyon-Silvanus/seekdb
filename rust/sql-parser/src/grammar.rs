@@ -2031,6 +2031,7 @@ peg::parser! {
         ) { value }
         rule alter_system() -> Node = kw("alter") kw("system") value:(
             flush_cache()
+            / kw("cancel") kw("task") id:string() { Node::new(Kind::CancelTask,vec![id]) }
             / kind:(kw("major") { 1 } / kw("minor") { 2 }) kw("freeze")
                 tablet:(kw("tablet_id") "=" _ value:load_integer() { value })? {
                 Node::new(Kind::Freeze,vec![Node::new(Kind::HiddenInt,vec![]).value(kind),Node::missing(),Node::optional(tablet)])

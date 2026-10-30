@@ -247,6 +247,10 @@ int ObResolver::resolve(const peg::Node &statement, ObStmt *&stmt)
         params_.resolver_scope_stmt_type_ = T_FREEZE;
         ret = stmt_resolver_func<ObFreezeResolver>(params_, statement, stmt);
         break;
+      case peg::NodeKind::CancelTask:
+        params_.resolver_scope_stmt_type_ = T_CANCEL_TASK;
+        ret = stmt_resolver_func<CancelTaskResolver>(params_, statement, stmt);
+        break;
       case peg::NodeKind::FlushCache:
         params_.resolver_scope_stmt_type_ = T_FLUSH_CACHE;
         ret = stmt_resolver_func<ObFlushCacheResolver>(params_, statement, stmt);

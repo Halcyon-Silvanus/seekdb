@@ -48,6 +48,25 @@ int ObFreezeResolver::resolve(const peg::Node &statement)
   return ret;
 }
 
+int CancelTaskResolver::resolve(const peg::Node &statement)
+{
+  int ret = OB_SUCCESS;
+  ObCancelTaskStmt *stmt = create_stmt<ObCancelTaskStmt>();
+  if (OB_ISNULL(stmt)) {
+    ret = OB_ALLOCATE_MEMORY_FAILED;
+  } else {
+    const auto text = peg::cancel_task_id(statement);
+    ObString id;
+    if (text.empty()) {
+      ret = OB_ERR_PARSER_SYNTAX;
+    } else {
+      OZ(ob_write_string(*allocator_, ObString(text.size(), text.data()), id));
+    }
+    OZ(stmt->set_task_id(id));
+  }
+  return ret;
+}
+
 int ObFlushCacheResolver::resolve(const peg::Node &statement)
 {
   int ret = OB_SUCCESS;

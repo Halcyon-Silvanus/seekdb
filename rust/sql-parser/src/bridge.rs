@@ -541,6 +541,7 @@ pub(crate) mod ffi {
         CastType,
         SetConfig,
         Freeze,
+        CancelTask,
         ResetConfig,
         FlushCache,
         FlushKvCache,
@@ -2124,6 +2125,7 @@ pub(crate) mod ffi {
         fn empty_query_has_comment(statement: &Node) -> bool;
         fn freeze_is_major(statement: &Node) -> bool;
         fn freeze_tablet_id(statement: &Node) -> u64;
+        fn cancel_task_id(statement: &Node) -> &str;
         fn cache_flush_kind(statement: &Node) -> CacheKind;
         fn cache_flush_has_namespace(statement: &Node) -> bool;
         fn cache_flush_namespace(statement: &Node) -> &str;
@@ -2673,7 +2675,7 @@ use crate::command::{
     cache_flush_databases, cache_flush_filter, cache_flush_filter_value, cache_flush_has_databases,
     cache_flush_has_namespace, cache_flush_kind, cache_flush_namespace, configuration_assignments,
     configuration_comment, configuration_name, configuration_value, empty_query_has_comment,
-    freeze_is_major, freeze_tablet_id, kv_cache_has_name, kv_cache_name, tracepoint_options, tracepoint_value,
+    freeze_is_major, freeze_tablet_id, cancel_task_id, kv_cache_has_name, kv_cache_name, tracepoint_options, tracepoint_value,
     lock_tables, table_lock, transaction_setting,
 };
 use crate::inspect::embedded_sql_references;
