@@ -142,6 +142,7 @@ private:
   int process_sys_func_params(ObSysFunRawExpr &func_expr, int current_columns_count);
   int resolve_stored_function(const peg::Node &call, ObUDFInfo &udf_info);
   int process_match_against(const peg::Node &node, ObRawExpr *&expr);
+  int process_match_score(ObRawExpr *&expr);
   static int not_int_check(const ObRawExpr *expr);
   static int not_row_check(const ObRawExpr *expr);
   static int param_not_row_check(const ObRawExpr *expr);

@@ -516,7 +516,8 @@ impl<'a> Collector<'a> {
             | Kind::Star
             | Kind::Relation
             | Kind::Default
-            | Kind::SystemVariable => {}
+            | Kind::SystemVariable
+            | Kind::MatchScore => {}
             Kind::Parenthesized => self.unary(node, scope)?,
             Kind::OdbcEscape => self.collect(odbc_operand(node), scope.expression())?,
             Kind::UserVariable | Kind::GetUserVariable => {
@@ -635,6 +636,13 @@ impl<'a> Collector<'a> {
                 }
             }
             Kind::MatchAgainst => self.collect(fulltext_search(node), scope)?,
+            Kind::ElasticMatch => {
+                for column in fulltext_columns(node) {
+                    self.collect(fulltext_column_boost(column), scope)?;
+                }
+                self.collect(fulltext_search(node), scope)?;
+                self.collect(fulltext_options(node), scope)?;
+            }
             Kind::Table | Kind::JoinedTable | Kind::JsonTable | Kind::TableCollection | Kind::UnnestTable => {
                 self.table(node, scope)?
             }

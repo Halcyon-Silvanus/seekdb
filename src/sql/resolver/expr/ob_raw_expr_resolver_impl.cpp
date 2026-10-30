@@ -591,7 +591,9 @@ int ObRawExprResolverImpl::do_recursive_resolve(const peg::Node &node,
       case peg::NodeKind::JsonValue: OZ (process_json_value_node(node, expr)); break;
       case peg::NodeKind::JsonQuery: OZ (process_json_query_node(node, expr)); break;
       case peg::NodeKind::Cast: OZ (process_cast(node, expr)); break;
+      case peg::NodeKind::ElasticMatch:
       case peg::NodeKind::MatchAgainst: OZ (process_match_against(node, expr)); break;
+      case peg::NodeKind::MatchScore: OZ (process_match_score(expr)); break;
       case peg::NodeKind::CharsetName: OZ (process_char_charset_node(node, expr)); break;
       case peg::NodeKind::Collation: OZ (process_collation_node(node, expr)); break;
       case peg::NodeKind::If: OZ (process_if_node(node, expr)); break;
@@ -3122,12 +3124,19 @@ int ObRawExprResolverImpl::process_match_against(const peg::Node &node, ObRawExp
 {
   int ret = OB_SUCCESS;
   ObMatchFunRawExpr *result = nullptr;
-  OZ(ctx_.expr_factory_.create_raw_expr(T_FUN_MATCH_AGAINST, result));
+  const bool elastic = node.kind() == peg::NodeKind::ElasticMatch;
+  OZ(ctx_.expr_factory_.create_raw_expr(elastic ? T_FUN_ES_MATCH : T_FUN_MATCH_AGAINST, result));
   OZ(ctx_.match_exprs_->push_back(result));
   for (const auto &column : peg::fulltext_columns(node)) {
     ObRawExpr *reference = nullptr;
-    OZ(process_column_ref_node(column, reference));
+    OZ(process_column_ref_node(peg::fulltext_column_reference(column), reference));
     OZ(result->get_match_columns().push_back(reference));
+    if (OB_SUCC(ret) && elastic) {
+      ObRawExpr *boost = nullptr;
+      OZ(SMART_CALL(recursive_resolve(peg::fulltext_column_boost(column), boost)));
+      OZ(boost->extract_info());
+      OZ(result->get_columns_boosts().push_back(boost));
+    }
   }
   ObRawExpr *search = nullptr;
   OZ(SMART_CALL(recursive_resolve(peg::fulltext_search(node), search)));
@@ -3136,20 +3145,49 @@ int ObRawExprResolverImpl::process_match_against(const peg::Node &node, ObRawExp
     ret = OB_NOT_SUPPORTED;
     LOG_USER_ERROR(OB_NOT_SUPPORTED, "non-const search query");
   }
-  ObMatchAgainstMode mode = ObMatchAgainstMode::NATURAL_LANGUAGE_MODE;
-  switch (peg::fulltext_mode(node)) {
-    case peg::FulltextMode::Natural: break;
-    case peg::FulltextMode::Boolean: mode = ObMatchAgainstMode::BOOLEAN_MODE; break;
-    case peg::FulltextMode::Phrase: mode = ObMatchAgainstMode::MATCH_PHRASE_MODE; break;
-    default:
-      ret = OB_NOT_SUPPORTED;
-      LOG_USER_ERROR(OB_NOT_SUPPORTED, "search modes other than NATURAL_LANGUAGE_MODE, BOOLEAN_MODE or MATCH_PHRASE_MODE");
-      break;
-  }
   OX(result->set_search_key(search));
-  OX(result->set_mode_flag(mode));
-  OZ(result->extract_info());
+  if (OB_SUCC(ret) && elastic) {
+    ObRawExpr *options = nullptr;
+    OZ(SMART_CALL(recursive_resolve(peg::fulltext_options(node), options)));
+    OX(result->set_param_text_expr(options));
+  } else if (OB_SUCC(ret)) {
+    ObMatchAgainstMode mode = ObMatchAgainstMode::NATURAL_LANGUAGE_MODE;
+    switch (peg::fulltext_mode(node)) {
+      case peg::FulltextMode::Natural: break;
+      case peg::FulltextMode::Boolean: mode = ObMatchAgainstMode::BOOLEAN_MODE; break;
+      case peg::FulltextMode::Phrase: mode = ObMatchAgainstMode::MATCH_PHRASE_MODE; break;
+      default:
+        ret = OB_NOT_SUPPORTED;
+        LOG_USER_ERROR(OB_NOT_SUPPORTED, "search modes other than NATURAL_LANGUAGE_MODE, BOOLEAN_MODE or MATCH_PHRASE_MODE");
+        break;
+    }
+    OX(result->set_mode_flag(mode));
+    OZ(result->extract_info());
+  }
   OX(expr = result);
+  return ret;
+}
+
+int ObRawExprResolverImpl::process_match_score(ObRawExpr *&expr)
+{
+  int ret = OB_SUCCESS;
+  if (ctx_.stmt_ == nullptr || static_cast<ObDMLStmt *>(ctx_.stmt_)->get_match_exprs().empty()) {
+    ret = OB_NOT_SUPPORTED;
+    LOG_USER_ERROR(OB_NOT_SUPPORTED, "The position of score() is");
+  } else {
+    const auto &matches = static_cast<ObDMLStmt *>(ctx_.stmt_)->get_match_exprs();
+    if (!matches.at(0)->is_es_match()) {
+      ret = OB_NOT_SUPPORTED;
+      LOG_USER_ERROR(OB_NOT_SUPPORTED, "The score with match agaisnt is");
+    } else {
+      expr = matches.at(0);
+      for (int64_t i = 1; OB_SUCC(ret) && i < matches.count(); ++i) {
+        ObOpRawExpr *sum = nullptr;
+        OZ(ObRawExprUtils::build_add_expr(ctx_.expr_factory_, matches.at(i), expr, sum));
+        OX(expr = sum);
+      }
+    }
+  }
   return ret;
 }
 

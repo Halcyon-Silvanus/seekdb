@@ -647,6 +647,15 @@ pub(crate) fn fulltext_columns(expression: &Node) -> &[Node] {
 pub(crate) fn fulltext_search(expression: &Node) -> &Node {
     &expression.children[1]
 }
+pub(crate) fn fulltext_options(expression: &Node) -> &Node {
+    &expression.children[2]
+}
+pub(crate) fn fulltext_column_reference(column: &Node) -> &Node {
+    if column.kind == Kind::MatchColumn { &column.children[0] } else { column }
+}
+pub(crate) fn fulltext_column_boost(column: &Node) -> &Node {
+    &column.children[1]
+}
 pub(crate) fn fulltext_mode(expression: &Node) -> FulltextMode {
     match expression.value {
         0 => FulltextMode::Natural,

@@ -481,7 +481,7 @@ peg::parser! {
                 let end=names[1].end;Node::column(names,false,start,end)
             }
             / depth(level) start:position!() !(['x'|'X'] "'" hex_digit()* "'") parts:expression_name() tail:("." _ "*" end:position!() _ { (None, end) }
-                / enabled(parts.len()!=1 || parts[0].quoted || !["row","match","point","json_query","json_value","trim","position","weight_string","char","character","array","map","array_agg",
+                / enabled(parts.len()!=1 || parts[0].quoted || !["row","match","score","point","json_query","json_value","trim","position","weight_string","char","character","array","map","array_agg",
                     "array_map","array_filter","array_first","array_sortby","vector_distance","vector_similarity","group_concat","listagg","get_format"].iter().any(|name| parts[0].text.eq_ignore_ascii_case(name)))
                     "(" _ modifier:((kw("distinct") / kw("unique")) { Kind::Distinct } / kw("all") { Kind::All })? args:(function_argument(level+1) ++ ("," _))? ")" close:position!() _
                     window:(kw("over") value:window(level+1) { value })? followed_by_over:(&kw("over") { true } / { false })
@@ -584,12 +584,28 @@ peg::parser! {
                     let mut children=vec![data,path,target,Node::new(Kind::HiddenInt,vec![]).value(u64::from(truncate.is_some())),Node::new(Kind::HiddenInt,vec![]).value(u64::from(ascii.is_some()))];
                     children.extend(options.into_children());Node::new(Kind::JsonValue,children).expression(start,end)
                 }
+        rule fulltext_argument(level: usize) -> Node
+            = !['+'|'-'] value:signed_literal() { value } / system_variable() / parameter()
+            / value:atom(level) {?
+                if crate::expression::is_call_expression(&value) || matches!(value.kind,Kind::Binary|Kind::JsonValue|Kind::JsonQuery) { Ok(value) }
+                else { Err("literal or function search argument") }
+            }
+        rule fulltext_boosted_column() -> Node = column:fulltext_column() "^" _ boost:signed_literal() {
+            Node::new(Kind::MatchColumn,vec![column,boost])
+        }
         rule fulltext_column() -> Node = start:position!() names:name() end:position!() {? Node::column(names,false,start,end) }
-        rule fulltext_search(level: usize) -> Node = start:position!() kw("match") "(" _ columns:(fulltext_column() ++ ("," _)) ")" _ kw("against") "(" _ search:expr(level)
+        rule fulltext_search(level: usize) -> Node = start:position!() kw("match") "(" _ columns:(fulltext_column() ++ ("," _)) ")" _ kw("against") "(" _ search:fulltext_argument(level)
             search_mode:(kw("in") kw("natural") kw("language") kw("mode") expansion:(kw("with") kw("query") kw("expansion"))? { u64::from(expansion.is_some()) }
                 / kw("in") kw("boolean") kw("mode") { 2 } / kw("with") kw("query") kw("expansion") { 3 }
                 / kw("in") kw("match") kw("phrase") kw("mode") { 4 })? ")" end:position!() _ {?
                 Node::new(Kind::MatchAgainst,vec![Node::new(Kind::MatchColumns,columns),search]).value(search_mode.unwrap_or(0)).expression(start,end)
+            }
+            / start:position!() kw("match") "(" _ columns:(fulltext_boosted_column() ++ ("," _))
+                "," _ search:fulltext_argument(level) "," _ options:fulltext_argument(level) ")" end:position!() _ {?
+                Node::new(Kind::ElasticMatch,vec![Node::new(Kind::MatchColumns,columns),search,options]).expression(start,end)
+            }
+            / start:position!() kw("score") "(" _ ")" end:position!() _ {?
+                Node::new(Kind::MatchScore,vec![]).expression(start,end)
             }
         rule weight_level_number() -> u64 = value:type_size() {?
             if matches!(value.kind,Kind::Int|Kind::Uint) { Ok(value.value.clamp(1,WEIGHT_STRING_LEVELS)-1) }

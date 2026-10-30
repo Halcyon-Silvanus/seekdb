@@ -202,6 +202,9 @@ pub(crate) mod ffi {
         ParserMaxNgramSize,
         MatchColumns,
         MatchAgainst,
+        ElasticMatch,
+        MatchColumn,
+        MatchScore,
         IndexScope,
         StoringColumns,
         UsingHash,
@@ -2538,6 +2541,9 @@ pub(crate) mod ffi {
         fn vector_metric(call: &Node) -> VectorMetric;
         fn fulltext_columns(expression: &Node) -> &[Node];
         fn fulltext_search(expression: &Node) -> &Node;
+        fn fulltext_options(expression: &Node) -> &Node;
+        fn fulltext_column_reference(column: &Node) -> &Node;
+        fn fulltext_column_boost(column: &Node) -> &Node;
         fn fulltext_mode(expression: &Node) -> FulltextMode;
         fn json_document(expression: &Node) -> &Node;
         fn json_path(expression: &Node) -> &Node;
@@ -2703,7 +2709,8 @@ use crate::expression::{
     collation_argument, collation_name, collation_specification, collection_lambda, exists_query,
     expression_literal, frame_bound, frame_bound_has_unit, frame_bound_offset, frame_bound_unit,
     frame_end, frame_has_end, frame_start,
-    frame_unit, fulltext_columns, fulltext_mode, fulltext_search, integer_literal_value,
+    frame_unit, fulltext_columns, fulltext_mode, fulltext_search, fulltext_options,
+    fulltext_column_reference, fulltext_column_boost, integer_literal_value,
     is_call_expression, is_literal, is_test, json_column_kind, json_column_name, json_column_type,
     json_document, json_empty_clause, json_empty_default, json_error_clause, json_error_default,
     json_mismatch_clause, json_nested_columns, json_options, json_path, json_returning,
