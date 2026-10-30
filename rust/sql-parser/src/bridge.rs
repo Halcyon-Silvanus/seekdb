@@ -915,6 +915,7 @@ pub(crate) mod ffi {
         ApproxCountDistinctSynopsis,
         ApproxCountDistinctSynopsisMerge,
         SumOpnsize,
+        Mvt,
         TopFreHist,
         HybridHist,
         TableLikeSource,

@@ -760,6 +760,7 @@ impl Node {
             "approx_count_distinct_synopsis" => Kind::ApproxCountDistinctSynopsis,
             "approx_count_distinct_synopsis_merge" => Kind::ApproxCountDistinctSynopsisMerge,
             "sum_opnsize" => Kind::SumOpnsize,
+            "_st_asmvt" => Kind::Mvt,
             "top_k_fre_hist" => Kind::TopFreHist,
             "hybrid_hist" => Kind::HybridHist,
             "row_number" => Kind::RowNumber,
@@ -836,6 +837,13 @@ impl Node {
             call.children.push(order);
             call.children.extend(modifier.map(|kind| Self::new(kind, vec![])));
             return call.expression(start, end);
+        }
+        if kind == Kind::Mvt {
+            if !(1..=5).contains(&arguments.len()) || arguments[0].kind != Kind::Column
+                || modifier.is_some() || window.is_some() || followed_by_over {
+                return Err("invalid MVT aggregate arguments");
+            }
+            return Self::named_call(kind, Self::name(name), arguments).expression(start, end);
         }
         let approximate = matches!(
             kind,

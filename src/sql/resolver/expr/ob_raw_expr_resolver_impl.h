@@ -92,7 +92,7 @@ private:
   int process_lambda_func_node(const peg::Node &node, ObRawExpr *&expr);
   int process_array_map_func_node(const peg::Node &node, ObRawExpr *&expr);
   int process_left_value_node(const peg::Node &node, ObRawExpr *&expr);
-  int process_column_ref_node(const peg::Node &node, ObRawExpr *&expr);
+  int process_column_ref_node(const peg::Node &node, ObRawExpr *&expr, bool allow_star = false);
   int process_user_assignment(const peg::Node &node, ObRawExpr *&expr);
   int process_any_or_all_node(const peg::Node &node, ObRawExpr *&expr);
   int process_user_var_node(const peg::Node &node, ObRawExpr *&expr);

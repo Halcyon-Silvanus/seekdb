@@ -92,6 +92,7 @@ ObItemType callable_expression_type(peg::NodeKind kind)
     case peg::NodeKind::ApproxCountDistinctSynopsis: return T_FUN_APPROX_COUNT_DISTINCT_SYNOPSIS;
     case peg::NodeKind::ApproxCountDistinctSynopsisMerge: return T_FUN_APPROX_COUNT_DISTINCT_SYNOPSIS_MERGE;
     case peg::NodeKind::SumOpnsize: return T_FUN_SUM_OPNSIZE;
+    case peg::NodeKind::Mvt: return T_FUN_SYS_ST_ASMVT;
     case peg::NodeKind::TopFreHist: return T_FUN_TOP_FRE_HIST;
     case peg::NodeKind::HybridHist: return T_FUN_HYBRID_HIST;
     case peg::NodeKind::GroupConcat: return T_FUN_GROUP_CONCAT;
@@ -524,6 +525,7 @@ int ObRawExprResolverImpl::do_recursive_resolve(const peg::Node &node,
       case peg::NodeKind::ApproxCountDistinctSynopsis:
       case peg::NodeKind::ApproxCountDistinctSynopsisMerge:
       case peg::NodeKind::SumOpnsize:
+      case peg::NodeKind::Mvt:
       case peg::NodeKind::TopFreHist:
       case peg::NodeKind::HybridHist:
       case peg::NodeKind::GroupConcat:
@@ -1705,7 +1707,7 @@ int ObRawExprResolverImpl::process_left_value_node(const peg::Node &node, ObRawE
   return ret;
 }
 
-int ObRawExprResolverImpl::process_column_ref_node(const peg::Node &node, ObRawExpr *&expr)
+int ObRawExprResolverImpl::process_column_ref_node(const peg::Node &node, ObRawExpr *&expr, bool allow_star)
 {
   int ret = OB_SUCCESS;
   int64_t lambda_index = -1;
@@ -1725,7 +1727,7 @@ int ObRawExprResolverImpl::process_column_ref_node(const peg::Node &node, ObRawE
   } else {
     ObQualifiedName name;
     OZ (ObResolverUtils::resolve_column_ref(node, ctx_.case_mode_, ctx_.expr_factory_.get_allocator(), name));
-    if (OB_SUCC(ret) && name.is_star_) { ret = OB_ERR_PARSER_SYNTAX; }
+    if (OB_SUCC(ret) && name.is_star_ && !allow_star) { ret = OB_ERR_PARSER_SYNTAX; }
     if (OB_SUCC(ret) && name.database_name_.empty() && name.tbl_name_.empty() && !name.col_name_.empty()) {
       OZ (name.access_idents_.push_back(ObObjAccessIdent(name.col_name_, OB_INVALID_INDEX)));
     }
@@ -2475,7 +2477,11 @@ int ObRawExprResolverImpl::process_agg_node(const peg::Node &node, ObRawExpr *&e
   for (size_t i = 0; OB_SUCC(ret) && i < arguments.size(); ++i) {
     if (type == T_FUN_COUNT && arguments[i].kind() == peg::NodeKind::Star) continue;
     ObRawExpr *value = nullptr;
-    OZ(SMART_CALL(recursive_resolve(arguments[i], value)));
+    if (type == T_FUN_SYS_ST_ASMVT && i == 0) {
+      OZ(process_column_ref_node(arguments[i], value, true));
+    } else {
+      OZ(SMART_CALL(recursive_resolve(arguments[i], value)));
+    }
     if (OB_SUCC(ret) && type == T_FUN_TOP_FRE_HIST) {
       if ((i == 0 || i == 2 || i == 3) && !value->is_const_raw_expr()) {
         ret = OB_INVALID_ARGUMENT;

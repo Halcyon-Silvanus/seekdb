@@ -279,6 +279,49 @@ int ObDMLResolver::get_target_column_list(ObSEArray<ColumnItem, 4> &target_list,
   return ret;
 }
 
+int ObDMLResolver::expand_mvt_arguments(const ObIArray<ObAggFunRawExpr *> &aggregates,
+                                        ObIArray<ObQualifiedName> &names)
+{
+  int ret = OB_SUCCESS;
+  for (int64_t i = 0; OB_SUCC(ret) && i < aggregates.count(); ++i) {
+    ObAggFunRawExpr &aggregate = *aggregates.at(i);
+    if (aggregate.get_expr_type() != T_FUN_SYS_ST_ASMVT) continue;
+    ObRawExpr *row = aggregate.get_real_param_exprs().at(0);
+    int64_t index = OB_INVALID_INDEX;
+    for (int64_t j = 0; j < names.count(); ++j) {
+      if (names.at(j).ref_expr_ == row) index = j;
+    }
+    if (index == OB_INVALID_INDEX || !names.at(index).is_star_) {
+      ret = OB_ERR_PARSER_SYNTAX;
+    } else {
+      ObQualifiedName &name = names.at(index);
+      ObSEArray<ColumnItem, 4> columns;
+      bool has_alias = false;
+      TableItem *table = nullptr;
+      ObSEArray<ObRawExpr *, 16> arguments;
+      ObConstRawExpr *option_count = nullptr;
+      const int64_t count = aggregate.get_real_param_count();
+      OZ(get_target_column_list(columns, name.tbl_name_, false, has_alias, table));
+      if (OB_SUCC(ret) && columns.empty()) ret = OB_ERR_PARSER_SYNTAX;
+      OZ(ObRawExprUtils::build_const_int_expr(*params_.expr_factory_, ObIntType, count - 1, option_count));
+      OZ(arguments.push_back(option_count));
+      for (int64_t j = 1; OB_SUCC(ret) && j < count; ++j) {
+        OZ(arguments.push_back(aggregate.get_real_param_exprs().at(j)));
+      }
+      for (int64_t j = 0; OB_SUCC(ret) && j < columns.count(); ++j) {
+        ObConstRawExpr *column_name = nullptr;
+        OZ(ObRawExprUtils::build_const_string_expr(*params_.expr_factory_, ObVarcharType,
+            columns.at(j).column_name_, CS_TYPE_UTF8MB4_GENERAL_CI, column_name));
+        OZ(arguments.push_back(columns.at(j).expr_));
+        OZ(arguments.push_back(column_name));
+      }
+      OZ(aggregate.get_real_param_exprs_for_update().assign(arguments));
+      OZ(names.remove(index));
+    }
+  }
+  return ret;
+}
+
 int ObDMLResolver::resolve_sql_expr(const peg::Node &node, ObRawExpr *&expr,
     ObArray<ObQualifiedName> *output_columns/* = NULL*/)
 {
@@ -365,6 +408,8 @@ int ObDMLResolver::resolve_sql_expr(const peg::Node &node, ObRawExpr *&expr,
     }
 
     OZ (resolve_partition_id_conditions(expr, *output_columns));
+
+    OZ(expand_mvt_arguments(aggr_exprs, *output_columns));
 
     // resolve column(s)
     if (OB_SUCC(ret) && output_columns->count() > 0) {

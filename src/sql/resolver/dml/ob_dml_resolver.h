@@ -432,6 +432,8 @@ protected:
     ObDMLStmt *stmt = NULL);
   virtual int resolve_subquery_info(const common::ObIArray<ObSubQueryInfo> &subquery_info);
   virtual int resolve_inlist_info(common::ObIArray<ObInListInfo> &inlist_infos);
+  int expand_mvt_arguments(const common::ObIArray<ObAggFunRawExpr *> &aggregates,
+                           common::ObIArray<ObQualifiedName> &names);
   virtual int resolve_aggr_exprs(ObRawExpr *&expr, common::ObIArray<ObAggFunRawExpr*> &aggr_exprs,
                                  const bool need_analyze = true);
   virtual int resolve_win_func_exprs(ObRawExpr *&expr, common::ObIArray<ObWinFunRawExpr*> &win_exprs);
