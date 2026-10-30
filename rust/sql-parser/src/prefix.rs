@@ -14,7 +14,7 @@
 
 use crate::bridge::ffi::{PlPrefix, StatementClass, StatementInfo, StatementSplits, TransactionCommand};
 use crate::lex::{identifier, quoted_end, space};
-use crate::{grammar, SqlMode};
+use crate::{budget::Budget, grammar, ParseErrorKind, SqlMode, StackBounds};
 
 pub fn transaction_command(sql: &[u8]) -> TransactionCommand {
     if sql.eq_ignore_ascii_case(b"begin") {
@@ -462,10 +462,16 @@ pub fn is_single_statement(input: &[u8]) -> bool {
     }
 }
 
-pub fn split_sql(input: &[u8], mode: SqlMode, first_only: bool) -> StatementSplits {
+pub fn split_sql(input: &[u8], mode: SqlMode, first_only: bool, bounds: StackBounds) -> StatementSplits {
+    let budget = Budget::new(bounds);
+    let stack_failure = || StatementSplits {
+        ends: Vec::new(), failed: true, error_kind: ParseErrorKind::StackLimit,
+    };
+    if budget.checkpoint(0).is_err() { return stack_failure(); }
     let mut result = StatementSplits {
         ends: Vec::new(),
         failed: false,
+        error_kind: ParseErrorKind::Syntax,
     };
     if is_single_statement(input) {
         result.ends.push(input.len());
@@ -498,15 +504,16 @@ pub fn split_sql(input: &[u8], mode: SqlMode, first_only: bool) -> StatementSpli
     let mut offset = 0;
     while offset < sql.len() {
         let pl = classify_statement(sql[offset..].as_bytes(), mode).pl != PlPrefix::None;
-        let end = grammar::sql::statement_end(&sql[offset..], mode, pl).or_else(|error| {
-            if matches!(sql, std::borrow::Cow::Owned(_)) {
+        let end = grammar::sql::statement_end(&sql[offset..], mode, pl, &budget).or_else(|error| {
+            if budget.failure().is_none() && matches!(sql, std::borrow::Cow::Owned(_)) {
                 let ignored = grammar::executable_sql(&original[offset..], mode, false)?;
                 let pl = classify_statement(ignored.as_bytes(), mode).pl != PlPrefix::None;
-                grammar::sql::statement_end(&ignored, mode, pl)
+                grammar::sql::statement_end(&ignored, mode, pl, &budget)
             } else {
                 Err(error)
             }
         });
+        if budget.failure().is_some() { return stack_failure(); }
         match end {
             Ok(length) if length > 0 => {
                 offset += length;

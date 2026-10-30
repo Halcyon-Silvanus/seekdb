@@ -14,6 +14,7 @@
 
 mod access;
 mod batch;
+mod budget;
 mod parameterize;
 mod prefix;
 mod bridge;
@@ -39,7 +40,7 @@ mod statistics;
 pub use bridge::ffi::{
     DefaultExpression, DefaultForm, SqlMode, ScanOptions, LiteralKind, Literal, ValuesPosition,
     ScanResult, NodeKind, Span, TransactionAccess, TransactionOptions,
-    ColumnReference, ExpressionInfo, StatementSplits, ParseMode, ParseErrorKind, SearchOccurrence,
+    ColumnReference, ExpressionInfo, StatementSplits, StackBounds, ParseMode, ParseErrorKind, SearchOccurrence,
     AccountKind, AccountNameForm, AccountIdentity,
     AuthenticationKind, RoleSelection, PrivilegeScope, PrivilegeObject, AccessOptions,
     PrivilegeTarget, ExplainFormat, ExplainDisplay, SetOperator, AliasForm,

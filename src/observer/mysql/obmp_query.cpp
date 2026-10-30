@@ -133,10 +133,8 @@ int ObMPQuery::process()
         if (OB_FAIL(ret)) {
           //do nothing
         } else if (OB_FAIL(parser.split_multiple_stmt(sql_, queries, parse_stat))) {
-          // Enter this branch, indicating that push_back failed due to OOM, delegate the outer code to return an error code
-          // and after entering this branch, the connection should be terminated
           need_response_error = true;
-          if (OB_ERR_PARSE_SQL == ret) {
+          if (OB_ERR_PARSE_SQL == ret || OB_SIZE_OVERFLOW == ret) {
             need_disconnect = false;
           }
         } else if (OB_UNLIKELY(queries.count() <= 0)) {

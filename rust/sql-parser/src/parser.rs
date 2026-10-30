@@ -14,6 +14,7 @@
 
 use crate::{grammar, node::{Kind, Node}, prefix::{normalized_sql_length, classify_statement}, ParseMode, SqlMode};
 use crate::bridge::ffi::ParseErrorKind;
+use crate::{budget::Budget, StackBounds};
 
 pub struct Parsed {
     root: Node,
@@ -63,7 +64,18 @@ impl std::fmt::Display for ParseFailure {
 
 impl std::error::Error for ParseFailure {}
 
-pub fn parse(sql: &[u8], mode: SqlMode, parse_mode: ParseMode) -> Result<Parsed, ParseFailure> {
+fn stack_failure(offset: usize) -> ParseFailure {
+    ParseFailure {
+        kind: ParseErrorKind::StackLimit,
+        message: "parser stack limit exceeded".into(),
+        offset,
+        expanded_sql: String::new(),
+    }
+}
+
+pub fn parse(sql: &[u8], mode: SqlMode, parse_mode: ParseMode, bounds: StackBounds) -> Result<Parsed, ParseFailure> {
+    let budget = &Budget::new(bounds);
+    budget.checkpoint(0).map_err(|_| stack_failure(0))?;
     let sql = &sql[..normalized_sql_length(sql)];
     let sql = std::str::from_utf8(sql).map_err(|error| ParseFailure {
         kind: ParseErrorKind::Syntax,
@@ -86,18 +98,18 @@ pub fn parse(sql: &[u8], mode: SqlMode, parse_mode: ParseMode) -> Result<Parsed,
             | ParseMode::PlSql | ParseMode::PlExpression)
             || (parse_mode == ParseMode::Sql && classify_statement(text.as_bytes(), mode).pl != crate::bridge::ffi::PlPrefix::None);
         match parse_mode {
-        ParseMode::Routine => grammar::sql::routine_body(text, mode, pl),
-        ParseMode::Trigger => grammar::sql::trigger(text, mode, pl),
-        ParseMode::Statistics => grammar::sql::statistics_options(text, mode, pl),
-        ParseMode::Expression | ParseMode::PlExpression => grammar::sql::expression(text, mode, pl),
-        ParseMode::Sql | ParseMode::RoutineDefinition | ParseMode::PlSql => grammar::sql::query(text, mode, pl),
+        ParseMode::Routine => grammar::sql::routine_body(text, mode, pl, budget),
+        ParseMode::Trigger => grammar::sql::trigger(text, mode, pl, budget),
+        ParseMode::Statistics => grammar::sql::statistics_options(text, mode, pl, budget),
+        ParseMode::Expression | ParseMode::PlExpression => grammar::sql::expression(text, mode, pl, budget),
+        ParseMode::Sql | ParseMode::RoutineDefinition | ParseMode::PlSql => grammar::sql::query(text, mode, pl, budget),
         _ => unreachable!("unknown parser entry point"),
         }.map(|root| (root, pl))
     };
     let mut expanded_sql = String::new();
     let parsed = grammar::executable_sql(sql, mode, true).and_then(|mut text| {
         let mut parsed = entry(&text);
-        if parsed.is_err() && matches!(text, std::borrow::Cow::Owned(_)) {
+        if budget.failure().is_none() && parsed.is_err() && matches!(text, std::borrow::Cow::Owned(_)) {
             text = grammar::executable_sql(sql, mode, false)?;
             parsed = entry(&text);
         }
@@ -106,14 +118,18 @@ pub fn parse(sql: &[u8], mode: SqlMode, parse_mode: ParseMode) -> Result<Parsed,
         }
         parsed
     });
-    let parsed = parsed.map_err(|error| {
-        let offset = if error.location.offset == sql.len() {
-            grammar::sql::last_token_start(sql, mode, false).unwrap()
-        } else {
-            error.location.offset
-        };
-        (error.to_string(), offset)
-    }).and_then(|(query, pl)| {
+    if let Some(offset) = budget.failure() { return Err(stack_failure(offset)); }
+    let parsed = match parsed {
+        Ok(query) => Ok(query),
+        Err(error) => {
+            let offset = if error.location.offset == sql.len() {
+                grammar::sql::last_token_start(sql, mode, false, budget).unwrap()
+            } else {
+                error.location.offset
+            };
+            Err((error.to_string(), offset))
+        }
+    }.and_then(|(query, pl)| {
         if parse_mode == ParseMode::RoutineDefinition
             && !matches!(query.kind, Kind::CreateProcedure | Kind::CreateFunction) {
             Err(("expected procedure or function definition".into(), query.start))

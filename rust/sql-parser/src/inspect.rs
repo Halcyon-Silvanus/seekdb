@@ -17,10 +17,10 @@ use crate::bridge::{
     ffi::{ColumnReference, ExpressionInfo, ParseMode},
 };
 use crate::node::{Kind, Node};
-use crate::SqlMode;
+use crate::{ParseErrorKind, SqlMode, StackBounds};
 
-pub(crate) fn inspect_expression(sql: &[u8], mode: SqlMode) -> ExpressionInfo {
-    let parsed = match crate::parse(sql, mode, ParseMode::Expression) {
+pub(crate) fn inspect_expression(sql: &[u8], mode: SqlMode, bounds: StackBounds) -> ExpressionInfo {
+    let parsed = match crate::parser::parse(sql, mode, ParseMode::Expression, bounds) {
         Ok(parsed) => parsed,
         Err(error) => return ExpressionInfo {
             root_kind: Kind::Missing,
@@ -29,6 +29,7 @@ pub(crate) fn inspect_expression(sql: &[u8], mode: SqlMode) -> ExpressionInfo {
             columns: Vec::new(),
             error: error.message,
             error_offset: error.offset,
+            error_kind: error.kind,
         },
     };
     let mut root = parsed.root();
@@ -48,23 +49,25 @@ pub(crate) fn inspect_expression(sql: &[u8], mode: SqlMode) -> ExpressionInfo {
         columns,
         error: String::new(),
         error_offset: 0,
+        error_kind: ParseErrorKind::Syntax,
     }
 }
 
 fn collect_columns(node: &Node, columns: &mut Vec<ColumnReference>) {
-    if node.kind == Kind::Column {
-        columns.push(ColumnReference {
-            parts: node
-                .children
-                .iter()
-                .filter(|child| child.kind == Kind::Ident)
-                .map(|child| child.text.clone())
-                .collect(),
-            wildcard: node.children.iter().any(|child| child.kind == Kind::Star),
-        });
-    }
-    for child in &node.children {
-        collect_columns(child, columns);
+    let mut pending = vec![node];
+    while let Some(node) = pending.pop() {
+        if node.kind == Kind::Column {
+            columns.push(ColumnReference {
+                parts: node
+                    .children
+                    .iter()
+                    .filter(|child| child.kind == Kind::Ident)
+                    .map(|child| child.text.clone())
+                    .collect(),
+                wildcard: node.children.iter().any(|child| child.kind == Kind::Star),
+            });
+        }
+        pending.extend(node.children.iter().rev());
     }
 }
 

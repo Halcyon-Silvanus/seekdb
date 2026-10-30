@@ -131,6 +131,7 @@ public:
       : allocator_(allocator), sql_mode_(mode) {}
   int parse(const common::ObString &query, ParsedSql &parsed, ParseMode mode = STD_MODE);
   int parse_expression(const common::ObString &text, ParsedSql &parsed);
+  int inspect_expression(const common::ObString &text, peg::ExpressionInfo &info);
   int parse_pl_sql(const common::ObString &text, ParsedSql &parsed);
   int parse_pl_expression(const common::ObString &text, ParsedSql &parsed);
   int parse_routine_body(const common::ObString &text, ParsedSql &parsed);

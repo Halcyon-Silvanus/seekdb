@@ -14,21 +14,22 @@
 
 use crate::{access, ddl, load_data, select_into, lex::decode_string as decode, node::*, SqlMode};
 use std::borrow::Cow;
+use crate::budget::Budget;
 
 const WEIGHT_STRING_PAD_WITH_SPACE: u64 = 0x40;
 const WEIGHT_STRING_LEVELS: u64 = 6;
 const WEIGHT_STRING_DESC: u64 = 1 << 8;
 const WEIGHT_STRING_REVERSE: u64 = 1 << 16;
 
-pub(crate) fn executable_sql(
-    sql: &str,
+pub(crate) fn executable_sql<'sql>(
+    sql: &'sql str,
     mode: SqlMode,
     execute: bool,
-) -> Result<Cow<'_, str>, peg::error::ParseError<peg::str::LineCol>> {
+) -> Result<Cow<'sql, str>, peg::error::ParseError<peg::str::LineCol>> {
     if !sql.contains("/*!") {
         return Ok(Cow::Borrowed(sql));
     }
-    let spans = sql::executable_comments(sql, mode, false)?;
+    let spans = sql::executable_comments(sql, mode, false, &Budget::lexical_scan())?;
     if spans.is_empty() {
         return Ok(Cow::Borrowed(sql));
     }
@@ -233,7 +234,7 @@ impl Tail {
 }
 
 peg::parser! {
-    pub grammar sql(mode: SqlMode, pl: bool) for str {
+    pub grammar sql(mode: SqlMode, pl: bool, budget: &Budget) for str {
         rule opaque_comment_token()
             = "'" ("''" / enabled(!mode.no_backslash_escapes) "\\" [_] / !"'" [_])* "'"
             / "\"" ("\"\"" / enabled(!mode.ansi_quotes && !mode.no_backslash_escapes) "\\" [_] / !"\"" [_])* "\""
@@ -267,7 +268,10 @@ peg::parser! {
                 tokens.last().copied().unwrap_or(0)
             }
         rule depth(level: usize)
-            = {? if level < MAX_DEPTH { Ok(()) } else { Err("SQL nesting below 128 levels") } }
+            = offset:position!() {?
+                budget.checkpoint(offset)?;
+                if level < MAX_DEPTH { Ok(()) } else { Err("SQL nesting below 128 levels") }
+            }
         rule enabled(value: bool) = {? if value { Ok(()) } else { Err("SQL mode") } }
         rule reserved_word() = text:$(word()) {? if reserved(text) { Ok(()) } else { Err("reserved keyword") } }
         rule ident() -> Name
@@ -2651,7 +2655,9 @@ peg::parser! {
         rule statement() -> Node = _ value:(package_statement() / routine_statement() / pl_call() / anonymous_statement() / sql_statement()) { value }
         #[no_eof]
         pub rule statement_end() -> usize = (statement() / _) (";" / ![_]) end:position!() { end }
-        pub rule query() -> Node = value:statement() (";" _)* { value }
-            / text:$(_ (";" _)*) { Node::new(Kind::EmptyQuery,vec![]).value(u64::from(text.chars().any(|ch| !ch.is_ascii_whitespace() && ch!=';'))) }
+        pub rule query() -> Node = value:(
+                value:statement() (";" _)* { value }
+                / text:$(_ (";" _)*) { Node::new(Kind::EmptyQuery,vec![]).value(u64::from(text.chars().any(|ch| !ch.is_ascii_whitespace() && ch!=';'))) }
+            ) { value }
     }
 }

@@ -25,6 +25,51 @@ using namespace common;
 namespace {
 using Kind = peg::NodeKind;
 
+// Leave room for parser entry and native allocation before switching stacks.
+constexpr size_t ENTRY_RESERVE = 512 * 1024;
+constexpr size_t HOST_ADMISSION_RESERVE = 68 * 1024;
+
+template <typename Operation>
+int run_parser(Operation &&operation)
+{
+  auto invoke = [&operation]() -> int {
+    void *address = nullptr;
+    size_t size = 0;
+    int ret = get_stackattr(address, size);
+    if (ret != OB_SUCCESS) return ret;
+    const uintptr_t low = reinterpret_cast<uintptr_t>(address);
+    if (size == 0 || low > UINTPTR_MAX - size) return OB_ERR_UNEXPECTED;
+    return operation(peg::StackBounds{low, low + size});
+  };
+#if defined(__EMSCRIPTEN__)
+  // Native stack switching cannot extend the Wasm execution stack.
+  return invoke();
+#elif defined(__x86_64__) || defined(__aarch64__)
+  void *address = nullptr;
+  size_t size = 0;
+  int ret = get_stackattr(address, size);
+  if (ret != OB_SUCCESS) return ret;
+  const uintptr_t low = reinterpret_cast<uintptr_t>(address);
+  if (size == 0 || low > UINTPTR_MAX - size) return OB_ERR_UNEXPECTED;
+  uintptr_t current;
+#if defined(__x86_64__)
+  asm volatile("mov %%rsp, %0" : "=r"(current));
+#else
+  asm volatile("mov %0, sp" : "=r"(current));
+#endif
+  if (current < low || current > low + size) return OB_SIZE_OVERFLOW;
+  const size_t remaining = current - low;
+  if (remaining < HOST_ADMISSION_RESERVE) return OB_SIZE_OVERFLOW;
+  if (remaining >= ENTRY_RESERVE) return invoke();
+  void *stack = nullptr;
+  if (OB_FAIL(alloc_stack(STACK_PER_EXTEND, stack))) return ret;
+  DEFER(dealloc_stack(stack, STACK_PER_EXTEND));
+  return CALL_WITH_NEW_STACK(invoke(), stack, STACK_PER_EXTEND);
+#else
+  return OB_NOT_SUPPORTED;
+#endif
+}
+
 struct NativeStatementTraits
 {
   stmt::StmtType type;
@@ -184,56 +229,61 @@ int report_parse_error(const common::ObString &sql, size_t offset)
   return common::OB_ERR_PARSE_SQL;
 }
 
-int ObParser::parse_entry(const ObString &sql, ParsedSql &owner, peg::ParseMode mode,
+int ObParser::parse_entry(const ObString &query, ParsedSql &owner, peg::ParseMode mode,
                           bool dynamic_sql)
 {
-  owner.reset();
-  auto parsed = peg::parse_sql(sql_bytes(sql), parser_mode(sql_mode_), mode);
-  if (!parsed->error().empty()) {
-    const auto expanded_sql = parsed->expanded_sql();
-    const ObString source = expanded_sql.empty() ? sql
-        : ObString(expanded_sql.size(), expanded_sql.data());
-    if (parsed->error_kind() == peg::ParseErrorKind::BitWidth) {
-      ObCStringHelper statement_text;
-      LOG_USER_ERROR(OB_ERR_TOO_BIG_DISPLAYWIDTH, statement_text.convert(source), OB_MAX_BIT_LENGTH);
-      return OB_ERR_TOO_BIG_DISPLAYWIDTH;
+  return run_parser([&](peg::StackBounds bounds) -> int {
+    owner.reset();
+    ObString sql = query;
+    if (mode == peg::ParseMode::Sql || mode == peg::ParseMode::Trigger
+        || mode == peg::ParseMode::Statistics) {
+      const int64_t length = peg::normalized_sql_length(sql_bytes(query));
+      if (length == 0) return OB_ERR_EMPTY_QUERY;
+      sql = ObString(length, query.ptr());
     }
-    return report_parse_error(source, parsed->error_offset());
-  }
-  ParseResult &result = owner.metadata_;
-  result.input_sql_ = sql.ptr();
-  result.input_sql_len_ = sql.length();
-  result.is_dynamic_sql_ = dynamic_sql;
-  const auto kind = parsed->root().kind();
-  result.contain_sensitive_data_ = kind == Kind::SetConfig
-      || kind == Kind::CreateUser || kind == Kind::SetPassword || kind == Kind::Grant
-      || (kind == Kind::LoadData && peg::load_data_definition(parsed->root()).contains_sensitive_data);
-  const auto parameters = parsed->parameters();
-  result.question_mark_ctx_.count_ = parameters;
-  result.question_mark_ctx_.by_ordinal_ = parsed->has_ordinal_parameters();
-  result.question_mark_ctx_.by_name_ = parsed->named_parameters();
-  if (dynamic_sql) {
-    ObString owned;
-    const int ret = ob_write_string(allocator_, sql, owned, true);
-    if (ret != OB_SUCCESS) return ret;
-    result.no_param_sql_ = owned.ptr();
-    result.no_param_sql_len_ = owned.length();
-  }
-  owner.original_source_ = sql;
-  owner.syntax_.emplace(std::move(parsed));
-  return OB_SUCCESS;
+    auto parsed = peg::parse_sql(sql_bytes(sql), parser_mode(sql_mode_), mode, bounds);
+    if (parsed->error_kind() == peg::ParseErrorKind::StackLimit) return OB_SIZE_OVERFLOW;
+    if (!parsed->error().empty()) {
+      const auto expanded_sql = parsed->expanded_sql();
+      const ObString source = expanded_sql.empty() ? sql
+          : ObString(expanded_sql.size(), expanded_sql.data());
+      if (parsed->error_kind() == peg::ParseErrorKind::BitWidth) {
+        ObCStringHelper statement_text;
+        LOG_USER_ERROR(OB_ERR_TOO_BIG_DISPLAYWIDTH, statement_text.convert(source), OB_MAX_BIT_LENGTH);
+        return OB_ERR_TOO_BIG_DISPLAYWIDTH;
+      }
+      return report_parse_error(source, parsed->error_offset());
+    }
+    ParseResult &result = owner.metadata_;
+    result.input_sql_ = sql.ptr();
+    result.input_sql_len_ = sql.length();
+    result.is_dynamic_sql_ = dynamic_sql;
+    const auto kind = parsed->root().kind();
+    result.contain_sensitive_data_ = kind == Kind::SetConfig
+        || kind == Kind::CreateUser || kind == Kind::SetPassword || kind == Kind::Grant
+        || (kind == Kind::LoadData && peg::load_data_definition(parsed->root()).contains_sensitive_data);
+    const auto parameters = parsed->parameters();
+    result.question_mark_ctx_.count_ = parameters;
+    result.question_mark_ctx_.by_ordinal_ = parsed->has_ordinal_parameters();
+    result.question_mark_ctx_.by_name_ = parsed->named_parameters();
+    if (dynamic_sql) {
+      ObString owned;
+      const int ret = ob_write_string(allocator_, sql, owned, true);
+      if (ret != OB_SUCCESS) return ret;
+      result.no_param_sql_ = owned.ptr();
+      result.no_param_sql_len_ = owned.length();
+    }
+    owner.original_source_ = sql;
+    owner.syntax_.emplace(std::move(parsed));
+    return OB_SUCCESS;
+  });
 }
 
 int ObParser::parse(const ObString &query, ParsedSql &parsed, ParseMode mode)
 {
-  const int64_t length = peg::normalized_sql_length(sql_bytes(query));
-  if (length == 0) {
-    parsed.reset();
-    return OB_ERR_EMPTY_QUERY;
-  }
   const auto entry = mode == TRIGGER_MODE ? peg::ParseMode::Trigger
       : mode == METHOD_OPT_MODE ? peg::ParseMode::Statistics : peg::ParseMode::Sql;
-  return SMART_CALL(parse_entry(ObString(length, query.ptr()), parsed, entry, mode == DYNAMIC_SQL_MODE));
+  return parse_entry(query, parsed, entry, mode == DYNAMIC_SQL_MODE);
 }
 
 int ObParser::parse_expression(const ObString &text, ParsedSql &parsed)
@@ -258,7 +308,7 @@ int ObParser::parse_routine_body(const ObString &text, ParsedSql &parsed)
 
 int ObParser::parse_routine_definition(const ObString &definition, ParsedSql &parsed)
 {
-  return SMART_CALL(parse_entry(definition, parsed, peg::ParseMode::RoutineDefinition));
+  return parse_entry(definition, parsed, peg::ParseMode::RoutineDefinition);
 }
 
 bool ObParser::is_explain_stmt(const ObString &stmt, const char *&body)
@@ -272,20 +322,35 @@ bool ObParser::is_explain_stmt(const ObString &stmt, const char *&body)
 int ObParser::split_multiple_stmt(const ObString &stmt, ObIArray<ObString> &queries,
                                   ObMPParseStat &parse_stat, bool first_only)
 {
-  int ret = OB_SUCCESS;
   parse_stat.reset();
-  const auto split = peg::split_sql(sql_bytes(stmt), parser_mode(sql_mode_), first_only);
-  size_t offset = 0;
-  for (size_t end : split.ends) {
-    if (OB_FAIL(queries.push_back(ObString(end - offset, stmt.ptr() + offset)))) break;
-    offset = end;
-  }
-  if (OB_SUCC(ret) && split.failed) {
-    parse_stat.parse_fail_ = true;
-    parse_stat.fail_query_idx_ = queries.count() - 1;
-    parse_stat.fail_ret_ = OB_ERR_PARSE_SQL;
-  }
-  return ret;
+  return run_parser([&](peg::StackBounds bounds) -> int {
+    int ret = OB_SUCCESS;
+    const auto split = peg::split_sql(sql_bytes(stmt), parser_mode(sql_mode_), first_only, bounds);
+    if (split.failed && split.error_kind == peg::ParseErrorKind::StackLimit) {
+      parse_stat.parse_fail_ = true;
+      parse_stat.fail_ret_ = OB_SIZE_OVERFLOW;
+      return OB_SIZE_OVERFLOW;
+    }
+    size_t offset = 0;
+    for (size_t end : split.ends) {
+      if (OB_FAIL(queries.push_back(ObString(end - offset, stmt.ptr() + offset)))) break;
+      offset = end;
+    }
+    if (OB_SUCC(ret) && split.failed) {
+      parse_stat.parse_fail_ = true;
+      parse_stat.fail_query_idx_ = queries.count() - 1;
+      parse_stat.fail_ret_ = OB_ERR_PARSE_SQL;
+    }
+    return ret;
+  });
+}
+
+int ObParser::inspect_expression(const ObString &text, peg::ExpressionInfo &info)
+{
+  return run_parser([&](peg::StackBounds bounds) -> int {
+    info = peg::inspect_expression(sql_bytes(text), parser_mode(sql_mode_), bounds);
+    return info.error_kind == peg::ParseErrorKind::StackLimit ? OB_SIZE_OVERFLOW : OB_SUCCESS;
+  });
 }
 
 int ObParser::pre_parse(const ObString &stmt, PreParseResult &res)

@@ -178,7 +178,8 @@ int ObMPConnect::init_connect_process(ObString &init_sql,
   ObArenaAllocator allocator(ObModIds::OB_SQL_PARSER);
   ObParser parser(allocator, session.get_sql_mode());
   ObMPParseStat parse_stat;
-  if (OB_SUCC(parser.split_multiple_stmt(init_sql, queries, parse_stat))) {
+  ret = parser.split_multiple_stmt(init_sql, queries, parse_stat);
+  if (OB_SUCC(ret)) {
     if (OB_UNLIKELY(0 == queries.count())) {
       ret = OB_ERR_UNEXPECTED;
     }

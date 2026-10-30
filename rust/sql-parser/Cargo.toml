@@ -7,3 +7,6 @@ publish = false
 [dependencies]
 cxx = "=1.0.202"
 peg = "=0.8.6"
+
+[target.'cfg(any(target_arch = "x86_64", target_arch = "aarch64"))'.dependencies]
+psm = "=0.1.24"

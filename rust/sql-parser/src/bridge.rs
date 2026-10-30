@@ -930,6 +930,11 @@ pub(crate) mod ffi {
         wildcard: bool,
     }
 
+    struct StackBounds {
+        low: usize,
+        high: usize,
+    }
+
     struct ExpressionInfo {
         root_kind: NodeKind,
         function_name: String,
@@ -937,11 +942,13 @@ pub(crate) mod ffi {
         columns: Vec<ColumnReference>,
         error: String,
         error_offset: usize,
+        error_kind: ParseErrorKind,
     }
 
     struct StatementSplits {
         ends: Vec<usize>,
         failed: bool,
+        error_kind: ParseErrorKind,
     }
 
     enum ParseMode {
@@ -959,6 +966,7 @@ pub(crate) mod ffi {
     enum ParseErrorKind {
         Syntax,
         BitWidth,
+        StackLimit,
     }
 
     enum DefaultForm {
@@ -2265,7 +2273,7 @@ pub(crate) mod ffi {
         unsafe fn begin_scan<'a>(sql: &'a [u8], options: ScanOptions) -> Box<Scanner<'a>>;
         fn advance(self: &mut Scanner<'_>) -> bool;
         fn finish_scan(scanner: Box<Scanner<'_>>) -> ScanResult;
-        fn split_sql(sql: &[u8], mode: SqlMode, first_only: bool) -> StatementSplits;
+        fn split_sql(sql: &[u8], mode: SqlMode, first_only: bool, bounds: StackBounds) -> StatementSplits;
         unsafe fn default_expression<'a>(node: &'a Node) -> DefaultExpression<'a>;
         unsafe fn default_literal<'a>(node: &'a Node) -> ExpressionLiteral<'a>;
         type DefaultArguments<'a>;
@@ -2281,7 +2289,7 @@ pub(crate) mod ffi {
         fn root(self: &SearchTree) -> &SearchNode;
         fn error(self: &SearchTree) -> &str;
         fn parse_search_query(input: &[u8]) -> Box<SearchTree>;
-        fn inspect_expression(sql: &[u8], mode: SqlMode) -> ExpressionInfo;
+        fn inspect_expression(sql: &[u8], mode: SqlMode, bounds: StackBounds) -> ExpressionInfo;
         fn lock_tables(node: &Node) -> &[Node];
         unsafe fn table_lock<'a>(node: &'a Node) -> TableLock<'a>;
         fn transaction_options(node: &Node) -> TransactionOptions;
@@ -2558,7 +2566,7 @@ pub(crate) mod ffi {
         fn hint_parameter_value(hint: &Node) -> &Node;
         fn hint_has_sort_method(hint: &Node) -> bool;
         fn hint_sort_method(hint: &Node) -> &Node;
-        fn parse_sql(sql: &[u8], mode: SqlMode, parse_mode: ParseMode) -> Box<ParseTree>;
+        fn parse_sql(sql: &[u8], mode: SqlMode, parse_mode: ParseMode, bounds: StackBounds) -> Box<ParseTree>;
     }
 }
 
@@ -2605,8 +2613,8 @@ impl ParseTree {
     pub fn named_parameters(&self) -> bool { self.parsed().named_parameters() }
 }
 
-fn parse_sql(sql: &[u8], mode: SqlMode, parse_mode: ffi::ParseMode) -> Box<ParseTree> {
-    Box::new(ParseTree(crate::parser::parse(sql, mode, parse_mode)))
+fn parse_sql(sql: &[u8], mode: SqlMode, parse_mode: ffi::ParseMode, bounds: ffi::StackBounds) -> Box<ParseTree> {
+    Box::new(ParseTree(crate::parser::parse(sql, mode, parse_mode, bounds)))
 }
 
 use crate::query::{

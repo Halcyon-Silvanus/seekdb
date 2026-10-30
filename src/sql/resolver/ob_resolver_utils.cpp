@@ -3594,11 +3594,12 @@ int ObResolverUtils::resolve_generated_column_info(const ObString &expr_str,
                                                    ObIArray<ObString> &column_names)
 {
   int ret = OB_SUCCESS;
-  const auto info = peg::inspect_expression(
-      rust::Slice<const uint8_t>(reinterpret_cast<const uint8_t *>(expr_str.ptr()), expr_str.length()),
-      peg::SqlMode{});
+  peg::ExpressionInfo info;
+  ObParser parser(allocator, 0);
+  ret = parser.inspect_expression(expr_str, info);
   root_function_type = T_INVALID;
-  if (!info.error.empty()) {
+  if (OB_FAIL(ret)) {
+  } else if (!info.error.empty()) {
     ret = report_parse_error(expr_str, info.error_offset);
   } else {
     for (const auto &column : info.columns) {
