@@ -2370,8 +2370,9 @@ peg::parser! {
         rule pl_expression(level: usize) -> Node = value:expr(level) {? value.pl_expression() }
         rule pl_statements(level: usize) -> Node = values:((value:pl_statement(level) ";" _ { value })*) { Node::list(Kind::PlStatements,values) }
         rule pl_block(level: usize) -> Node = kw("begin")
-            declarations:((value:pl_declaration(level) ";" _ { value })*) statements:pl_statements(level) kw("end") {
-                Node::new(Kind::PlBlock,vec![Node::list(Kind::PlDeclarations,declarations),statements])
+            declarations:(values:((value:pl_declaration(level) ";" _ { value })+) (";" _)* { values })?
+            statements:pl_statements(level) kw("end") {
+                Node::new(Kind::PlBlock,vec![Node::list(Kind::PlDeclarations,declarations.unwrap_or_default()),statements])
             }
         rule sql_state() -> Node = kw("sqlstate") kw("value")? value:string() { Node::new(Kind::SqlState,vec![value]) }
         rule pl_condition() -> Node = value:(type_size() / sql_state()) { Node::new(Kind::PlCondition,vec![value]) }
@@ -2470,7 +2471,7 @@ peg::parser! {
                 Node::new(Kind::PlFetch,vec![Node::name(name),Node::new(Kind::IntoVariables,vec![Node::new(Kind::PlInto,variables)])])
             }
             / pl_call() / pl_signal() / pl_do(level+1) / pl_setting(level+1)
-            / statement:sql_statement() { Node::new(Kind::PlSql,vec![statement]) }
+            / !kw("begin") statement:sql_statement() { Node::new(Kind::PlSql,vec![statement]) }
         ) end:position!() { value.at(start,end) }
         pub rule routine_body() -> Node = _ value:(anonymous_statement() / package_block() / kw("create") value:routine_definition(true) { value }
             / value:routine_definition(true) { value.children.into_iter().last().unwrap() } / pl_statement(0)) (";" _)* { value }
