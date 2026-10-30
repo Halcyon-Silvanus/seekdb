@@ -378,8 +378,17 @@ fn trace_range(sql: &[u8]) -> (usize, usize) {
 }
 
 pub fn explain_body_offset(input: &[u8], mode: SqlMode) -> usize {
-    match Tokens::new(input, mode).next() {
-        Ok(Some(first)) if first.is(b"explain") || first.text.starts_with(b"/*!") => {
+    let mut tokens = Tokens::new(input, mode);
+    match tokens.next() {
+        Ok(Some(first)) if first.is(b"explain") => {
+            let offset = explain_body(&mut tokens).unwrap_or(input.len());
+            if input[..tokens.pos].windows(3).any(|text| text == b"/*!") {
+                classify_statement(input, mode).explain_offset
+            } else {
+                offset
+            }
+        }
+        Ok(Some(first)) if first.text.starts_with(b"/*!") => {
             classify_statement(input, mode).explain_offset
         }
         _ => input.len(),
