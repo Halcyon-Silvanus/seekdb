@@ -2785,8 +2785,10 @@ int ObRawExprResolverImpl::process_json_value_node(const peg::Node &node, ObRawE
   ObRawExprResType target;
   OZ(ObResolverUtils::resolve_cast_type(target_node, target));
   OZ(cast_accuracy_check(target, source_text(peg::json_document(node))));
-  if ((options.on_empty == peg::JsonResponse::Default && peg::expression_literal(peg::json_empty_default(node)).kind == peg::LiteralKind::Null)
-      || (options.on_error == peg::JsonResponse::Default && peg::expression_literal(peg::json_error_default(node)).kind == peg::LiteralKind::Null)) {
+  if ((options.on_empty == peg::JsonResponse::Default && peg::is_literal(peg::json_empty_default(node))
+       && peg::expression_literal(peg::json_empty_default(node)).kind == peg::LiteralKind::Null)
+      || (options.on_error == peg::JsonResponse::Default && peg::is_literal(peg::json_error_default(node))
+          && peg::expression_literal(peg::json_error_default(node)).kind == peg::LiteralKind::Null)) {
     ret = OB_ERR_PARSER_SYNTAX;
   }
   OZ(ctx_.expr_factory_.create_raw_expr(T_FUN_SYS_JSON_VALUE, function));

@@ -339,7 +339,7 @@ peg::parser! {
             }
         rule string() -> Node = string_token(<"'">) / enabled(!mode.ansi_quotes) value:string_token(<"\"">) { value }
         rule string_expression() -> Node
-            = start:position!() ['n'|'N'] value:string_token(<"'">) {
+            = &("n'" / "N'") start:position!() ['n'|'N'] value:string_token(<"'">) {
                 let end=value.end;value.with_kind(Kind::NationalString).at(start,end)
             }
             / first:string() rest:string()* {?
@@ -357,6 +357,9 @@ peg::parser! {
             = start:position!() kw("true") {? Node::new(Kind::Bool, vec![]).value(1).expression(start, start+4) }
             / start:position!() kw("false") {? Node::new(Kind::Bool, vec![]).value(0).expression(start, start+5) }
         rule bool_null() -> Node = null_literal() / boolean_literal()
+        rule signed_literal() -> Node
+            = start:position!() op:$(['+' | '-']) _ value:number() {? Node::unary(op,value,start) }
+            / charset_literal() / temporal_literal() / binary_literal() / number() / string_expression() / bool_null()
         rule temporal_kind() -> Kind = keyword("date") { Kind::DateLiteral }
             / keyword("time") { Kind::TimeLiteral } / keyword("timestamp") { Kind::TimestampLiteral }
         rule temporal_literal() -> Node = start:position!() kind:temporal_kind() _
@@ -736,21 +739,26 @@ peg::parser! {
         rule item(level: usize) -> Node = expression:expr(level) alias:(enabled(!expression.is_wildcard()) (kw("as") / !implicit_alias_keyword()) value:(name:ident() { Node::name(name) } / string()) { value })? { Node::projection(expression, alias) }
         rule json_response() -> (Node,Node) = kw("error") { (Node::new(Kind::HiddenInt,vec![]),Node::new(Kind::HiddenNull,vec![])) }
             / start:position!() kw("null") { (Node::new(Kind::NullClause,vec![]).value(1).at(start,start+4),Node::new(Kind::HiddenNull,vec![])) }
-            / kw("default") value:(string() / number() / bool_null()) { (Node::new(Kind::HiddenInt,vec![]).value(2),value) }
-        rule json_options() -> Node = options:((response:json_response() kw("on") empty:(kw("empty") { true } / kw("error") { false }) { (empty,response) })*) {?
-            let mut empty=None;let mut error=None;
-            for (is_empty,value) in options { let slot=if is_empty { &mut empty } else { &mut error };if slot.is_some() { return Err("duplicate JSON response clause"); } *slot=Some(value); }
+            / kw("default") value:signed_literal() { (Node::new(Kind::HiddenInt,vec![]).value(2),value) }
+        rule json_options() -> Node
+            = empty:(response:json_response() kw("on") kw("empty") { response })?
+                error:(response:json_response() kw("on") kw("error") { response })? {
             let default=|| (Node::new(Kind::HiddenInt,vec![]).value(3),Node::new(Kind::HiddenNull,vec![]));
             let (empty_kind,empty_value)=empty.unwrap_or_else(default);let (error_kind,error_value)=error.unwrap_or_else(default);
-            Ok(Node::new(Kind::Link,vec![empty_kind,empty_value,error_kind,error_value,Node::new(Kind::Link,vec![Node::new(Kind::HiddenInt,vec![]).value(3),Node::new(Kind::HiddenInt,vec![]).value(3)])]))
+            Node::new(Kind::Link,vec![empty_kind,empty_value,error_kind,error_value,Node::new(Kind::Link,vec![Node::new(Kind::HiddenInt,vec![]).value(3),Node::new(Kind::HiddenInt,vec![]).value(3)])])
         }
         rule json_column(level: usize) -> Node
             = depth(level) kw("nested") kw("path")? path:string() kw("columns") "(" _ columns:(json_column(level+1) ++ ("," _)) ")" _ {
                 Node::new(Kind::JsonColumn,vec![path,Node::new(Kind::ExprList,columns)]).value(5)
             }
             / name:ident() kw("for") kw("ordinality") { Node::new(Kind::JsonColumn,vec![Node::name(name),Node::new(Kind::HiddenInt,vec![])]).value(1) }
-            / name:ident() data_type:data_type() exists:kw("exists")? kw("path") path:string() options:json_options() {
-                let options=if exists.is_some() { Node::new(Kind::Link,vec![Node::new(Kind::HiddenInt,vec![]).value(3),Node::new(Kind::HiddenInt,vec![]).value(3)]) } else { options };
+            / name:ident() data_type:data_type() collation:(kw("collate") value:collation_name() { value.with_kind(Kind::Collation) })? end:position!()
+                exists:kw("exists")? kw("path") path:string()
+                options:(enabled(exists.is_none()) value:json_options() { value }
+                    / { Node::new(Kind::Link,vec![Node::new(Kind::HiddenInt,vec![]).value(3),Node::new(Kind::HiddenInt,vec![]).value(3)]) }) {
+                let mut data_type=data_type;
+                data_type.children.extend(collation);
+                data_type.end=end;
                 Node::new(Kind::JsonColumn,vec![Node::name(name),data_type,Node::new(Kind::HiddenInt,vec![]),path,options]).value(if exists.is_some() { 2 } else { 4 })
             }
         rule json_table(level: usize) -> Node = kw("json_table") "(" _ document:expr(level+1) "," _ path:string() kw("columns") "(" _ columns:(json_column(level+1) ++ ("," _)) ")" _ ")" _ alias:table_alias()? {
@@ -1543,8 +1551,7 @@ peg::parser! {
             = start:position!() "(" _ value:expr(0) ")" end:position!() _ {?
                 Node::new(Kind::Parenthesized,vec![value]).expression(start,end)
             }
-            / start:position!() op:$(['+' | '-']) _ value:number() {? Node::unary(op,value,start) }
-            / charset_literal() / temporal_literal() / binary_literal() / number() / string_expression() / bool_null()
+            / signed_literal()
             / enabled(timestamp) value:atom(0) {?
                 if value.kind==Kind::CurrentTimestamp { Ok(value) } else { Err("current timestamp") }
             }
