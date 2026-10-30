@@ -290,7 +290,7 @@ int ObParser::parse(const ObString &query, ParsedSql &parsed, ParseMode mode)
 {
   const auto entry = mode == TRIGGER_MODE ? peg::ParseMode::Trigger
       : mode == METHOD_OPT_MODE ? peg::ParseMode::Statistics : peg::ParseMode::Sql;
-  return parse_entry(query, parsed, entry, mode == DYNAMIC_SQL_MODE);
+  return SMART_CALL_LARGE(parse_entry(query, parsed, entry, mode == DYNAMIC_SQL_MODE));
 }
 
 int ObParser::parse_expression(const ObString &text, ParsedSql &parsed)
