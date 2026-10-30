@@ -295,6 +295,9 @@ peg::parser! {
                 rest:("." _ part:dotted_ident() { part })* {
                 let mut parts=head;parts.extend(rest);parts
             }
+        rule relation_name() -> Vec<Name>
+            = "." !['0'..='9'] _ !(kw("true") / kw("false") / kw("null")) name:dotted_ident() { vec![name] }
+            / name()
         rule expression_name() -> Vec<Name>
             = name()
             / first:name_keyword() "." _ last:name_keyword() { vec![first,last] }
@@ -756,7 +759,7 @@ peg::parser! {
                 Node::new(Kind::UnnestTable,children).expression(start,end)
             }
         rule relation(level: usize) -> Node = json_table(level) / table_collection(level) / unnest_table(level) / lateral:(kw("lateral") &"(")? source:("(" _ query:select(level+1) ")" _ { query }
-            / name:name() {? Node::relation(name) }) partition:use_partition()? sample:sample()? snapshot:snapshot(level)?
+            / name:relation_name() {? Node::relation(name) }) partition:use_partition()? sample:sample()? snapshot:snapshot(level)?
             alias:table_alias()?
             columns:("(" _ names:(ident() ++ ("," _)) ")" _ { names })? indexes:table_index_hint()* {?
                 if (lateral.is_some() || columns.is_some()) && source.kind!=Kind::Select { return Err("derived table"); }
@@ -1287,7 +1290,7 @@ peg::parser! {
             Node::new(Kind::ValueVector,values)
         }
         rule insert() -> Node = replace:(keyword("insert") { false } / keyword("replace") { true }) hints:hint_slot()
-            (kw("low_priority") / kw("high_priority"))? ignore:kw("ignore")? kw("into")? table:name() partition:use_partition()?
+            (kw("low_priority") / kw("high_priority"))? ignore:kw("ignore")? kw("into")? table:relation_name() partition:use_partition()?
             columns:("(" _ columns:(column() ** ("," _)) ")" _ { columns })?
             values:((kw("values") / kw("value")) rows:(row() ++ ("," _)) { Node::new(Kind::ValueList, rows) }
                 / kw("set") values:assignments() { Node::new(Kind::AssignList, values) }
@@ -1548,7 +1551,7 @@ peg::parser! {
                 Node::new(Kind::ReferenceOption,vec![Node::new(action,vec![])]).value(u64::from(delete))
             }
         rule foreign_key() -> Node = constraint:constraint_name()? kw("foreign") kw("key") index:ident()?
-            "(" _ columns:(ident() ++ ("," _)) ")" _ kw("references") table:name()
+            "(" _ columns:(ident() ++ ("," _)) ")" _ kw("references") table:relation_name()
             "(" _ parent:(ident() ++ ("," _)) ")" _ (kw("match") (kw("simple") / kw("full") / kw("partial")))?
             options:reference_option()* {?
                 Ok(ddl::ForeignKey {
@@ -1721,7 +1724,7 @@ peg::parser! {
                 };
                 Node::new(list,elements)
             }
-        rule partition_element(kind: Kind,subkind: Option<Kind>) -> Node = name:name()
+        rule partition_element(kind: Kind,subkind: Option<Kind>) -> Node = name:relation_name()
             bound:(enabled(matches!(kind,Kind::RangePartition|Kind::RangeColumnsPartition)) kw("values") kw("less") kw("than")
                     values:("(" _ values:((kw("maxvalue") { Node::new(Kind::MaxValue,vec![]) } / expr(0)) ++ ("," _)) ")" _ { values }
                         / kw("maxvalue") { vec![Node::new(Kind::MaxValue,vec![])] }) { (Kind::RangePartitionElement,Node::new(Kind::ExprList,values)) }
@@ -1735,7 +1738,7 @@ peg::parser! {
                     / subpartition_elements(Kind::HashPartition)) { value }) { values })? {?
                 Ok(ddl::PartitionEntry { kind:bound.0, name:Node::relation(name)?, values:bound.1, subpartitions:elements }.into_node())
             }
-        rule rename_table() -> Node = from:name() kw("to") to:name() {?
+        rule rename_table() -> Node = from:relation_name() kw("to") to:relation_name() {?
             Ok(Node::new(Kind::RenameTableAction,vec![Node::relation(from)?,Node::relation(to)?]))
         }
         rule alter_column() -> Node
@@ -1769,7 +1772,7 @@ peg::parser! {
         rule partition_names() -> Node = names:(ident() ++ ("," _)) { Node::new(Kind::Names,names.into_iter().map(Node::name).collect()) }
         rule alter_partition() -> Node
             = value:partition_option() { Node::new(Kind::Repartition,value.into_children()) }
-            / kw("exchange") kw("partition") name:ident() kw("with") kw("table") table:name() kw("without") kw("validation") {?
+            / kw("exchange") kw("partition") name:ident() kw("with") kw("table") table:relation_name() kw("without") kw("validation") {?
                 Ok(Node::new(Kind::PartitionExchange,vec![Node::name(name),Node::relation(table)?]))
             }
             / kw("add") kw("partition") start:position!()
@@ -1806,7 +1809,7 @@ peg::parser! {
                 charset:charset_name() collation:(kw("collate") value:collation_name() { value })? {
                 Node::new(Kind::ConvertTableCharset,vec![charset,Node::optional(collation)])
             }
-            / kw("rename") kw("to")? name:name() {? Ok(Node::new(Kind::TableRename,vec![Node::relation(name)?])) }
+            / kw("rename") kw("to")? name:relation_name() {? Ok(Node::new(Kind::TableRename,vec![Node::relation(name)?])) }
             / kw("set")? options:table_option()+ {
                 Node::new(Kind::TableOptions,options.into_iter().filter(|option| option.kind!=Kind::Missing).collect())
             }
@@ -1816,7 +1819,7 @@ peg::parser! {
                 / keyword("alter") hint_slot() { (true,false) })
             (kw("algorithm") "=" _ (kw("undefined") / kw("merge") / kw("temptable")))?
             (kw("definer") "=" _ (kw("current_user") ("(" _ ")" _)? / account()))? (kw("sql") kw("security") kw("definer"))?
-            kw("view") name:name() columns:("(" _ names:(ident() ++ ("," _)) ")" _ { names })? kw("as")
+            kw("view") name:relation_name() columns:("(" _ names:(ident() ++ ("," _)) ")" _ { names })? kw("as")
             start:position!() query:select(0) end:position!()
             check:(kw("with") local:(kw("local") { true } / kw("cascaded") { false })? kw("check") kw("option") { if local==Some(true) { 1 } else { 2 } })? {?
                 Ok(ddl::View {
@@ -1856,20 +1859,20 @@ peg::parser! {
                 Ok(ddl::Outline { kind:Kind::AlterOutline,relation:Node::relation(vec![name])?,
                     body:Some(body),format:format.is_some(),replace:false }.into_node())
             }
-            / kw("drop") format:kw("format")? kw("outline") name:name() {?
+            / kw("drop") format:kw("format")? kw("outline") name:relation_name() {?
                 Ok(ddl::Outline { kind:Kind::DropOutline,relation:Node::relation(name)?,
                     body:None,format:format.is_some(),replace:false }.into_node())
             }
         rule ddl() -> Node
             = view_definition()
             / outline_definition()
-            / kw("fork") kw("table") source:name() kw("to") destination:name() {?
+            / kw("fork") kw("table") source:relation_name() kw("to") destination:relation_name() {?
                 Ok(Node::new(Kind::ForkTable,vec![Node::relation(destination)?,Node::relation(source)?]))
             }
             / kw("fork") kw("database") source:ident() kw("to") destination:ident() {
                 Node::new(Kind::ForkDatabase,vec![Node::name(destination),Node::name(source)])
             }
-            / kw("drop") kw("view") exists:if_exists()? names:(name() ++ ("," _)) (kw("cascade") / kw("restrict"))? {?
+            / kw("drop") kw("view") exists:if_exists()? names:(relation_name() ++ ("," _)) (kw("cascade") / kw("restrict"))? {?
                 let views=names.into_iter().map(Node::relation).collect::<Result<Vec<_>,_>>()?;
                 Ok(Node::new(Kind::DropView,vec![Node::missing(),Node::optional(exists),Node::new(Kind::ViewList,views)]))
             }
@@ -1881,12 +1884,12 @@ peg::parser! {
                 kw("set")? options:database_option()+ {
                 Node::new(Kind::AlterDatabase,vec![Node::optional(name),Node::new(Kind::DatabaseOptions,options)])
             }
-            / keyword("create") hint_slot() temporary:temporary()? kw("table") absent:if_not_exists()? name:name()
-                source:(kw("like") name:name() { name } / "(" _ kw("like") name:name() ")" _ { name }) {?
+            / keyword("create") hint_slot() temporary:temporary()? kw("table") absent:if_not_exists()? name:relation_name()
+                source:(kw("like") name:relation_name() { name } / "(" _ kw("like") name:relation_name() ")" _ { name }) {?
                 Ok(ddl::TableLike { relation:Node::relation(name)?, source:Node::relation(source)?,
                     temporary:temporary.is_some(), if_not_exists:absent.is_some() }.into_node())
             }
-            / keyword("create") hints:hint_slot() temporary:temporary()? kw("table") absent:if_not_exists()? name:name()
+            / keyword("create") hints:hint_slot() temporary:temporary()? kw("table") absent:if_not_exists()? name:relation_name()
                 elements:("(" _ elements:(table_element() ++ ("," _)) ")" _ { elements })?
                 options:((value:table_option() ("," _)? { value })*) partition:partition_option()?
                 query:(modifier:(kw("ignore") { Kind::Ignore } / kw("replace") { Kind::Replace })? kw("as")? query:select(0) { (modifier,query) })? {?
@@ -1898,29 +1901,29 @@ peg::parser! {
                     temporary:temporary.is_some(), if_not_exists:absent.is_some(),
                 }.into_node())
             }
-            / keyword("create") hints:hint_slot() kind:index_kind()? kw("index") absent:if_not_exists()? name:name() method:index_method()? kw("on") table:name()
+            / keyword("create") hints:hint_slot() kind:index_kind()? kw("index") absent:if_not_exists()? name:name() method:index_method()? kw("on") table:relation_name()
                 "(" _ columns:(index_column(kind==Some(3)) ++ ("," _)) ")" _ options:index_options(kind==Some(3)) partition:partition_option()? {?
                 Ok(ddl::Index {
                     kind:kind.unwrap_or(0), name:Some(Node::relation(name)?), table:Some(Node::relation(table)?),
                     columns, options, method, partition, if_not_exists:absent.is_some(), hints:hints.unwrap_or_default(),
                 }.into_node())
             }
-            / kw("drop") kw("index") name:ident() kw("on") table:name() {?
+            / kw("drop") kw("index") name:ident() kw("on") table:relation_name() {?
                 Ok(Node::new(Kind::DropIndex,vec![Node::name(name),Node::relation(table)?]))
             }
             / kw("drop") (kw("database") / kw("schema")) exists:if_exists()? name:ident() {
                 Node::new(Kind::DropDatabase, vec![Node::optional(exists), Node::name(name)])
             }
-            / kw("drop") temporary:temporary()? (kw("table") / kw("tables")) exists:if_exists()? names:(name() ++ ("," _)) (kw("cascade") / kw("restrict"))? {?
+            / kw("drop") temporary:temporary()? (kw("table") / kw("tables")) exists:if_exists()? names:(relation_name() ++ ("," _)) (kw("cascade") / kw("restrict"))? {?
                 let tables=names.into_iter().map(Node::relation).collect::<Result<Vec<_>, _>>()?;
                 Ok(Node::new(Kind::DropTable, vec![Node::optional(temporary), Node::optional(exists), Node::new(Kind::TableList, tables)]))
             }
-            / kw("truncate") kw("table")? name:name() {? Ok(Node::new(Kind::TruncateTable,vec![Node::relation(name)?])) }
-            / kw("optimize") kw("table") names:(name() ++ ("," _)) {?
+            / kw("truncate") kw("table")? name:relation_name() {? Ok(Node::new(Kind::TruncateTable,vec![Node::relation(name)?])) }
+            / kw("optimize") kw("table") names:(relation_name() ++ ("," _)) {?
                 Ok(Node::new(Kind::OptimizeTable,vec![Node::new(Kind::TableList,names.into_iter().map(Node::relation).collect::<Result<Vec<_>,_>>()?)]))
             }
             / kw("rename") kw("table") values:(rename_table() ++ ("," _)) { Node::new(Kind::RenameTables,values) }
-            / keyword("alter") hints:hint_slot() kw("table") name:name() actions:(first:alter_action()? rest:("," _ value:alter_action() { value })* {
+            / keyword("alter") hints:hint_slot() kw("table") name:relation_name() actions:(first:alter_action()? rest:("," _ value:alter_action() { value })* {
                 let mut actions=vec![];actions.extend(first);actions.extend(rest);actions
             }) {?
                 Ok(Node::new(Kind::AlterTable,vec![Node::relation(name)?,Node::list(Kind::AlterTableActions,actions.into_iter().filter(|value| value.kind!=Kind::Missing).collect()),Node::missing(),Node::list(Kind::Hints,hints.unwrap_or_default())]))
@@ -1988,7 +1991,7 @@ peg::parser! {
             / full:kw("full")? kw("processlist") { Node::new(Kind::ShowProcesslist,vec![Node::new(Kind::HiddenInt,vec![]).value(u64::from(full.is_some()))]) }
             / kind:(charset_keyword() { Kind::ShowCharset } / kw("collation") { Kind::ShowCollation })
                 condition:show_condition()? { Node::new(kind,vec![Node::optional(condition)]) }
-            / extended:kw("extended")? (kw("index") / kw("indexes") / kw("keys")) (kw("from") / kw("in")) table:name() database:show_database()? filter:(kw("where") value:expr(0) { value })? {?
+            / extended:kw("extended")? (kw("index") / kw("indexes") / kw("keys")) (kw("from") / kw("in")) table:relation_name() database:show_database()? filter:(kw("where") value:expr(0) { value })? {?
                 Ok(Node::new(Kind::ShowIndexes,vec![Node::relation(table)?,Node::optional(database),Node::where_clause(filter),Node::new(Kind::HiddenInt,vec![]).value(u64::from(extended.is_some()))]))
             }
             / (kw("databases") / kw("schemas")) status:kw("status")? condition:show_condition()? {
@@ -2012,7 +2015,7 @@ peg::parser! {
             / kw("open") kw("tables") show_database()? condition:show_condition()? {
                 Node::new(Kind::ShowOpenTables,vec![Node::optional(condition)])
             }
-            / modifiers:show_modifiers() (kw("columns") / kw("fields")) (kw("from") / kw("in")) table:name() database:show_database()? condition:show_condition()? {?
+            / modifiers:show_modifiers() (kw("columns") / kw("fields")) (kw("from") / kw("in")) table:relation_name() database:show_database()? condition:show_condition()? {?
                 Ok(Node::new(Kind::ShowColumns,vec![Node::new(Kind::Int,vec![]).value(modifiers),Node::relation(table)?,Node::optional(database),Node::optional(condition)]))
             }
             / scope:scope()? kw("variables") condition:show_condition()? {
@@ -2023,7 +2026,7 @@ peg::parser! {
             }
             / kw("create") kind:(kw("table") { Kind::ShowCreateTable } / kw("view") { Kind::ShowCreateView }
                 / kw("procedure") { Kind::ShowCreateProcedure } / kw("function") { Kind::ShowCreateFunction }
-                / kw("trigger") { Kind::ShowCreateTrigger }) name:name() {? Ok(Node::new(kind,vec![Node::relation(name)?])) }
+                / kw("trigger") { Kind::ShowCreateTrigger }) name:relation_name() {? Ok(Node::new(kind,vec![Node::relation(name)?])) }
             / kw("create") (kw("database") / kw("schema")) absent:if_not_exists()? name:ident() { Node::new(Kind::ShowCreateDatabase,vec![Node::optional(absent),Node::name(name)]) }
             / kind:(kw("warnings") { Kind::ShowWarnings } / kw("errors") { Kind::ShowErrors }) limit:show_limit()? { Node::new(kind,vec![Node::optional(limit)]) }
             / kw("count") "(" _ "*" _ ")" _ kind:(kw("warnings") { Kind::ShowWarnings } / kw("errors") { Kind::ShowErrors }) {
@@ -2033,10 +2036,10 @@ peg::parser! {
             / kw("medium") / kw("extended") / kw("changed")
         rule show() -> Node
             = kw("show") value:show_body() { value }
-            / kw("check") kw("table") tables:((name:name() {? Node::relation(name) }) ++ ("," _)) check_table_option()* {
+            / kw("check") kw("table") tables:((name:relation_name() {? Node::relation(name) }) ++ ("," _)) check_table_option()* {
                 Node::new(Kind::CheckTable,tables)
             }
-            / (kw("describe") / kw("desc") / kw("explain")) table:name()
+            / (kw("describe") / kw("desc") / kw("explain")) table:relation_name()
                 column:(value:(string() / name:ident() { Node::new(Kind::String,vec![]).text(name.text) }) {
                     Node::new(Kind::LikeClause,vec![value,Node::new(Kind::String,vec![]).text("\\".into())])
                 })? {? Ok(Node::new(Kind::ShowColumns,vec![Node::new(Kind::Int,vec![]),Node::relation(table)?,Node::missing(),Node::optional(column)])) }
@@ -2204,7 +2207,7 @@ peg::parser! {
                 Node::new(Kind::LockTables,tables)
             }
             / kw("unlock") (kw("table") / kw("tables")) { Node::new(Kind::UnlockTables,vec![]) }
-        rule table_lock() -> Node = name:("." _ name:ident() { vec![name] } / name())
+        rule table_lock() -> Node = name:relation_name()
             alias:(kw("as") name:ident() { name })?
             write:(kw("read") kw("local")? { false } / kw("low_priority")? kw("write") { true }) {?
                 Ok(Node::new(Kind::TableLock,vec![Node::table(Node::relation(name)?,alias)?])
@@ -2213,11 +2216,11 @@ peg::parser! {
         rule kill() -> Node = kw("kill") query:(kw("query") { true } / kw("connection") { false })? target:expr(0) {
             Node::new(Kind::Kill,vec![Node::new(Kind::Bool,vec![]).value(u64::from(query.unwrap_or(false))),target])
         }
-        rule restore_table_relation() -> Node = parts:("." _ name:dotted_ident() { vec![name] } / name()) {? Node::relation(parts) }
-        rule restore_table() -> Node = kw("flashback") kw("table") source:restore_table_relation()
-            kw("to") kw("before") kw("drop") target:(kw("rename") kw("to") value:restore_table_relation() { value })? {
-                let mut children=vec![source];children.extend(target);
-                Node::new(Kind::RestoreTable,children)
+        rule restore_table() -> Node = kw("flashback") kw("table") source:relation_name()
+            kw("to") kw("before") kw("drop") target:(kw("rename") kw("to") value:relation_name() { value })? {?
+                let mut children=vec![Node::relation(source)?];
+                if let Some(target)=target { children.push(Node::relation(target)?); }
+                Ok(Node::new(Kind::RestoreTable,children))
             }
         rule restore_database() -> Node = kw("flashback") (kw("database") / kw("schema")) source:ident()
             kw("to") kw("before") kw("drop") target:(kw("rename") kw("to") name:ident() { name })? {
@@ -2225,7 +2228,7 @@ peg::parser! {
                 Node::new(Kind::RestoreDatabase,children)
             }
         rule purge() -> Node = kw("purge") value:(kw("recyclebin") { Node::new(Kind::PurgeRecyclebin,vec![]) }
-            / kind:(kw("table") { Kind::PurgeTable } / kw("index") { Kind::PurgeIndex }) name:name() {? Ok(Node::new(kind,vec![Node::relation(name)?])) }
+            / kind:(kw("table") { Kind::PurgeTable } / kw("index") { Kind::PurgeIndex }) name:relation_name() {? Ok(Node::new(kind,vec![Node::relation(name)?])) }
             / (kw("database") / kw("schema")) name:ident() { Node::new(Kind::PurgeDatabase,vec![Node::name(name)]) }) { value }
         rule account_resource_limits() -> Vec<Node> = kw("with") limits:(
             kind:(kw("max_connections_per_hour") { Kind::MaxConnectionsPerHour }
@@ -2505,7 +2508,7 @@ peg::parser! {
             }
             / (kw("deallocate") / kw("drop")) kw("prepare") name:ident() { Node::new(Kind::Deallocate,vec![]).text(name.text) }
         rule analyze() -> Node = kw("analyze") kw("table") value:(
-                table:(names:name() {? Node::relation(names) }) kw("update") kw("histogram") kw("on")
+                table:(names:relation_name() {? Node::relation(names) }) kw("update") kw("histogram") kw("on")
                 columns:(ident() ++ ("," _)) buckets:(kw("with") value:type_size() kw("buckets") {?
                     if value.kind==Kind::Int && (1..=1024).contains(&value.value) {
                         Ok(Node::new(Kind::StatsBucketCount,vec![value]))
@@ -2516,12 +2519,12 @@ peg::parser! {
                     children.extend(buckets);
                     Node::new(Kind::Analyze,children).value(1)
                 }
-                / table:(names:name() {? Node::relation(names) }) kw("drop") kw("histogram") kw("on")
+                / table:(names:relation_name() {? Node::relation(names) }) kw("drop") kw("histogram") kw("on")
                 columns:(ident() ++ ("," _)) {
                     Node::new(Kind::Analyze,vec![Node::new(Kind::TableList,vec![table]),
                         Node::new(Kind::ColumnList,columns.into_iter().map(Node::name).collect())]).value(2)
                 }
-                / tables:((names:name() {? Node::relation(names) }) ++ ("," _)) {
+                / tables:((names:relation_name() {? Node::relation(names) }) ++ ("," _)) {
                     Node::new(Kind::Analyze,vec![Node::new(Kind::TableList,tables)])
                 }
             ) { value }
@@ -2598,7 +2601,7 @@ peg::parser! {
             / kw("reject") kw("limit") ("=" _)? load_integer()
         rule load_data() -> Node = hints:load_prefix() local:kw("local")? kw("infile") filename:load_string()
             duplicate:(kw("ignore") { crate::LoadDuplicate::Ignore } / kw("replace") { crate::LoadDuplicate::Replace })?
-            kw("into") kw("table") table:name()
+            kw("into") kw("table") table:relation_name()
             partitions:(kw("partition") "(" _ names:(ident() ++ ("," _)) ")" _ { names.into_iter().map(Node::name).collect() })?
             compression:(kw("compression") ("=" _)? value:(load_string() / name:ident() { Node::name(name) }) { value })?
             charset:(kw("character") kw("set") value:charset_name() { value })?
