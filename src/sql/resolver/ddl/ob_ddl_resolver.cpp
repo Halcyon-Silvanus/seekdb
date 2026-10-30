@@ -845,6 +845,16 @@ int ObDDLResolver::resolve_table_option(const peg::Node &option, const bool is_i
         }
         break;
       }
+      case peg::NodeKind::MicroIndexClustered: {
+        if (is_index_option || stmt_->get_stmt_type() != stmt::T_CREATE_TABLE) {
+          ret = OB_NOT_SUPPORTED;
+          LOG_USER_ERROR(OB_NOT_SUPPORTED, "micro_index_clustered outside CREATE TABLE");
+        } else {
+          auto &schema = static_cast<ObCreateTableStmt *>(stmt_)->get_create_table_arg().schema_;
+          schema.set_micro_index_clustered(peg::table_option_number(option) != 0);
+        }
+        break;
+      }
       case peg::NodeKind::Parallel:
         table_dop_ = peg::table_option_number(option);
         if (stmt::T_ALTER_TABLE == stmt_->get_stmt_type()) {

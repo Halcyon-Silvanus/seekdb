@@ -48,6 +48,29 @@ int ObFreezeResolver::resolve(const peg::Node &statement)
   return ret;
 }
 
+int MergeControlResolver::resolve(const peg::Node &statement)
+{
+  int ret = OB_SUCCESS;
+  ObAdminMergeStmt *stmt = create_stmt<ObAdminMergeStmt>();
+  if (OB_ISNULL(stmt)) {
+    ret = OB_ALLOCATE_MEMORY_FAILED;
+  } else {
+    stmt->set_merge_type(statement.kind() == peg::NodeKind::SuspendMerge
+        ? ObAdminMergeStmt::MergeType::SUSPEND : ObAdminMergeStmt::MergeType::RESUME);
+  }
+  return ret;
+}
+
+int ClearMergeErrorResolver::resolve(const peg::Node &statement)
+{
+  return create_stmt<ObClearMergeErrorStmt>() == nullptr ? OB_ALLOCATE_MEMORY_FAILED : OB_SUCCESS;
+}
+
+int RefreshMemoryStatResolver::resolve(const peg::Node &statement)
+{
+  return create_stmt<ObRefreshMemStatStmt>() == nullptr ? OB_ALLOCATE_MEMORY_FAILED : OB_SUCCESS;
+}
+
 int CancelTaskResolver::resolve(const peg::Node &statement)
 {
   int ret = OB_SUCCESS;

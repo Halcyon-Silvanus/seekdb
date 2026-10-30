@@ -140,6 +140,10 @@ std::optional<NativeStatementTraits> native_statement_traits(Kind kind)
     case Kind::ForkTable: return NativeStatementTraits{stmt::T_FORK_TABLE, false, false};
     case Kind::ForkDatabase: return NativeStatementTraits{stmt::T_FORK_DATABASE, false, false};
     case Kind::Freeze: return NativeStatementTraits{stmt::T_FREEZE, false, false};
+    case Kind::SuspendMerge:
+    case Kind::ResumeMerge: return NativeStatementTraits{stmt::T_ADMIN_MERGE, false, false};
+    case Kind::ClearMergeError: return NativeStatementTraits{stmt::T_CLEAR_MERGE_ERROR, false, false};
+    case Kind::RefreshMemoryStat: return NativeStatementTraits{stmt::T_REFRESH_MEMORY_STAT, false, false};
     case Kind::CancelTask: return NativeStatementTraits{stmt::T_CANCEL_TASK, false, false};
     case Kind::FlushCache: return NativeStatementTraits{stmt::T_FLUSH_CACHE, false, false};
     case Kind::FlushKvCache: return NativeStatementTraits{stmt::T_FLUSH_KVCACHE, false, false};

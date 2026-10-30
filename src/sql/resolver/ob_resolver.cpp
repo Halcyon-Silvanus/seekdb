@@ -247,6 +247,19 @@ int ObResolver::resolve(const peg::Node &statement, ObStmt *&stmt)
         params_.resolver_scope_stmt_type_ = T_FREEZE;
         ret = stmt_resolver_func<ObFreezeResolver>(params_, statement, stmt);
         break;
+      case peg::NodeKind::SuspendMerge:
+      case peg::NodeKind::ResumeMerge:
+        params_.resolver_scope_stmt_type_ = T_MERGE_CONTROL;
+        ret = stmt_resolver_func<MergeControlResolver>(params_, statement, stmt);
+        break;
+      case peg::NodeKind::ClearMergeError:
+        params_.resolver_scope_stmt_type_ = T_CLEAR_MERGE_ERROR;
+        ret = stmt_resolver_func<ClearMergeErrorResolver>(params_, statement, stmt);
+        break;
+      case peg::NodeKind::RefreshMemoryStat:
+        params_.resolver_scope_stmt_type_ = T_REFRESH_MEMORY_STAT;
+        ret = stmt_resolver_func<RefreshMemoryStatResolver>(params_, statement, stmt);
+        break;
       case peg::NodeKind::CancelTask:
         params_.resolver_scope_stmt_type_ = T_CANCEL_TASK;
         ret = stmt_resolver_func<CancelTaskResolver>(params_, statement, stmt);

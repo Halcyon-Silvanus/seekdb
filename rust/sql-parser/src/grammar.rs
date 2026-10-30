@@ -1665,8 +1665,13 @@ peg::parser! {
                 else { Err("integer") }
             }
             / kw("delay_key_write") ("=" _)? kw("all") { Node::missing() }
-            / (kw("checksum") / kw("avg_row_length") / kw("delay_key_write")) ("=" _)? value:type_size() {?
-                if value.kind==Kind::Int { Ok(Node::missing()) } else { Err("nonnegative integer table option") }
+            / kw("pack_keys") ("=" _)? kw("default") { Node::missing() }
+            / (kw("checksum") / kw("avg_row_length") / kw("delay_key_write") / kw("pack_keys")) ("=" _)? value:type_size() {?
+                if matches!(value.kind,Kind::Int|Kind::Uint) { Ok(Node::missing()) } else { Err("nonnegative integer table option") }
+            }
+            / kw("union") ("=" _)? "(" _ (relation_name() ** ("," _)) ")" _ { Node::missing() }
+            / kw("micro_index_clustered") ("=" _)? value:(kw("true") { 1 } / kw("false") { 0 }) {
+                Node::new(Kind::MicroIndexClustered,vec![Node::new(Kind::Bool,vec![]).value(value)])
             }
             / json_storage()
             / kind:(kw("compression") { Kind::Compression } / kw("comment") { Kind::ColumnComment }
@@ -1808,7 +1813,7 @@ peg::parser! {
             }
         rule alter_index() -> Node
             = kw("add") value:(alter_key_definition()
-                / "(" _ &kw("constraint") value:alter_key_definition() ")" _ { value }) { value }
+                / "(" _ value:alter_key_definition() ")" _ { value }) { value }
             / kw("drop") (kw("index") / kw("key")) name:ident() { Node::new(Kind::IndexDrop,vec![Node::name(name)]) }
             / kw("drop") kw("primary") kw("key") { Node::new(Kind::PrimaryKeyDrop,vec![]) }
             / kw("rename") (kw("index") / kw("key")) from:ident() kw("to") to:ident() { Node::new(Kind::IndexRename,vec![Node::name(from),Node::name(to)]) }
@@ -2129,6 +2134,9 @@ peg::parser! {
         ) { value }
         rule alter_system() -> Node = kw("alter") kw("system") value:(
             flush_cache()
+            / kind:(kw("suspend") { Kind::SuspendMerge } / kw("resume") { Kind::ResumeMerge }) kw("merge") { Node::new(kind,vec![]) }
+            / kw("clear") kw("merge") kw("error") { Node::new(Kind::ClearMergeError,vec![]) }
+            / kw("refresh") kw("memory") kw("stat") { Node::new(Kind::RefreshMemoryStat,vec![]) }
             / kw("cancel") kw("task") id:string() { Node::new(Kind::CancelTask,vec![id]) }
             / kind:(kw("major") { 1 } / kw("minor") { 2 }) kw("freeze")
                 tablet:(kw("tablet_id") "=" _ value:load_integer() { value })? {
