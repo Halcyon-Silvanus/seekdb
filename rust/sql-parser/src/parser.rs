@@ -83,7 +83,7 @@ pub fn parse(sql: &[u8], mode: SqlMode, parse_mode: ParseMode) -> Result<Parsed,
         ParseMode::Expression | ParseMode::PlExpression => grammar::sql::expression(text, mode, pl),
         ParseMode::Sql | ParseMode::RoutineDefinition | ParseMode::PlSql => grammar::sql::query(text, mode, pl),
         _ => unreachable!("unknown parser entry point"),
-        }
+        }.map(|root| (root, pl))
     };
     let mut expanded_sql = String::new();
     let parsed = grammar::executable_sql(sql, mode, true).and_then(|mut text| {
@@ -104,12 +104,12 @@ pub fn parse(sql: &[u8], mode: SqlMode, parse_mode: ParseMode) -> Result<Parsed,
             error.location.offset
         };
         (error.to_string(), offset)
-    }).and_then(|query| {
+    }).and_then(|(query, pl)| {
         if parse_mode == ParseMode::RoutineDefinition
             && !matches!(query.kind, Kind::CreateProcedure | Kind::CreateFunction) {
             Err(("expected procedure or function definition".into(), query.start))
         } else {
-            Ok(query)
+            Ok((query, pl))
         }
     });
     if expanded_sql.is_empty() {
@@ -117,7 +117,7 @@ pub fn parse(sql: &[u8], mode: SqlMode, parse_mode: ParseMode) -> Result<Parsed,
             expanded_sql = source;
         }
     }
-    let mut root = parsed.map_err(|(message, offset)| ParseFailure {
+    let (mut root, pl) = parsed.map_err(|(message, offset)| ParseFailure {
         kind: ParseErrorKind::Syntax,
         message, offset, expanded_sql: std::mem::take(&mut expanded_sql),
     })?;
@@ -139,14 +139,6 @@ pub fn parse(sql: &[u8], mode: SqlMode, parse_mode: ParseMode) -> Result<Parsed,
         offset,
         expanded_sql: std::mem::take(&mut expanded_sql),
     })?;
-    if root.kind == Kind::LoadData && parameters != 0 {
-        return Err(ParseFailure {
-            kind: ParseErrorKind::Syntax,
-            message: "LOAD DATA does not accept parameter markers".into(),
-            offset: root.start,
-            expanded_sql,
-        });
-    }
     if root.kind == Kind::CreateView && parameters != 0 && parse_mode != ParseMode::PlSql {
         return Err(ParseFailure {
             kind: ParseErrorKind::Syntax,
@@ -155,8 +147,28 @@ pub fn parse(sql: &[u8], mode: SqlMode, parse_mode: ParseMode) -> Result<Parsed,
             expanded_sql,
         });
     }
+    if parameters != 0 && parse_mode == ParseMode::Sql && !pl
+        && !statement_accepts_parameters(&root)
+    {
+        return Err(ParseFailure {
+            kind: ParseErrorKind::Syntax,
+            message: "statement does not accept parameter markers".into(),
+            offset: root.start,
+            expanded_sql,
+        });
+    }
     let named_parameters = parameter_names.iter().any(|name| !name.as_bytes()[1].is_ascii_digit());
     Ok(Parsed { root, expanded_sql, source_prefix, parameters, parameter_names, named_parameters })
+}
+
+fn statement_accepts_parameters(node: &Node) -> bool {
+    match node.kind {
+        Kind::Select | Kind::Insert | Kind::Update | Kind::Delete | Kind::Explain
+        | Kind::CreateOutline | Kind::AlterOutline | Kind::Prepare | Kind::VariableSet
+        | Kind::Kill | Kind::Diagnostics => true,
+        Kind::CreateTable => crate::ddl::table_definition(node).select_mode != crate::TableSelectMode::None,
+        _ => false,
+    }
 }
 
 fn invalid_bit_width(node: &Node) -> Option<usize> {
