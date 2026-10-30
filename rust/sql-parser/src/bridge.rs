@@ -1939,7 +1939,7 @@ pub(crate) mod ffi {
         fn error_kind(self: &ParseTree) -> ParseErrorKind;
         fn error_offset(self: &ParseTree) -> usize;
         fn parameters(self: &ParseTree) -> usize;
-        fn has_parameter_names(self: &ParseTree) -> bool;
+        fn has_ordinal_parameters(self: &ParseTree) -> bool;
         fn named_parameters(self: &ParseTree) -> bool;
 
         fn transaction_command(sql: &[u8]) -> TransactionCommand;
@@ -2601,7 +2601,7 @@ impl ParseTree {
         match &self.0 { Ok(_) => 0, Err(error) => error.offset }
     }
     pub fn parameters(&self) -> usize { self.parsed().parameters() }
-    pub fn has_parameter_names(&self) -> bool { !self.parsed().parameter_names().is_empty() }
+    pub fn has_ordinal_parameters(&self) -> bool { self.parsed().has_ordinal_parameters() }
     pub fn named_parameters(&self) -> bool { self.parsed().named_parameters() }
 }
 

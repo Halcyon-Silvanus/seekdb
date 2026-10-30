@@ -19,9 +19,18 @@ pub struct Parsed {
     root: Node,
     expanded_sql: String,
     source_prefix: usize,
-    parameters: usize,
-    parameter_names: Vec<String>,
-    named_parameters: bool,
+    parameters: Parameters,
+}
+
+enum ParameterStyle {
+    Unspecified,
+    Ordinal,
+    Named,
+}
+
+struct Parameters {
+    count: usize,
+    style: ParameterStyle,
 }
 
 impl Parsed {
@@ -33,9 +42,9 @@ impl Parsed {
             end: node.end.saturating_sub(self.source_prefix),
         }
     }
-    pub fn parameters(&self) -> usize { self.parameters }
-    pub fn parameter_names(&self) -> &[String] { &self.parameter_names }
-    pub fn named_parameters(&self) -> bool { self.named_parameters }
+    pub fn parameters(&self) -> usize { self.parameters.count }
+    pub fn has_ordinal_parameters(&self) -> bool { matches!(self.parameters.style, ParameterStyle::Ordinal) }
+    pub fn named_parameters(&self) -> bool { matches!(self.parameters.style, ParameterStyle::Named) }
 }
 
 #[derive(Debug)]
@@ -131,15 +140,13 @@ pub fn parse(sql: &[u8], mode: SqlMode, parse_mode: ParseMode) -> Result<Parsed,
             });
         }
     }
-    let mut parameters = 0;
-    let mut parameter_names = Vec::new();
-    number_parameters(&mut root, &mut parameters, &mut parameter_names).map_err(|offset| ParseFailure {
+    let parameters = number_parameters(&mut root).map_err(|offset| ParseFailure {
         kind: ParseErrorKind::Syntax,
         message: "ordinal and named parameters cannot be combined".into(),
         offset,
         expanded_sql: std::mem::take(&mut expanded_sql),
     })?;
-    if root.kind == Kind::CreateView && parameters != 0 && parse_mode != ParseMode::PlSql {
+    if root.kind == Kind::CreateView && parameters.count != 0 && parse_mode != ParseMode::PlSql {
         return Err(ParseFailure {
             kind: ParseErrorKind::Syntax,
             message: "CREATE VIEW does not accept parameter markers".into(),
@@ -147,7 +154,7 @@ pub fn parse(sql: &[u8], mode: SqlMode, parse_mode: ParseMode) -> Result<Parsed,
             expanded_sql,
         });
     }
-    if parameters != 0 && parse_mode == ParseMode::Sql && !pl
+    if parameters.count != 0 && parse_mode == ParseMode::Sql && !pl
         && !statement_accepts_parameters(&root)
     {
         return Err(ParseFailure {
@@ -157,8 +164,7 @@ pub fn parse(sql: &[u8], mode: SqlMode, parse_mode: ParseMode) -> Result<Parsed,
             expanded_sql,
         });
     }
-    let named_parameters = parameter_names.iter().any(|name| !name.as_bytes()[1].is_ascii_digit());
-    Ok(Parsed { root, expanded_sql, source_prefix, parameters, parameter_names, named_parameters })
+    Ok(Parsed { root, expanded_sql, source_prefix, parameters })
 }
 
 fn statement_accepts_parameters(node: &Node) -> bool {
@@ -184,11 +190,9 @@ fn invalid_bit_width(node: &Node) -> Option<usize> {
     None
 }
 
-fn number_parameters(
-    node: &mut Node,
-    count: &mut usize,
-    names: &mut Vec<String>,
-) -> Result<(), usize> {
+fn number_parameters(node: &mut Node) -> Result<Parameters, usize> {
+    let mut bindings = Parameters { count: 0, style: ParameterStyle::Unspecified };
+    let mut names: Vec<(String, usize)> = Vec::new();
     let mut parameters = Vec::new();
     let mut pending = vec![node];
     while let Some(node) = pending.pop() {
@@ -201,25 +205,31 @@ fn number_parameters(
     parameters.sort_by_key(|parameter| parameter.start);
     for node in parameters {
         if node.text.is_empty() {
-            if !names.is_empty() {
+            if matches!(bindings.style, ParameterStyle::Named) {
                 return Err(node.start);
             }
-            node.value = *count as u64;
-            *count += 1;
+            bindings.style = ParameterStyle::Ordinal;
+            node.value = bindings.count as u64;
+            bindings.count += 1;
         } else {
-            if *count != names.len() {
-                return Err(node.start);
+            if !node.text.as_bytes()[1].is_ascii_digit() {
+                if matches!(bindings.style, ParameterStyle::Ordinal) {
+                    return Err(node.start);
+                }
+                bindings.style = ParameterStyle::Named;
             }
             let index = names
                 .iter()
-                .position(|name| name.eq_ignore_ascii_case(&node.text));
+                .find(|(name, _)| name.eq_ignore_ascii_case(&node.text))
+                .map(|(_, index)| *index);
             node.value = index.unwrap_or_else(|| {
-                names.push(node.text.clone());
-                *count += 1;
-                names.len() - 1
+                let index = bindings.count;
+                names.push((node.text.clone(), index));
+                bindings.count += 1;
+                index
             }) as u64;
         }
     }
-    Ok(())
+    Ok(bindings)
 }
 

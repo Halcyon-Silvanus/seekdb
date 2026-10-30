@@ -210,7 +210,7 @@ int ObParser::parse_entry(const ObString &sql, ParsedSql &owner, peg::ParseMode 
       || (kind == Kind::LoadData && peg::load_data_definition(parsed->root()).contains_sensitive_data);
   const auto parameters = parsed->parameters();
   result.question_mark_ctx_.count_ = parameters;
-  result.question_mark_ctx_.by_ordinal_ = !parsed->has_parameter_names() && parameters != 0;
+  result.question_mark_ctx_.by_ordinal_ = parsed->has_ordinal_parameters();
   result.question_mark_ctx_.by_name_ = parsed->named_parameters();
   if (dynamic_sql) {
     ObString owned;

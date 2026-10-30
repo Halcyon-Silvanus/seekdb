@@ -353,9 +353,6 @@ impl Scanner<'_> {
             self.result.ordinal_parameters += 1;
             index as u64
         } else {
-            if self.result.ordinal_parameters != 0 {
-                return Err(start);
-            }
             self.pos += 1;
             if self.byte(self.pos).is_ascii_digit() {
                 while self.byte(self.pos).is_ascii_digit() {
@@ -365,6 +362,9 @@ impl Scanner<'_> {
                     .parse::<u64>()
                     .map_err(|_| start)?
             } else {
+                if self.result.ordinal_parameters != 0 {
+                    return Err(start);
+                }
                 self.pos = self.word_end(self.pos);
                 let name = &self.sql[start..self.pos];
                 let names = &mut self.result.parameter_names;
