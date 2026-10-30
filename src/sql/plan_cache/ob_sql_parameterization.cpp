@@ -185,7 +185,7 @@ int ObSqlParameterization::transform_syntax_tree(ObIAllocator &allocator,
       outline, from_pl, is_no_unsigned_subtraction(session.get_sql_mode()), projection_names != nullptr,
       SelectItemParamInfo::PARAMED_FIELD_BUF_LEN, static_cast<size_t>(parameter_base)};
   if (OB_SUCC(ret)) {
-    auto result = peg::parameterize(*parsed.statement(), bytes(parsed.source()), bytes(parsed.original_source()),
+    auto result = peg::parameterize(*parsed.statement(), bytes(parsed.original_source()),
         {tokens.data(), tokens.size()}, options);
     OZ (parameter_error(result.error));
     for (size_t i = 0; OB_SUCC(ret) && i < result.tokens.size(); ++i) {

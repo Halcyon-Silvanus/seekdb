@@ -713,7 +713,6 @@ fn empty_result() -> Parameterization<'static> {
 
 fn apply<'a>(
     collector: &mut Collector<'a>,
-    syntax_sql: &[u8],
     original_sql: &[u8],
     tokens: &[ParameterToken<'_>],
     options: ParameterOptions,
@@ -886,7 +885,7 @@ fn apply<'a>(
         for projection in &collector.projections {
             if let Some(template) = parameter_template(
                 Projection::new(projection),
-                syntax_sql,
+                original_sql,
                 collector.literals.iter().map(|occurrence| (occurrence.literal, occurrence.expression)),
                 tokens,
                 &result.effects,
@@ -907,7 +906,6 @@ fn apply<'a>(
 
 pub fn parameterize<'a>(
     tree: &'a Node,
-    syntax_sql: &[u8],
     original_sql: &[u8],
     tokens: &[ParameterToken<'_>],
     options: ParameterOptions,
@@ -921,7 +919,7 @@ pub fn parameterize<'a>(
     };
     match collector
         .collect(tree, Scope::default())
-        .and_then(|()| apply(&mut collector, syntax_sql, original_sql, tokens, options))
+        .and_then(|()| apply(&mut collector, original_sql, tokens, options))
     {
         Ok(result) => result,
         Err(error) => Parameterization {

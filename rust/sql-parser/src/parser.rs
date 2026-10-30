@@ -18,6 +18,7 @@ use crate::bridge::ffi::ParseErrorKind;
 pub struct Parsed {
     root: Node,
     expanded_sql: String,
+    source_prefix: usize,
     parameters: usize,
     parameter_names: Vec<String>,
     named_parameters: bool,
@@ -26,6 +27,12 @@ pub struct Parsed {
 impl Parsed {
     pub fn root(&self) -> &Node { &self.root }
     pub fn expanded_sql(&self) -> &str { &self.expanded_sql }
+    pub fn original_span(&self, node: &Node) -> crate::bridge::ffi::Span {
+        crate::bridge::ffi::Span {
+            start: node.start.saturating_sub(self.source_prefix),
+            end: node.end.saturating_sub(self.source_prefix),
+        }
+    }
     pub fn parameters(&self) -> usize { self.parameters }
     pub fn parameter_names(&self) -> &[String] { &self.parameter_names }
     pub fn named_parameters(&self) -> bool { self.named_parameters }
@@ -63,6 +70,7 @@ pub fn parse(sql: &[u8], mode: SqlMode, parse_mode: ParseMode) -> Result<Parsed,
     } else {
         std::borrow::Cow::Borrowed(sql)
     };
+    let source_prefix = source.len() - sql.len();
     let sql = source.as_ref();
     let entry = |text: &str| {
         let pl = matches!(parse_mode, ParseMode::Routine | ParseMode::Trigger | ParseMode::RoutineDefinition
@@ -148,7 +156,7 @@ pub fn parse(sql: &[u8], mode: SqlMode, parse_mode: ParseMode) -> Result<Parsed,
         });
     }
     let named_parameters = parameter_names.iter().any(|name| !name.as_bytes()[1].is_ascii_digit());
-    Ok(Parsed { root, expanded_sql, parameters, parameter_names, named_parameters })
+    Ok(Parsed { root, expanded_sql, source_prefix, parameters, parameter_names, named_parameters })
 }
 
 fn invalid_bit_width(node: &Node) -> Option<usize> {

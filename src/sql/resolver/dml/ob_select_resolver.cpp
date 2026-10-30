@@ -1278,7 +1278,7 @@ int ObSelectResolver::resolve_field_list(rust::Slice<const peg::Node> projection
     const SelectItemParamInfo *param_info = params_.select_item_param_infos_ != nullptr
         && params_.select_item_param_infos_->created()
         ? params_.select_item_param_infos_->get(&projection) : nullptr;
-    const ObString expression_source = params_.syntax_->source(project_node);
+    const ObString expression_source = params_.syntax_->original_source(project_node);
     const rust::Slice<const uint8_t> source{
         reinterpret_cast<const uint8_t *>(expression_source.ptr()),
         static_cast<size_t>(expression_source.length())};

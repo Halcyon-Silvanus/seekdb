@@ -1921,6 +1921,7 @@ pub(crate) mod ffi {
         type ParseTree;
         fn root(self: &ParseTree) -> &Node;
         fn expanded_sql(self: &ParseTree) -> &str;
+        fn original_span(self: &ParseTree, node: &Node) -> Span;
         fn error(self: &ParseTree) -> &str;
         fn error_kind(self: &ParseTree) -> ParseErrorKind;
         fn error_offset(self: &ParseTree) -> usize;
@@ -1948,7 +1949,7 @@ pub(crate) mod ffi {
         unsafe fn projection_names<'a>(projection: &'a Node, expression_source: &'a [u8], null_template: bool) -> ProjectionNames<'a>;
         unsafe fn parameterized_projection_names<'a>(projection: &'a Node, expression_source: &'a [u8], effects: &ParameterEffects, null_template: bool) -> ProjectionNames<'a>;
 
-        unsafe fn parameterize<'a>(tree: &'a Node, syntax_sql: &[u8], original_sql: &[u8], tokens: &[ParameterToken], options: ParameterOptions) -> Parameterization<'a>;
+        unsafe fn parameterize<'a>(tree: &'a Node, original_sql: &[u8], tokens: &[ParameterToken], options: ParameterOptions) -> Parameterization<'a>;
         fn classify_parameter_tokens(tokens: &[ParameterToken], expected: usize, check_order: bool) -> ParameterClassification;
         fn rewrite_parameter_sql(sql: &[u8], tokens: &[ParameterToken], fold_in: bool) -> ParameterSql;
         fn fold_parameter_in_lists(sql: &[u8]) -> ParameterSql;
@@ -2568,6 +2569,7 @@ impl ParseTree {
         self.0.as_ref().expect("parse succeeded")
     }
     pub fn root(&self) -> &Node { self.parsed().root() }
+    pub fn original_span(&self, node: &Node) -> ffi::Span { self.parsed().original_span(node) }
     pub fn expanded_sql(&self) -> &str {
         match &self.0 {
             Ok(parsed) => parsed.expanded_sql(),

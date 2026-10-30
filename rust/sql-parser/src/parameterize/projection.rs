@@ -73,7 +73,7 @@ pub fn projection_names<'a>(
 
 pub(super) fn parameter_template<'a>(
     projection: Projection<'a>,
-    syntax_sql: &[u8],
+    original_sql: &[u8],
     occurrences: impl IntoIterator<Item = (&'a Node, &'a Node)>,
     tokens: &[ParameterToken<'_>],
     effects: &ParameterEffects,
@@ -89,7 +89,7 @@ pub(super) fn parameter_template<'a>(
         return Ok(None);
     }
     let string_literal = string_name(projection).is_some();
-    let original = syntax_sql
+    let original = original_sql
         .get(expression.start..expression.end)
         .ok_or(ParameterError::Unsupported)?;
     let mut result = ParameterProjection {

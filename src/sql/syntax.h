@@ -90,6 +90,11 @@ public:
     return original_source_;
   }
   common::ObString original_source() const { return original_source_; }
+  common::ObString original_source(const peg::Node &node) const
+  {
+    const auto span = (*syntax_)->original_span(node);
+    return common::ObString(span.end - span.start, original_source_.ptr() + span.start);
+  }
   common::ObString source(const peg::Node &node) const
   {
     const auto span = node.span();
