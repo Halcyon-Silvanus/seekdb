@@ -1232,6 +1232,12 @@ pub(crate) mod ffi {
         Distinct,
     }
 
+    struct DiagnosticsParameter {
+        valid: bool,
+        bind_index: usize,
+        local_index: i64,
+    }
+
     enum VariableScope {
         Default,
         Global,
@@ -2226,6 +2232,7 @@ pub(crate) mod ffi {
         fn diagnostics_items(statement: &Node) -> &[Node];
         fn diagnostics_target(item: &Node) -> &Node;
         fn diagnostics_item_name(item: &Node) -> &str;
+        fn diagnostics_parameter(parameter: &Node) -> DiagnosticsParameter;
 
         fn explain_format(explain: &Node) -> ExplainFormat;
         fn explain_display(explain: &Node) -> ExplainDisplay;
@@ -2657,7 +2664,7 @@ use crate::expression::{
 use crate::command::{
     prepared_source, execution_arguments, transaction_options,
     diagnostics_condition, diagnostics_has_condition, diagnostics_item_name, diagnostics_items,
-    diagnostics_stacked, diagnostics_target, kill_query_only, kill_target, setting_assignments,
+    diagnostics_parameter, diagnostics_stacked, diagnostics_target, kill_query_only, kill_target, setting_assignments,
     setting_charset, setting_collation, setting_has_collation, setting_scope,
 };
 

@@ -14,7 +14,7 @@
 
 use crate::{
     bridge::ffi::{
-        CacheFilter, CacheKind, ShowFilter, TransactionAccess, TransactionIsolation,
+        CacheFilter, CacheKind, DiagnosticsParameter, ShowFilter, TransactionAccess, TransactionIsolation,
         TransactionSetting, TransactionOptions, VariableScope,
     },
     node::{Kind, Node},
@@ -320,4 +320,16 @@ pub(crate) fn diagnostics_target(item: &Node) -> &Node {
 
 pub(crate) fn diagnostics_item_name(item: &Node) -> &str {
     &item.children[1].text
+}
+
+pub(crate) fn diagnostics_parameter(parameter: &Node) -> DiagnosticsParameter {
+    let local_index = parameter.text.strip_prefix(':').and_then(|name| name.parse::<i64>().ok());
+    match local_index {
+        Some(local_index) if local_index >= 0 => DiagnosticsParameter {
+            valid: true,
+            bind_index: crate::expression::placeholder_index(parameter),
+            local_index,
+        },
+        _ => DiagnosticsParameter { valid: false, bind_index: 0, local_index: 0 },
+    }
 }

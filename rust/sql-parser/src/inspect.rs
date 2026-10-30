@@ -86,18 +86,16 @@ pub(crate) fn embedded_sql_references(statement: &Node) -> Vec<bridge::ffi::SqlR
             return;
         }
         if node.kind == Kind::Diagnostics {
-            if crate::command::diagnostics_has_condition(node) {
-                visit(crate::command::diagnostics_condition(node), references);
-            }
-            for item in crate::command::diagnostics_items(node) {
-                let target = crate::command::diagnostics_target(item);
-                if target.kind == Kind::Ident {
+            let arguments = std::iter::once(crate::command::diagnostics_condition(node))
+                .chain(crate::command::diagnostics_items(node).iter().map(crate::command::diagnostics_target));
+            for argument in arguments {
+                if argument.kind == Kind::Ident {
                     references.push(SqlReference {
                         kind: Role::Column,
-                        node: target,
+                        node: argument,
                     });
                 } else {
-                    visit(target, references);
+                    visit(argument, references);
                 }
             }
             return;

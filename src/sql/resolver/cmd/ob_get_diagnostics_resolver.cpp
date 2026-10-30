@@ -65,7 +65,9 @@ int ObGetDiagnosticsResolver::resolve(const peg::Node &statement)
       } else {
         OZ (ObResolverUtils::resolve_const_expr(params_, number, expression, nullptr));
         if (number.kind() == peg::NodeKind::Parameter) {
-          OZ (diagnostics->add_origin_param_index(peg::placeholder_index(number)));
+          const auto parameter = peg::diagnostics_parameter(number);
+          CK (parameter.valid);
+          OZ (diagnostics->set_origin_param_index(parameter.bind_index, parameter.local_index));
         }
       }
       OZ (diagnostics->add_param(expression));
@@ -81,7 +83,9 @@ int ObGetDiagnosticsResolver::resolve(const peg::Node &statement)
         LOG_USER_ERROR(OB_ERR_SP_UNDECLARED_VAR, static_cast<int>(target_text.size()), target_text.data());
       } else if (target.kind() == peg::NodeKind::Parameter) {
         OZ (ObResolverUtils::resolve_const_expr(params_, target, expression, nullptr));
-        OZ (diagnostics->add_origin_param_index(peg::placeholder_index(target)));
+        const auto parameter = peg::diagnostics_parameter(target);
+        CK (parameter.valid);
+        OZ (diagnostics->set_origin_param_index(parameter.bind_index, parameter.local_index));
       } else {
         const auto name = peg::variable_name(target);
         OZ (ObRawExprUtils::build_get_user_var(*params_.expr_factory_,
