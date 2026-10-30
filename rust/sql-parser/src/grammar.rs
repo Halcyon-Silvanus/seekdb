@@ -1769,7 +1769,7 @@ peg::parser! {
                 let mut children=vec![Node::name(name)];children.extend(value.into_children());
                 Node::new(kind,children).value(flags)
             }
-        rule partition_names() -> Node = names:(ident() ++ ("," _)) { Node::new(Kind::Names,names.into_iter().map(Node::name).collect()) }
+        rule partition_names() -> Node = names:(ident() ++ ("," _)) !"," { Node::new(Kind::Names,names.into_iter().map(Node::name).collect()) }
         rule alter_partition() -> Node
             = value:partition_option() { Node::new(Kind::Repartition,value.into_children()) }
             / kw("exchange") kw("partition") name:ident() kw("with") kw("table") table:relation_name() kw("without") kw("validation") {?
@@ -1790,8 +1790,7 @@ peg::parser! {
                 Node::new(kind,vec![names,Node::missing()])
             }
         rule alter_action() -> Node
-            = alter_partition()
-            / kw("add") value:check_constraint() { value }
+            = kw("add") value:check_constraint() { value }
             / kw("drop") kw("check") name:ident() { Node::new(Kind::CheckConstraintDrop,vec![Node::name(name)]) }
             / keyword("alter") hint_slot() check_only:(kw("check") { true } / kw("constraint") { false })
                 name:ident() state:check_state() {
@@ -1923,7 +1922,7 @@ peg::parser! {
                 Ok(Node::new(Kind::OptimizeTable,vec![Node::new(Kind::TableList,names.into_iter().map(Node::relation).collect::<Result<Vec<_>,_>>()?)]))
             }
             / kw("rename") kw("table") values:(rename_table() ++ ("," _)) { Node::new(Kind::RenameTables,values) }
-            / keyword("alter") hints:hint_slot() kw("table") name:relation_name() actions:(first:alter_action()? rest:("," _ value:alter_action() { value })* {
+            / keyword("alter") hints:hint_slot() kw("table") name:relation_name() actions:(first:(alter_partition() / alter_action())? rest:("," _ value:alter_action() { value })* {
                 let mut actions=vec![];actions.extend(first);actions.extend(rest);actions
             }) {?
                 Ok(Node::new(Kind::AlterTable,vec![Node::relation(name)?,Node::list(Kind::AlterTableActions,actions.into_iter().filter(|value| value.kind!=Kind::Missing).collect()),Node::missing(),Node::list(Kind::Hints,hints.unwrap_or_default())]))
