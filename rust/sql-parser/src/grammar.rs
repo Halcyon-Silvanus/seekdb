@@ -1425,7 +1425,7 @@ peg::parser! {
                 / values:(type_size() ++ ("," _)) { values }) ")" _ { values })?
             charset:(enabled(name=="char") charset_keyword() !kw("default") value:charset_name() {
                 let literal=value.kind==Kind::String;value.with_kind(Kind::Charset).value(u64::from(literal))
-            })? end:position!() {?
+            })? (enabled(name=="char" && charset.is_none()) kw("binary"))? end:position!() {?
                 let mut parameters=parameters.unwrap_or_default();
                 let max=match name { "signed"|"unsigned"|"double"|"json" => 0,"decimal" => 2,_ => 1 };
                 if parameters.len()>max || parameters.iter().any(|value| !matches!(value.kind,Kind::Int|Kind::Uint)) { Err("invalid cast type parameters") }
