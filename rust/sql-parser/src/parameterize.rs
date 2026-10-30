@@ -727,6 +727,7 @@ fn apply<'a>(
         .literals
         .sort_by_key(|occurrence| occurrence.literal.start);
     let mut occurrence_index = 0;
+    let mut placeholder_count = 0;
     for (raw_index, token) in tokens.iter().enumerate() {
         if token.start > token.end || token.end > original_sql.len() {
             return Err(ParameterError::Unsupported);
@@ -768,6 +769,11 @@ fn apply<'a>(
         } else {
             -1
         };
+        if placeholder {
+            // Independent question marks cannot preserve a repeated bind's shared slot.
+            collector.ps_eligible &= placeholder_offset == placeholder_count;
+            placeholder_count += 1;
+        }
         let subtraction = occurrence.scope.subtraction.filter(|(_, operand)| {
             std::ptr::eq(*operand, occurrence.literal) && token.start < operand.start
         });

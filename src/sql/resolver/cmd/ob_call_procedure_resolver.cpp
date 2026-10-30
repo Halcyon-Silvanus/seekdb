@@ -97,7 +97,8 @@ int ObCallProcedureResolver::resolve_cparams(rust::Slice<const peg::Node> argume
         ret = OB_INVALID_ARGUMENT;
       } else if (params.at(i)->is_const_raw_expr()) {
         const ObConstRawExpr *const_expr = static_cast<const ObConstRawExpr *>(params.at(i));
-        if (T_QUESTIONMARK != const_expr->get_expr_type()) {
+        if (T_QUESTIONMARK != const_expr->get_expr_type()
+            || const_expr->get_value().get_unknown() != i) {
           v = false;
         }
       } else {
