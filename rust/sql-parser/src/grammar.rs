@@ -1522,7 +1522,7 @@ peg::parser! {
             }
         rule scalar_type() -> Node
             = start:position!() kind:(kw("enum") { Kind::EnumType } / kw("set") { Kind::SetType })
-                "(" _ values:(string() ++ ("," _)) ")" _ binary:(kw("binary") { Node::new(Kind::BinaryAttribute,vec![]).value(1) })?
+                "(" _ values:((binary_literal() / string()) ++ ("," _)) ")" _ binary:(kw("binary") { Node::new(Kind::BinaryAttribute,vec![]).value(1) })?
                 charset:(charset_keyword() !kw("default") value:charset_name() { value.with_kind(Kind::Charset) })? end:position!() {
                     Node::new(kind,vec![Node::optional(charset),Node::missing(),Node::optional(binary),Node::new(Kind::StringList,values)]).at(start,end)
                 }

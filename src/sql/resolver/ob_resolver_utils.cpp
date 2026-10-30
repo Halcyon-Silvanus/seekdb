@@ -526,7 +526,13 @@ int ObResolverUtils::resolve_extended_type_info(const peg::Node &type_node,
   for (const auto &member : peg::type_members(type_node)) {
     const auto literal = peg::expression_literal(member);
     ObString value;
-    OZ(ob_write_string(allocator, ObString(literal.text.size(), literal.text.data()), value));
+    if (literal.binary_notation != peg::BinaryNotation::None) {
+      const auto bytes = peg::decode_binary_literal(literal.text, literal.binary_notation);
+      OZ(ob_write_string(allocator,
+          ObString(bytes.size(), reinterpret_cast<const char *>(bytes.data())), value));
+    } else {
+      OZ(ob_write_string(allocator, ObString(literal.text.size(), literal.text.data()), value));
+    }
     OZ(type_info_array.push_back(value));
   }
   return ret;
