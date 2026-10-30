@@ -19,6 +19,7 @@
 #include "common/udt/ob_collection_type.h"
 #include "ob_dml_resolver.h"
 #include "sql/resolver/dml/ob_view_table_resolver.h"
+#include "sql/hybrid_search/ob_hybrid_search_executor.h"
 #include "sql/optimizer/ob_optimizer_util.h"
 #include "sql/resolver/dml/ob_default_value_utils.h"
 #include "share/schema/ob_part_mgr_util.h"
@@ -1900,6 +1901,10 @@ int ObDMLResolver::resolve_table(const peg::Node &parse_tree,
         OZ(resolve_unnest_table(*table_node, table_item));
         break;
       }
+      case peg::NodeKind::HybridSearchTable: {
+        OZ(resolve_hybrid_search_item(parse_tree, table_item));
+        break;
+      }
       case peg::NodeKind::JsonTable: {
         OZ (resolve_json_table_item(*table_node, table_item));
         break;
@@ -2418,6 +2423,13 @@ int ObDMLResolver::check_special_join_table(const TableItem &join_table, bool is
 int ObDMLResolver::resolve_generate_table(const peg::Node &table_node,
                                           TableItem *&table_item)
 {
+  return resolve_generated_query(peg::table_source(table_node), table_node, table_item);
+}
+
+int ObDMLResolver::resolve_generated_query(const peg::Node &query,
+                                           const peg::Node &table_node,
+                                           TableItem *&table_item)
+{
   int ret = OB_SUCCESS;
   bool is_with_cte = false;
   ObDMLStmt *stmt = get_stmt();
@@ -2427,7 +2439,7 @@ int ObDMLResolver::resolve_generate_table(const peg::Node &table_node,
   select_resolver.set_current_view_level(current_view_level_);
   select_resolver.set_parent_namespace_resolver(parent_namespace_resolver_);
   if (upper_insert_resolver_ != nullptr &&
-      upper_insert_resolver_->is_row_alias_source(peg::table_source(table_node))) {
+      upper_insert_resolver_->is_row_alias_source(query)) {
     select_resolver.set_upper_insert_resolver(upper_insert_resolver_);
   }
   if (OB_ISNULL(stmt)) {
@@ -2443,7 +2455,7 @@ int ObDMLResolver::resolve_generate_table(const peg::Node &table_node,
 
   if (OB_FAIL(ret)) {
   } else if (OB_FAIL(select_resolver.add_parent_gen_col_exprs(gen_col_exprs_))) {
-  } else if (OB_FAIL(do_resolve_generate_table(table_node, select_resolver, table_item))) {
+  } else if (OB_FAIL(do_resolve_generate_table(query, table_node, select_resolver, table_item))) {
   }
   return ret;
 }
@@ -2473,7 +2485,7 @@ int ObDMLResolver::resolve_lateral_generated_table(const peg::Node &table_node,
   } else if (OB_FALSE_IT(set_query_ref_exec_params(&exec_params))) {
   } else if (OB_FALSE_IT(params_.is_resolve_lateral_derived_table_ = true)) {
   } else if (OB_FAIL(select_resolver.add_parent_gen_col_exprs(gen_col_exprs_))) {
-  } else if (OB_FAIL(do_resolve_generate_table(table_node, select_resolver, table_item))) {
+  } else if (OB_FAIL(do_resolve_generate_table(peg::table_source(table_node), table_node, select_resolver, table_item))) {
   } else if (OB_ISNULL(table_item)) {
     ret = OB_ERR_UNEXPECTED;
   } else if (OB_FALSE_IT(params_.is_resolve_lateral_derived_table_ = false)) {
@@ -2498,7 +2510,7 @@ int ObDMLResolver::check_contain_lateral_node(const peg::Node *table, bool &is_c
   return ret;
 }
 
-int ObDMLResolver::do_resolve_generate_table(const peg::Node &table_node,
+int ObDMLResolver::do_resolve_generate_table(const peg::Node &query, const peg::Node &table_node,
                                              ObChildStmtResolver &child_resolver,
                                              TableItem *&table_item)
 {
@@ -2513,7 +2525,7 @@ int ObDMLResolver::do_resolve_generate_table(const peg::Node &table_node,
    * can be skipped here while still adding the relevant plan cache constraints.
    */
   bool can_skip = false;
-  if (OB_FAIL(child_resolver.resolve_child_stmt(peg::table_source(table_node)))) {
+  if (OB_FAIL(child_resolver.resolve_child_stmt(query))) {
   } else if (OB_ISNULL(ref_stmt = child_resolver.get_child_stmt()) || OB_ISNULL(get_stmt())) {
     ret = OB_ERR_UNEXPECTED;
   } else if (peg::table_has_alias(table_node)) {
@@ -2586,6 +2598,80 @@ int ObDMLResolver::resolve_generate_table_item(ObSelectStmt *ref_query,
     } else {
       tbl_item = item;
     }
+  }
+  return ret;
+}
+
+int ObDMLResolver::resolve_hybrid_search_item(const peg::Node &table_node, TableItem *&table_item)
+{
+  int ret = OB_SUCCESS;
+  const auto &source = peg::table_source(table_node);
+  const ParamStore empty_parameters;
+  const ParamStore &parameters = params_.param_list_ == nullptr ? empty_parameters : *params_.param_list_;
+  const auto argument_text = [&](const peg::Node &node, ObString &text) {
+    int ret = OB_SUCCESS;
+    ObRawExpr *expression = nullptr;
+    ObObj value;
+    if (node.kind() == peg::NodeKind::UserVariable) {
+      const auto name = peg::variable_name(node);
+      ObString variable_name;
+      ObSessionVariable variable;
+      OZ(ob_write_string(*allocator_, ObString(name.size(), name.data()), variable_name));
+      if (OB_SUCC(ret)) {
+        ObCharset::casedn(CS_TYPE_UTF8MB4_GENERAL_CI, variable_name);
+        OZ(session_info_->get_user_variable(variable_name, variable));
+        OX(value = variable.value_);
+      }
+    } else if (node.kind() == peg::NodeKind::Int || node.kind() == peg::NodeKind::Uint
+               || node.kind() == peg::NodeKind::Number || node.kind() == peg::NodeKind::Double) {
+      const auto literal = peg::expression_literal(node);
+      text.assign_ptr(literal.text.data(), literal.text.size());
+      return ret;
+    } else {
+      OZ(ObResolverUtils::resolve_const_expr(params_, node, expression, nullptr));
+      OZ(ObSQLUtils::calc_const_expr(session_info_, *expression, value, *allocator_, parameters,
+                                   session_info_->get_cur_exec_ctx()));
+    }
+    if (OB_SUCC(ret) && !value.is_null() && !value.is_string_type()) {
+      ret = OB_INVALID_ARGUMENT;
+    }
+    OZ(value.get_string(text));
+    return ret;
+  };
+  ObString table_name;
+  ObString search_parameters;
+  OZ(argument_text(peg::hybrid_search_table(source), table_name));
+  OZ(argument_text(peg::hybrid_search_parameters(source), search_parameters));
+  share::ObHybridSearchExecutor executor;
+  share::ObHybridSearchArg argument;
+  argument.table_name_ = table_name;
+  argument.search_params_ = search_parameters;
+  argument.search_type_ = share::ObHybridSearchArg::SearchType::GET_SQL;
+  ObString query;
+  OZ(executor.init(session_info_->get_cur_exec_ctx(), argument));
+  OZ(executor.execute_get_sql(query));
+  ParsedSql parsed;
+  ObParser parser(*allocator_, session_info_->get_sql_mode());
+  OZ(parser.parse(query, parsed));
+  if (OB_SUCC(ret)) {
+    auto &global_hint = const_cast<ObGlobalHint &>(get_stmt()->get_query_ctx()->get_query_hint_for_update().get_global_hint());
+    bool enabled = false;
+    global_hint.opt_params_.has_enable_opt_param(ObOptParamHint::OptParamType::HIDDEN_COLUMN_VISIBLE, enabled);
+    if (!enabled) {
+      ObObj value;
+      value.set_varchar("true");
+      OZ(global_hint.opt_params_.add_opt_param_hint(ObOptParamHint::OptParamType::HIDDEN_COLUMN_VISIBLE, value));
+    }
+  }
+  if (OB_SUCC(ret)) {
+    const ParsedSql *previous = params_.syntax_;
+    params_.syntax_ = &parsed;
+    const int result = resolve_generated_query(*parsed.statement(), table_node, table_item);
+    params_.syntax_ = previous;
+    ret = result;
+  }
+  if (OB_SUCC(ret)) {
+    params_.query_ctx_->has_hybrid_search_ = true;
   }
   return ret;
 }

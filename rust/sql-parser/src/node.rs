@@ -666,7 +666,7 @@ impl Node {
         {
             name.text.clone_from(&function);
         }
-        if matches!(function.as_str(), "any" | "some" | "value" | "unknown") {
+        if matches!(function.as_str(), "any" | "some" | "value" | "unknown" | "hybrid_search") {
             return Err("function name");
         }
         if function == "cast" && (arguments.len() != 2 || arguments[1].kind != Kind::CastType) {

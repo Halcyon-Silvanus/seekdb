@@ -840,3 +840,11 @@ pub(crate) fn hint_sort_method(hint: &Node) -> &Node {
 pub(crate) fn vector_parameters(option: &Node) -> &[Node] {
     &option.children
 }
+
+pub(crate) fn hybrid_search_table(table: &Node) -> &Node {
+    &table.children[0]
+}
+
+pub(crate) fn hybrid_search_parameters(table: &Node) -> &Node {
+    &table.children[1]
+}

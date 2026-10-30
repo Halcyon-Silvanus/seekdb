@@ -843,7 +843,14 @@ peg::parser! {
                 }
                 Node::new(Kind::UnnestTable,children).expression(start,end)
             }
-        rule relation(level: usize) -> Node = json_table(level) / table_collection(level) / unnest_table(level) / lateral:(kw("lateral") &"(")? source:("(" _ query:select(level+1) ")" _ { query }
+        rule hybrid_search_literal() -> Node = value:signed_literal() {?
+            if value.kind==Kind::Unary { Err("literal") } else { Ok(value) }
+        }
+        rule hybrid_search_table() -> Node = kw("hybrid_search") "(" _ table:hybrid_search_literal() "," _
+            parameters:(hybrid_search_literal() / user_variable()) ")" _ alias:table_alias()? {?
+                Node::table(Node::new(Kind::HybridSearchTable,vec![table,parameters]),alias)
+            }
+        rule relation(level: usize) -> Node = json_table(level) / table_collection(level) / unnest_table(level) / hybrid_search_table() / lateral:(kw("lateral") &"(")? source:("(" _ query:select(level+1) ")" _ { query }
             / name:relation_name() {? Node::relation(name) }) partition:use_partition()? sample:sample()? snapshot:snapshot(level)?
             alias:table_alias()?
             columns:("(" _ names:(ident() ++ ("," _)) ")" _ { names })? indexes:table_index_hint()* {?

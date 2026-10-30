@@ -898,6 +898,7 @@ pub(crate) mod ffi {
         InterfacePragma,
         ObjectAccess,
         JsonTable,
+        HybridSearchTable,
         JsonColumn,
         HiddenNull,
         NullClause,
@@ -2462,6 +2463,8 @@ pub(crate) mod ffi {
         fn values_rows(values: &Node) -> &[Node];
         fn collection_table_expression(table: &Node) -> &Node;
         fn unnest_arguments(table: &Node) -> &[Node];
+        fn hybrid_search_table(table: &Node) -> &Node;
+        fn hybrid_search_parameters(table: &Node) -> &Node;
         fn is_literal(expression: &Node) -> bool;
         unsafe fn expression_literal<'a>(expression: &'a Node) -> ExpressionLiteral<'a>;
         fn integer_literal_value(literal: &Node) -> u64;
@@ -2676,7 +2679,8 @@ use crate::query::{
     hint_window_distributions, window_distribution_indexes,
     window_distribution_method, window_distribution_options,
     hint_filter_table, hint_filter_left_tables, hint_filter_has_pushdown_table, hint_filter_pushdown_table,
-    assignment_target, assignment_value, collection_table_expression, unnest_arguments, cte_columns, cte_name,
+    assignment_target, assignment_value, collection_table_expression, unnest_arguments,
+    hybrid_search_table, hybrid_search_parameters, cte_columns, cte_name,
     cte_query, delete_targets, explain_display, explain_format, explain_has_into_table,
     explain_has_statement_id, explain_into_table, explain_statement, explain_statement_id,
     grouping_keys, grouping_with_rollup, hint_condition, hint_distribution_methods,

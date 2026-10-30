@@ -347,6 +347,10 @@ impl<'a> Collector<'a> {
                 }
             }
             Kind::TableCollection => self.collect(collection_table_expression(node), scope)?,
+            Kind::HybridSearchTable => {
+                self.collect(hybrid_search_table(node), scope.excluded())?;
+                self.collect(hybrid_search_parameters(node), scope.excluded())?;
+            }
             Kind::UnnestTable => {
                 for argument in unnest_arguments(node) {
                     self.collect(argument, scope)?;
@@ -646,7 +650,7 @@ impl<'a> Collector<'a> {
                 self.collect(fulltext_search(node), scope)?;
                 self.collect(fulltext_options(node), scope)?;
             }
-            Kind::Table | Kind::JoinedTable | Kind::JsonTable | Kind::TableCollection | Kind::UnnestTable => {
+            Kind::Table | Kind::JoinedTable | Kind::JsonTable | Kind::TableCollection | Kind::UnnestTable | Kind::HybridSearchTable => {
                 self.table(node, scope)?
             }
             Kind::Values => self.list(values_rows(node), scope)?,

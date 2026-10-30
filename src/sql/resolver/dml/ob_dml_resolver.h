@@ -193,7 +193,10 @@ public:
                                     ObRawExpr *&ref_expr,
                                     const bool used_for_generated_column = true,
                                     ObDMLStmt *stmt = NULL);
-  int do_resolve_generate_table(const peg::Node &table_node,
+  virtual int resolve_generated_query(const peg::Node &query, const peg::Node &table_node,
+                              TableItem *&table_item);
+  int resolve_hybrid_search_item(const peg::Node &table_node, TableItem *&table_item);
+  int do_resolve_generate_table(const peg::Node &query, const peg::Node &table_node,
                                 ObChildStmtResolver &child_resolver,
                                 TableItem *&table_item);
   int extract_var_init_exprs(ObSelectStmt *ref_query, common::ObIArray<ObRawExpr*> &assign_exprs);
