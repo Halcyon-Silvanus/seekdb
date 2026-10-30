@@ -1003,7 +1003,11 @@ peg::parser! {
                 / kw("trace_log") { Kind::TraceLog }
                 / kw("cursor_sharing_exact") { Kind::CursorSharingExact }
                 / kw("no_parallel") { Kind::NoParallel }) { Node::new(kind,vec![]) }
-            / kw("tracing") "(" _ ids:((("+" _)? value:hint_integer() { value }) ++ (("," _)?)) ")" _ { Node::new(Kind::Tracing,ids) }
+            / kind:(kw("tracing") { Kind::Tracing } / kw("stat") { Kind::Stat } / kw("blocking") { Kind::Blocking })
+                "(" _ targets:(enabled(kind==Kind::Blocking) value:hint_string() { vec![value] }
+                    / ids:((("+" _)? value:hint_integer() { value }) ++ (("," _)?)) { ids }) ")" _ {
+                    Node::new(kind,targets)
+                }
             / kw("dop") "(" _ ("+" _)? fragment:hint_integer() "," _ ("+" _)? degree:hint_integer() ")" _ {
                 Node::new(Kind::Dop,vec![fragment,degree])
             }

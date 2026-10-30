@@ -738,7 +738,7 @@ pub(crate) fn hint_dop_fragment(hint: &Node) -> u64 {
 pub(crate) fn hint_dop_degree(hint: &Node) -> u64 {
     hint.children[1].value
 }
-pub(crate) fn hint_operator_ids(hint: &Node) -> &[Node] {
+pub(crate) fn hint_allocation_targets(hint: &Node) -> &[Node] {
     &hint.children
 }
 pub(crate) fn hint_timeout(hint: &Node) -> &Node {

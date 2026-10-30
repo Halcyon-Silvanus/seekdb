@@ -7089,14 +7089,28 @@ int ObDMLResolver::resolve_global_hint(const peg::Node &hint_node,
     case Kind::QueryTimeout:
       global_hint.merge_query_timeout_hint(peg::integer_literal_value(peg::hint_timeout(hint_node)));
       break;
-    case Kind::Tracing: {
+    case Kind::Tracing:
+    case Kind::Stat:
+    case Kind::Blocking: {
       ObSEArray<ObAllocOpHint, 8> operators;
-      for (const auto &id : peg::hint_operator_ids(hint_node)) {
+      for (const auto &target : peg::hint_allocation_targets(hint_node)) {
         if (OB_SUCC(ret)) {
           ObAllocOpHint hint;
-          hint.id_ = peg::integer_literal_value(id);
-          hint.flags_ = ObAllocOpHint::OB_MONITOR_TRACING;
-          hint.alloc_level_ = ObAllocOpHint::OB_ENUMERATE;
+          hint.flags_ = hint_node.kind() == Kind::Blocking ? ObAllocOpHint::OB_MATERIAL
+                      : hint_node.kind() == Kind::Stat ? ObAllocOpHint::OB_MONITOR_STAT
+                                                      : ObAllocOpHint::OB_MONITOR_TRACING;
+          if (target.kind() == Kind::Int) {
+            hint.id_ = peg::integer_literal_value(target);
+            hint.alloc_level_ = ObAllocOpHint::OB_ENUMERATE;
+          } else {
+            const auto text = target.text();
+            const ObString level(text.size(), text.data());
+            if (0 == level.case_compare("all")) {
+              hint.alloc_level_ = ObAllocOpHint::OB_ALL;
+            } else if (0 == level.case_compare("dfo")) {
+              hint.alloc_level_ = ObAllocOpHint::OB_DFO;
+            }
+          }
           OZ(operators.push_back(hint));
         }
       }

@@ -149,6 +149,8 @@ pub(crate) mod ffi {
         QueryTimeout,
         TraceLog,
         Tracing,
+        Stat,
+        Blocking,
         CursorSharingExact,
         TopK,
         DynamicSampling,
@@ -2514,7 +2516,7 @@ pub(crate) mod ffi {
         fn hint_dop_fragment(hint: &Node) -> u64;
         fn hint_dop_degree(hint: &Node) -> u64;
         fn hint_timeout(hint: &Node) -> &Node;
-        fn hint_operator_ids(hint: &Node) -> &[Node];
+        fn hint_allocation_targets(hint: &Node) -> &[Node];
         fn hint_log_level(hint: &Node) -> &str;
         fn hint_load_batch_size(hint: &Node) -> u64;
         fn hint_load_buffer_size(hint: &Node) -> &str;
@@ -2609,7 +2611,7 @@ use crate::query::{
     hint_query_block_groups, hint_query_block_names, hint_subquery_names, hint_read_consistency, hint_sampling_blocks,
     hint_sampling_level, hint_sort_method, hint_table_has_query_block, hint_table_query_block,
     hint_table_relation, hint_tables, hint_target, hint_timeout,
-    hint_dop_fragment, hint_dop_degree, hint_operator_ids, hint_log_level, hint_load_batch_size, hint_load_buffer_size, hint_has_load_buffer_size, hint_topk_minimum,
+    hint_dop_fragment, hint_dop_degree, hint_allocation_targets, hint_log_level, hint_load_batch_size, hint_load_buffer_size, hint_has_load_buffer_size, hint_topk_minimum,
     hint_topk_precision, identifier_is_quoted, index_hint_kind, index_hint_names,
     insert_assignments, insert_columns, insert_on_duplicate, insert_query, insert_replace,
     insert_rows, insert_source, insert_target, join_columns, join_condition, join_kind, join_left,
