@@ -776,6 +776,16 @@ fn apply<'a>(
             && occurrence.expression.kind == Kind::Unary
             && occurrence.literal.kind == Kind::Uint
             && token.start >= occurrence.literal.start;
+        let mut lowered = None;
+        if let Some((parent, _)) = subtraction.filter(|_| !preserve_subtraction) {
+            lowered = Some(numeric_value(occurrence.literal, !options.from_pl));
+            result.effects.lower(
+                occurrence.literal,
+                ParameterLoweringKind::NegateLiteral,
+                numeric_value(occurrence.literal, !options.from_pl),
+            );
+            result.effects.lower(parent, ParameterLoweringKind::AddNegatedOperand, empty_value());
+        }
         let preserve = occurrence.scope.excluded || preserve_subtraction || unsigned_negation;
         let mut policy = ParameterTokenPolicy {
             action: ParameterAction::Normal,
@@ -791,7 +801,6 @@ fn apply<'a>(
             result.tokens.push(policy);
             continue;
         }
-        let mut lowered = None;
         if occurrence.origin == ParameterOrigin::UnaryNegation
             && occurrence.expression.kind == Kind::Unary
         {
@@ -807,15 +816,6 @@ fn apply<'a>(
                 occurrence.origin = ParameterOrigin::Literal;
                 occurrence.scope.arithmetic = false;
             }
-        }
-        if let Some((parent, _)) = subtraction {
-            lowered = Some(numeric_value(occurrence.literal, !options.from_pl));
-            result.effects.lower(
-                occurrence.literal,
-                ParameterLoweringKind::NegateLiteral,
-                numeric_value(occurrence.literal, !options.from_pl),
-            );
-            result.effects.lower(parent, ParameterLoweringKind::AddNegatedOperand, empty_value());
         }
         let origin = if subtraction.is_some() {
             ParameterOrigin::Subtraction
