@@ -461,6 +461,7 @@ int ObResolver::resolve(const peg::Node &statement, ObStmt *&stmt)
         ret = stmt_resolver_func<ObShowResolver>(params_, statement, stmt);
         break;
       case peg::NodeKind::EmptyQuery:
+      case peg::NodeKind::FlushPrivileges:
         params_.resolver_scope_stmt_type_ = T_EMPTY_QUERY;
         ret = stmt_resolver_func<ObEmptyQueryResolver>(params_, statement, stmt);
         break;

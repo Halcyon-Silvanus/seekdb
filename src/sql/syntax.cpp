@@ -195,6 +195,7 @@ std::optional<NativeStatementTraits> native_statement_traits(Kind kind)
     case Kind::ShowGrants: return NativeStatementTraits{stmt::T_SHOW_GRANTS, true, false};
     case Kind::ShowCreateTrigger: return NativeStatementTraits{stmt::T_SHOW_CREATE_TRIGGER, true, false};
     case Kind::EmptyQuery: return NativeStatementTraits{stmt::T_EMPTY_QUERY, false, false};
+    case Kind::FlushPrivileges: return NativeStatementTraits{stmt::T_EMPTY_QUERY, false, false};
     case Kind::CreateProcedure: return NativeStatementTraits{stmt::T_CREATE_ROUTINE, false, true};
     case Kind::AlterProcedure: return NativeStatementTraits{stmt::T_ALTER_ROUTINE, false, true};
     case Kind::PlCall: return NativeStatementTraits{stmt::T_CALL_PROCEDURE, false, false};

@@ -2184,6 +2184,9 @@ peg::parser! {
         rule cache_type() -> Node = value:(kw("plan") { "plan" } / kw("pl") { "pl" } / kw("ps") { "ps" } / kw("lib") { "lib" }) {
             Node::new(Kind::CacheType,vec![]).text(value.into())
         }
+        rule flush_privileges() -> Node = kw("flush") (kw("local") / kw("no_write_to_binlog"))? kw("privileges") {
+            Node::new(Kind::FlushPrivileges,vec![])
+        }
         rule flush_cache() -> Node = kw("flush") value:(
             cache:cache_type() kw("cache")
             namespace:(kw("namespace") ("=" _)? value:string() { Node::new(Kind::CacheNamespace,vec![value]) })?
@@ -2776,7 +2779,7 @@ peg::parser! {
                     partitions:partitions.unwrap_or_default(),hints:hints.unwrap_or_default(),
                 }.into_node())
             }
-        rule sql_statement() -> Node = select(0) / insert() / update() / delete() / transaction() / ddl() / account_statement() / role_statement() / setting() / explain() / show() / alter_system() / prepared_statement() / diagnostics() / analyze() / lock_tables() / load_data() / kill() / purge() / restore_table() / restore_database()
+        rule sql_statement() -> Node = select(0) / insert() / update() / delete() / transaction() / ddl() / account_statement() / role_statement() / setting() / explain() / show() / flush_privileges() / alter_system() / prepared_statement() / diagnostics() / analyze() / lock_tables() / load_data() / kill() / purge() / restore_table() / restore_database()
         rule statement() -> Node = _ value:(package_statement() / routine_statement(0) / pl_call() / anonymous_statement() / sql_statement()) { value }
         #[no_eof]
         pub rule statement_end() -> usize = (statement() / _) (";" / ![_]) end:position!() { end }

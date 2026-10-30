@@ -26,7 +26,7 @@ namespace sql
 int ObEmptyQueryResolver::resolve(const peg::Node &statement)
 {
   int ret = OB_SUCCESS;
-  if (!peg::empty_query_has_comment(statement)) ret = OB_ERR_EMPTY_QUERY;
+  if (statement.kind() == peg::NodeKind::EmptyQuery && !peg::empty_query_has_comment(statement)) ret = OB_ERR_EMPTY_QUERY;
   else if (OB_ISNULL(create_stmt<ObEmptyQueryStmt>())) ret = OB_SQL_RESOLVER_NO_MEMORY;
   return ret;
 }

@@ -91,6 +91,7 @@ pub(crate) mod ffi {
     enum NodeKind {
         Missing,
         EmptyQuery,
+        FlushPrivileges,
         ExplainIntoTable,
         ExplainStatementId,
         Having,
