@@ -604,6 +604,15 @@ impl Node {
         } else {
             String::new()
         };
+        let valid_arity = match function.as_str() {
+            "ascii" | "date" | "day" | "year" | "time" | "month" | "quarter"
+                | "second" | "minute" | "microsecond" | "hour" => arguments.len() == 1,
+            "timestamp" | "week" => matches!(arguments.len(), 1 | 2),
+            _ => true,
+        };
+        if !valid_arity {
+            return Err("invalid function argument count");
+        }
         if matches!(function.as_str(), "any" | "some") {
             return Err("quantified comparison");
         }

@@ -310,7 +310,7 @@ peg::parser! {
             / first:name_keyword() "." _ last:name_keyword() { vec![first,last] }
             / name:name_keyword() enabled(keyword_function(&name.text)) { vec![name] }
             / start:position!() name:(kw("database") { "database" } / kw("schema") { "schema" }
-                / kw("replace") { "replace" } / kw("insert") { "insert" } / kw("values") { "values" }
+                / kw("replace") { "replace" } / kw("insert") { "insert" }
                 / kw("left") { "left" } / kw("right") { "right" } / kw("mod") { "mod" } / kw("if") { "if" } / kw("repeat") { "repeat" }) &"("
                 { vec![Name { text: name.into(), quoted: false, start, end: start + name.len() }] }
         rule implicit_alias_keyword() = kw("except") / kw("intersect") / kw("minus") / kw("window")
@@ -422,8 +422,9 @@ peg::parser! {
                     Node::new(Kind::Case, vec![Node::optional(operand),Node::new(Kind::WhenList,branches),
                         default.unwrap_or_else(|| Node::new(Kind::DefaultNull,vec![]))]).expression(start,end+3)
                 }
-            / depth(level) start:position!() kw("default") "(" _ value:column() ")" end:position!() _ {?
-                Node::named_call(Kind::DefaultValue,Node::new(Kind::Ident,vec![]).text("default".into()),vec![value]).expression(start,end)
+            / depth(level) start:position!() function:(kw("default") { (Kind::DefaultValue,"default") }
+                / kw("values") { (Kind::Function,"values") }) "(" _ value:column() ")" end:position!() _ {?
+                Node::named_call(function.0,Node::new(Kind::Ident,vec![]).text(function.1.into()),vec![value]).expression(start,end)
             }
             / system_variable()
             / depth(level) value:user_variable() assigned:(":=" _ value:expr(level+1) { value })? {?
