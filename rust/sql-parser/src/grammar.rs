@@ -2254,7 +2254,7 @@ peg::parser! {
                 Ok(Node::new(Kind::Privilege,children).text(name.into()))
             }
         rule privileges() -> Vec<Node> = kw("all") kw("privileges")? { vec![Node::new(Kind::Privilege,vec![]).text("all".into())] }
-            / values:(privilege() ++ ("," _)) { values }
+            / values:((privilege() / named_account_spec()) ++ ("," _)) { values }
         rule privilege_target() -> Node = object:privilege_object()?
             first:("*" _ { Node::new(Kind::Star,vec![]) } / name:ident() { Node::name(name) })
             second:("." _ value:("*" _ { Node::new(Kind::Star,vec![]) } / name:ident() { Node::name(name) }) { value })? {

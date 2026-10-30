@@ -181,7 +181,8 @@ int resolve_privilege_set(const peg::Node &node, ObResolverParams &params, State
   ObPrivSet privileges = 0;
   for (const auto &privilege : peg::access_privileges(node)) {
     if (OB_FAIL(ret)) { break; }
-    const ObPrivType type = privilege_type(peg::privilege_name(privilege));
+    const ObPrivType type = privilege.kind() == peg::NodeKind::Privilege
+        ? privilege_type(peg::privilege_name(privilege)) : static_cast<ObPrivType>(-1);
     if (type == static_cast<ObPrivType>(-1)) {
       ret = OB_ERR_PARSER_SYNTAX;
     } else if (level == OB_PRIV_USER_LEVEL) {
