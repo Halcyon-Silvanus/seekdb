@@ -2152,6 +2152,7 @@ int ObDelUpdResolver::resolve_insert_values(rust::Slice<const peg::Node> rows,
         const peg::Node &value_node = values[value_idxs.at(j)];
         if (OB_ISNULL(column_expr)) {
           ret = OB_ERR_UNEXPECTED;
+        } else if (value_node.kind() == peg::NodeKind::Missing) {
         } else {
           uint64_t column_id = column_expr->get_column_id();
           ObDefaultValueUtils utils(del_upd_stmt, &params_, this);

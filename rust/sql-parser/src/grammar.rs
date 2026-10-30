@@ -1332,7 +1332,10 @@ peg::parser! {
         rule expr_or_default() -> Node = kw("default") !"(" { Node::new(Kind::Default, vec![]) } / expr(0)
         rule assignment() -> Node = column:column() "=" _ value:expr_or_default() { Node::new(Kind::Assignment, vec![column, value]) }
         rule assignments() -> Vec<Node> = values:(assignment() ++ ("," _)) { values }
-        rule row() -> Node = "(" _ values:(expr_or_default() ** ("," _)) ")" _ {
+        rule row() -> Node = "(" _ first:expr_or_default()? rest:("," _ value:expr_or_default() { value })* ")" _ {
+            let mut values:Vec<Node>=first.into_iter().collect();
+            if values.is_empty() && !rest.is_empty() { values.push(Node::missing()); }
+            values.extend(rest);
             Node::new(Kind::ValueVector,values)
         }
         rule insert() -> Node = replace:(keyword("insert") { false } / keyword("replace") { true }) hints:hint_slot()

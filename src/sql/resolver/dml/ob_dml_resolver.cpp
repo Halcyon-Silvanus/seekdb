@@ -8892,7 +8892,9 @@ int ObDMLResolver::resolve_values_table_for_select(const peg::Node &table_node,
           for (int32_t j = 0; OB_SUCC(ret) && j < values.size(); j++) {
             ObRawExpr *expr = NULL;
             const peg::Node &value_node = values[j];
-            if (OB_FAIL(resolve_sql_expr(value_node, expr))) {
+            if (value_node.kind() == peg::NodeKind::Missing) {
+              ret = OB_ERR_VALUES_CLAUSE_NEED_HAVE_COLUMN;
+            } else if (OB_FAIL(resolve_sql_expr(value_node, expr))) {
             } else if (OB_ISNULL(expr)) {
               ret = OB_ERR_UNEXPECTED;
             } else if (row_alias) {

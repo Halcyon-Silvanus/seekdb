@@ -165,10 +165,10 @@ impl Node {
     pub fn as_text(&self) -> &str { &self.text }
     pub fn span(&self) -> ffi::Span { ffi::Span { start: self.start, end: self.end } }
 
-    fn contains_user_variable(&self) -> bool {
+    fn reads_user_variable(&self) -> bool {
         let mut pending = vec![self];
         while let Some(node) = pending.pop() {
-            if matches!(node.kind, Kind::GetUserVariable | Kind::UserAssignment) {
+            if node.kind == Kind::GetUserVariable {
                 return true;
             }
             pending.extend(&node.children);
@@ -186,7 +186,7 @@ impl Node {
     }
 
     pub(crate) fn pl_expression(self) -> Result<Self, &'static str> {
-        if !self.contains_user_variable() {
+        if !self.reads_user_variable() {
             return Ok(self);
         }
         let (start, end) = (self.start, self.end);
@@ -300,6 +300,17 @@ impl Node {
             match values.kind {
                 Kind::ValueList => Self::new(Kind::InsertRows, values.into_children()),
                 Kind::AssignList => Self::new(Kind::InsertAssignments, values.into_children()),
+                Kind::Select if values.children.iter().all(|child|
+                    matches!(child.kind, Kind::ProjectList | Kind::FromList))
+                    && crate::query::query_sources(&values).len() == 1
+                    && crate::query::table_source(&crate::query::query_sources(&values)[0]).kind == Kind::Values => {
+                    let mut from = values.into_children().into_iter()
+                        .find(|child| child.kind == Kind::FromList).unwrap();
+                    let mut table = from.children.pop().unwrap();
+                    let mut source = table.children.remove(0);
+                    let rows = source.children.pop().unwrap().into_children();
+                    Self::new(Kind::InsertRows, rows)
+                }
                 Kind::Select => Self::new(Kind::InsertQuery, vec![values]),
                 _ => unreachable!(),
             }
