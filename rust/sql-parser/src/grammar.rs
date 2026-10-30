@@ -1980,16 +1980,18 @@ peg::parser! {
             }) {?
                 Ok(Node::new(Kind::AlterTable,vec![Node::relation(name)?,Node::list(Kind::AlterTableActions,actions.into_iter().filter(|value| value.kind!=Kind::Missing).collect()),Node::missing(),Node::list(Kind::Hints,hints.unwrap_or_default())]))
             }
-            / kw("use") name:ident() { Node::new(Kind::UseDatabase, vec![Node::name(name)]) }
-        rule setting_value() -> Node
+            / enabled(!pl) kw("use") name:ident() { Node::new(Kind::UseDatabase, vec![Node::name(name)]) }
+        rule setting_keyword() -> Node
             = start:position!() value:(kw("on") { "ON" } / kw("binary") { "BINARY" }) { Node::new(Kind::String,vec![]).text(value.into()).at(start,start+value.len()) }
-            / expr_or_default()
+            / kw("default") !"(" { Node::new(Kind::Default,vec![]) }
+        rule setting_value() -> Node = setting_keyword() / expr(0)
         rule charset_name() -> Node = kw("default") { Node::new(Kind::Default,vec![]) }
             / start:position!() kw("binary") { Node::new(Kind::CharsetName,vec![]).text("binary".into()).at(start,start+6) }
             / string() / name:ident() { Node::name(name).with_kind(Kind::CharsetName) }
         rule collation_name() -> Node = string() / name:ident() { Node::name(name) }
         rule assignment_name(scoped: bool) -> Name
             = (enabled(scoped) / !kw("password")) name:ident() { name }
+        rule assignment_scope() -> u64 = kw("global") { 1 } / kw("session") { 2 }
         rule variable_assignment() -> Node
             = kw("names") charset:charset_name() collation:(kw("collate") value:collation_name() { value })? {
                 Node::new(Kind::SetNames,vec![charset,Node::optional(collation)])
@@ -1998,7 +2000,7 @@ peg::parser! {
             / variable:user_variable() (":=" / "=" / kw("to")) _ value:expr(0) {
                 Node::new(Kind::VariableValue,vec![variable,value]).value(2)
             }
-            / scope:scope()? variable:(system_variable() / name:assignment_name(scope.is_some()) { Node::name(name) })
+            / scope:assignment_scope()? variable:(system_variable() / name:assignment_name(scope.is_some()) { Node::name(name) })
                 (":=" / "=" / kw("to")) _ value:setting_value() {
                 let assignment_scope=scope.unwrap_or(if variable.kind==Kind::SystemVariable && variable.value!=0 { variable.value } else { 2 });
                 let value=Node::setting_value(&variable,value);
@@ -2091,7 +2093,7 @@ peg::parser! {
             / kw("medium") / kw("extended") / kw("changed")
         rule show() -> Node
             = kw("show") value:show_body() { value }
-            / kw("check") kw("table") tables:((name:relation_name() {? Node::relation(name) }) ++ ("," _)) check_table_option()* {
+            / enabled(!pl) kw("check") kw("table") tables:((name:relation_name() {? Node::relation(name) }) ++ ("," _)) check_table_option()* {
                 Node::new(Kind::CheckTable,tables)
             }
             / (kw("describe") / kw("desc") / kw("explain")) table:relation_name()
@@ -2262,7 +2264,7 @@ peg::parser! {
             = kw("lock") (kw("table") / kw("tables")) tables:(table_lock() ++ ("," _)) {
                 Node::new(Kind::LockTables,tables)
             }
-            / kw("unlock") (kw("table") / kw("tables")) { Node::new(Kind::UnlockTables,vec![]) }
+            / enabled(!pl) kw("unlock") (kw("table") / kw("tables")) { Node::new(Kind::UnlockTables,vec![]) }
         rule table_lock() -> Node = name:relation_name()
             alias:(kw("as") name:ident() { name })?
             write:(kw("read") kw("local")? { false } / kw("low_priority")? kw("write") { true }) {?
@@ -2486,10 +2488,13 @@ peg::parser! {
             / kw("while") condition:pl_expression(level) kw("do") body:pl_statements(level) kw("end") kw("while") { Node::new(Kind::PlWhile,vec![condition,body]) }
             / kw("repeat") body:pl_statements(level) kw("until") condition:pl_expression(level) kw("end") kw("repeat") { Node::new(Kind::PlRepeat,vec![body,condition]) }
         rule pl_setting(level: usize) -> Node = kw("set") assignments:((
-            variable:(user_variable() / system_variable()
+            variable:(start:position!() scope:assignment_scope() name:assignment_name(true) {
+                    let end=name.end; Node::new(Kind::SystemVariable,vec![]).text(name.text).value(scope).at(start,end)
+                } / user_variable() / system_variable()
                 / start:position!() parts:compact_name() enabled(parts.len()==2) end:position!() {? Node::column(parts,false,start,end) }
                 / start:position!() first:ident() "." _ second:ident() end:position!() {? Node::column(vec![first,second],false,start,end) }
-                / name:assignment_name(false) { Node::name(name) }) (":=" / "=") _ value:expr(level) {?
+                / name:assignment_name(false) { Node::name(name) }) (":=" / "=" / kw("to")) _
+                value:(enabled(variable.kind!=Kind::UserVariable) keyword:setting_keyword() { keyword } / expr(level)) {?
                 let value=Node::routine_setting_value(&variable,value)?;
                 let scope=if variable.kind==Kind::SystemVariable && variable.value!=0 { variable.value } else { 2 };
                 Ok(Node::new(Kind::VariableValue,vec![variable,value]).value(scope))
@@ -2553,7 +2558,12 @@ peg::parser! {
                 Node::new(Kind::PlFetch,vec![Node::name(name),Node::new(Kind::IntoVariables,vec![Node::new(Kind::PlInto,variables)])])
             }
             / routine_statement(level+1) / pl_call() / pl_signal() / pl_do(level+1) / pl_setting(level+1)
-            / !kw("begin") statement:sql_statement() { Node::new(Kind::PlSql,vec![statement]) }
+            / !kw("begin") statement:sql_statement() {?
+                if statement.kind==Kind::VariableSet && !(statement.children.len()==1
+                    && matches!(statement.children[0].kind,Kind::SetNames | Kind::SetCharset)) {
+                    Err("routine variable assignment")
+                } else { Ok(Node::new(Kind::PlSql,vec![statement])) }
+            }
         ) end:position!() { value.at(start,end) }
         pub rule routine_body() -> Node = _ value:(anonymous_statement() / package_block() / kw("create") value:routine_definition(true,0) { value }
             / value:routine_definition(true,0) { value.into_children().into_iter().last().unwrap() } / pl_statement(0)) (";" _)* { value }
