@@ -192,6 +192,24 @@ fn chain(first: Node, rest: Vec<(String, Node)>) -> Result<Node, &'static str> {
         .try_fold(first, |left, (op, right)| Node::binary(op, left, right))
 }
 
+fn boolean_chain(op: &str, first: Node, mut rest: Vec<Node>) -> Result<Node, &'static str> {
+    if rest.is_empty() {
+        return Ok(first);
+    }
+    fn build(op: &str, operands: &mut std::vec::IntoIter<Node>, count: usize) -> Result<Node, &'static str> {
+        if count == 1 {
+            Ok(operands.next().unwrap())
+        } else {
+            let left = build(op, operands, count / 2)?;
+            let right = build(op, operands, count - count / 2)?;
+            Node::binary(op.into(), left, right)
+        }
+    }
+    rest.insert(0, first);
+    let count = rest.len();
+    build(op, &mut rest.into_iter(), count)
+}
+
 enum Tail {
     Compare(String, Node),
     Like(bool, Node, Option<Node>),
@@ -763,9 +781,9 @@ peg::parser! {
         rule not_expr(level: usize) -> Node = ops:(enabled(!mode.high_not_precedence) start:position!() kw("not") { start })* value:bool_primary(level) {?
             ops.into_iter().rev().try_fold(value, |value, start| { Node::unary("not", value, start) })
         }
-        rule and_expr(level: usize) -> Node = left:not_expr(level) rest:((kw("and") / "&&" _) right:not_expr(level) { ("and".into(), right) })* {? chain(left, rest) }
+        rule and_expr(level: usize) -> Node = left:not_expr(level) rest:((kw("and") / "&&" _) right:not_expr(level) { right })* {? boolean_chain("and", left, rest) }
         rule xor_expr(level: usize) -> Node = left:and_expr(level) rest:(kw("xor") right:and_expr(level) { ("xor".into(), right) })* {? chain(left, rest) }
-        rule expr(level: usize) -> Node = left:xor_expr(level) rest:((kw("or") / enabled(!mode.pipes_as_concat) "||" _) right:xor_expr(level) { ("or".into(), right) })* {? chain(left, rest) }
+        rule expr(level: usize) -> Node = left:xor_expr(level) rest:((kw("or") / enabled(!mode.pipes_as_concat) "||" _) right:xor_expr(level) { right })* {? boolean_chain("or", left, rest) }
         rule expr_list(level: usize) -> Vec<Node> = values:(expr(level) ++ ("," _)) { values }
         rule item(level: usize) -> Node = expression:expr(level) alias:(enabled(!expression.is_wildcard()) (kw("as") / !implicit_alias_keyword()) value:(name:ident() { Node::name(name) } / string()) { value })? { Node::projection(expression, alias) }
         rule json_response() -> (Node,Node) = kw("error") { (Node::new(Kind::HiddenInt,vec![]),Node::new(Kind::HiddenNull,vec![])) }
