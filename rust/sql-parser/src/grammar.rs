@@ -1495,11 +1495,20 @@ peg::parser! {
             / kw("comment") value:string() { Node::new(Kind::ColumnComment, vec![value]) }
             / kw("srid") value:type_size() { Node::new(Kind::Srid,vec![value]) }
             / check_constraint()
+        rule column_default_value(timestamp: bool) -> Node
+            = start:position!() "(" _ value:expr(0) ")" end:position!() _ {?
+                Node::new(Kind::Parenthesized,vec![value]).expression(start,end)
+            }
+            / start:position!() op:$(['+' | '-']) _ value:number() {? Node::unary(op,value,start) }
+            / charset_literal() / temporal_literal() / binary_literal() / number() / string_expression() / bool_null()
+            / enabled(timestamp) value:atom(0) {?
+                if value.kind==Kind::CurrentTimestamp { Ok(value) } else { Err("current timestamp") }
+            }
         rule column_attribute() -> Node
             = generated_column_attribute()
             / storage_chunk()
             / kw("auto_increment") { Node::new(Kind::AutoIncrement, vec![]) }
-            / kw("default") value:expr(0) { Node::new(Kind::ColumnDefault, vec![value]) }
+            / kw("default") value:column_default_value(true) { Node::new(Kind::ColumnDefault, vec![value]) }
             / kw("on") kw("update") value:atom(0) {?
                 if value.kind==Kind::CurrentTimestamp { Ok(Node::new(Kind::OnUpdate,vec![value])) } else { Err("current timestamp") }
             }
@@ -1730,7 +1739,7 @@ peg::parser! {
             / kw("modify") kw("column")? value:column_definition() { Node::new(Kind::ColumnModify,vec![value]) }
             / kw("change") kw("column")? name:column() value:column_definition() { Node::new(Kind::ColumnChange,vec![name,value]) }
             / kw("rename") kw("column") from:column() kw("to") to:ident() { Node::new(Kind::ColumnRename,vec![from,Node::name(to)]) }
-            / kw("alter") kw("column")? name:column() value:(kw("set") kw("default") value:expr(0) { Node::new(Kind::ColumnDefault,vec![value]) }
+            / kw("alter") kw("column")? name:column() value:(kw("set") kw("default") value:column_default_value(false) { Node::new(Kind::ColumnDefault,vec![value]) }
                 / kw("drop") kw("default") { Node::new(Kind::Nullable,vec![]) }) { Node::new(Kind::ColumnAlter,vec![name,value]) }
         rule alter_key_definition() -> Node
             = !kw("vector") value:index_definition(true) { value.with_kind(Kind::IndexAdd) }
