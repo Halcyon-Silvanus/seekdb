@@ -1354,7 +1354,13 @@ peg::parser! {
             / kw("from") targets:(delete_target() ++ ("," _)) kw("using") tables:(table(0) ++ ("," _)) {
                 Node::new(Kind::DeleteTables,vec![Node::new(Kind::DeleteTargets,targets),Node::new(Kind::FromList,tables)])
             }
-            / kw("from") table:relation(0) { Node::new(Kind::DeleteTables,vec![Node::new(Kind::FromList,vec![table])]) }
+            / kw("from") table:relation(0) {?
+                if table.kind!=Kind::Table || table.children[0].kind!=Kind::Relation
+                    || table.children.iter().any(|child| child.kind==Kind::ParenthesizedTable) {
+                    return Err("base table as DELETE target");
+                }
+                Ok(Node::new(Kind::DeleteTables,vec![Node::new(Kind::FromList,vec![table])]))
+            }
         rule delete() -> Node = with:with_clause(0)? keyword("delete") hints:hint_slot() ignore:kw("ignore")? (kw("low_priority") / kw("quick"))*
             tables:delete_tables() filter:(kw("where") value:expr(0) { value })?
             order:(enabled(tables.children.len()==1) kw("order") kw("by") values:(order_item(0) ++ ("," _)) { values })?
