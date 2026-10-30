@@ -78,6 +78,7 @@ struct Scope<'a> {
     excluded: bool,
     projection: bool,
     direct_value: bool,
+    assigned_value: bool,
     arithmetic: bool,
     ignore_scale: bool,
     positive: bool,
@@ -227,6 +228,7 @@ impl<'a> Collector<'a> {
             Kind::Insert | Kind::Replace => {
                 let value_scope = Scope {
                     direct_value: true,
+                    assigned_value: true,
                     ..scope
                 };
                 match insert_source(node) {
@@ -252,6 +254,7 @@ impl<'a> Collector<'a> {
                         assignment_value(assignment),
                         Scope {
                             direct_value: true,
+                            assigned_value: true,
                             ..scope
                         },
                     )?;
@@ -853,7 +856,9 @@ fn apply<'a>(
             ParameterOrigin::Subtraction => ParameterAction::Subtraction,
             _ => ParameterAction::Normal,
         };
-        policy.arithmetic = occurrence.scope.arithmetic && syntax.kind == LiteralKind::Integer;
+        policy.arithmetic = occurrence.scope.arithmetic
+            && !occurrence.scope.assigned_value
+            && syntax.kind == LiteralKind::Integer;
         policy.positive = occurrence.scope.positive
             && (numeric(value.kind) || value.kind == LiteralKind::Boolean || placeholder);
         if placeholder {
