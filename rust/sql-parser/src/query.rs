@@ -732,6 +732,12 @@ pub(crate) fn hint_parallel_policy(hint: &Node) -> ParallelPolicy {
 pub(crate) fn hint_parallel_degree(hint: &Node) -> &Node {
     hint.children.last().unwrap()
 }
+pub(crate) fn hint_dop_fragment(hint: &Node) -> u64 {
+    hint.children[0].value
+}
+pub(crate) fn hint_dop_degree(hint: &Node) -> u64 {
+    hint.children[1].value
+}
 pub(crate) fn hint_operator_ids(hint: &Node) -> &[Node] {
     &hint.children
 }

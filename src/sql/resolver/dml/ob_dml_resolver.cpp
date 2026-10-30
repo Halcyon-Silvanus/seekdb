@@ -7172,6 +7172,9 @@ int ObDMLResolver::resolve_global_hint(const peg::Node &hint_node,
           break;
       }
       break;
+    case Kind::Dop:
+      OZ(global_hint.merge_dop_hint(peg::hint_dop_fragment(hint_node), peg::hint_dop_degree(hint_node)));
+      break;
     case Kind::DmlParallel:
       global_hint.merge_dml_parallel_hint(peg::integer_literal_value(peg::hint_parallel_degree(hint_node)));
       break;
