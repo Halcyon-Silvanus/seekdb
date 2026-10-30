@@ -330,7 +330,7 @@ peg::parser! {
         rule string() -> Node = string_token(<"'">) / enabled(!mode.ansi_quotes) value:string_token(<"\"">) { value }
         rule string_expression() -> Node
             = start:position!() ['n'|'N'] value:string_token(<"'">) {
-                Node { kind:Kind::NationalString,start,..value }
+                let end=value.end;value.with_kind(Kind::NationalString).at(start,end)
             }
             / first:string() rest:string()* {?
             if rest.is_empty() { Ok(first) }
@@ -387,7 +387,7 @@ peg::parser! {
         rule user_variable() -> Node = start:position!() "@" !"@" name:(string()
             / start:position!() text:$((cont() / ".")+) end:position!() _ { Node::new(Kind::Ident,vec![]).text(text.into()).at(start,end) }
             / name:ident() { Node::name(name) })? _ {
-            let (text,end)=name.map_or_else(|| (String::new(),start+1),|name| (name.text,name.end));
+            let (text,end)=name.map_or_else(|| (String::new(),start+1),|mut name| (std::mem::take(&mut name.text),name.end));
             Node::new(Kind::UserVariable, vec![]).text(text).at(start,end)
         }
         rule atom(level: usize) -> Node
@@ -419,7 +419,7 @@ peg::parser! {
             / depth(level) value:user_variable() assigned:(":=" _ value:expr(level+1) { value })? {?
                 let (start,end)=(value.start,assigned.as_ref().map_or(value.end,|value| value.end));
                 match assigned {
-                    Some(assigned) => Node::new(Kind::UserAssignment,vec![Node { kind:Kind::UserVariableTarget,..value },assigned]),
+                    Some(assigned) => Node::new(Kind::UserAssignment,vec![value.with_kind(Kind::UserVariableTarget),assigned]),
                     None => Node::new(Kind::GetUserVariable,vec![value]),
                 }.expression(start,end)
             }
@@ -561,7 +561,7 @@ peg::parser! {
             / start:position!() kw("json_value") "(" _ data:expr(level) "," _ path:string_expression()
                 target:json_returning_type() truncate:kw("truncate")? ascii:kw("ascii")? options:json_options() ")" end:position!() _ {?
                     let mut children=vec![data,path,target,Node::new(Kind::HiddenInt,vec![]).value(u64::from(truncate.is_some())),Node::new(Kind::HiddenInt,vec![]).value(u64::from(ascii.is_some()))];
-                    children.extend(options.children);Node::new(Kind::JsonValue,children).expression(start,end)
+                    children.extend(options.into_children());Node::new(Kind::JsonValue,children).expression(start,end)
                 }
         rule fulltext_column() -> Node = start:position!() names:name() end:position!() {? Node::column(names,false,start,end) }
         rule fulltext_search(level: usize) -> Node = start:position!() kw("match") "(" _ columns:(fulltext_column() ++ ("," _)) ")" _ kw("against") "(" _ search:expr(level)
@@ -625,7 +625,7 @@ peg::parser! {
                 let mut arguments=vec![first];arguments.extend(rest);
                 Node::named_call(Kind::Function,Node::new(Kind::Ident,vec![]).text("interval".into()),arguments).expression(start,end)
             }
-        rule collated(level: usize) -> Node = value:atom(level) collations:(kw("collate") value:collation_name() { Node { kind:Kind::Collation,..value } })* {?
+        rule collated(level: usize) -> Node = value:atom(level) collations:(kw("collate") value:collation_name() { value.with_kind(Kind::Collation) })* {?
             collations.into_iter().try_fold(value,|value,collation| {
                 let (start,end)=(value.start,collation.end);
                 Node::named_call(Kind::SetCollation,Node::new(Kind::Ident,vec![]).text("set_collation".into()),vec![value,collation]).expression(start,end)
@@ -784,7 +784,7 @@ peg::parser! {
         }
         rule sample_number(integer: bool) -> Node = value:number() {?
             let kind=match value.kind { Kind::Int => Kind::SampleInt,Kind::Number | Kind::Double if !integer => Kind::SampleDecimal,_ => return Err("sample value") };
-            Ok(Node { kind,..value })
+            Ok(value.with_kind(kind))
         }
         rule sample() -> Node = kw("sample") method:(kw("block") { 2 } / kw("hybrid") { 3 })?
             scope:(kw("all") { Kind::All } / kw("base") { Kind::SampleBase } / kw("incr") { Kind::SampleIncremental })?
@@ -1189,7 +1189,7 @@ peg::parser! {
                 value.with=with.or(value.with);Ok(value)
             }
         rule vector_parameter_value() -> Node
-            = value:number() { Node { kind:Kind::Number,..value } }
+            = value:number() { value.with_kind(Kind::Number) }
             / value:bool_null() {? if value.kind==Kind::Bool { Ok(value) } else { Err("boolean vector query parameter") } }
             / name:ident() { Node::name(name) }
         rule vector_parameters() -> Node = kw("parameters") value:vector_parameter_list() { value }
@@ -1321,7 +1321,7 @@ peg::parser! {
             tables:delete_tables() filter:(kw("where") value:expr(0) { value })?
             order:(enabled(tables.children.len()==1) kw("order") kw("by") values:(order_item(0) ++ ("," _)) { values })?
             limit:(enabled(tables.children.len()==1) value:limit() { value })? {
-                let mut children=tables.children;
+                let mut children=tables.into_children();
                 children.extend(with);
                 if let Some(filter)=filter { children.push(Node::new(Kind::Where,vec![filter])); }
                 if let Some(order)=order { children.push(Node::new(Kind::Order,order)); }
@@ -1394,7 +1394,7 @@ peg::parser! {
                 Node::new(kind,vec![]).text(text.into()).value(value).expression(start,end)
             }
         rule string_length() -> Node = fractional_type_size() / value:type_size() {
-            if value.kind==Kind::Number { Node { kind:Kind::Uint,value:u64::MAX,..value } } else { value }
+            if value.kind==Kind::Number { value.with_kind(Kind::Uint).value(u64::MAX) } else { value }
         }
         rule charset_keyword() = kw("charset") / (kw("character") / kw("char")) kw("set")
         rule cast_type() -> Node
@@ -1414,14 +1414,14 @@ peg::parser! {
             parameters:("(" _ values:(enabled(matches!(name,"char"|"binary")) value:string_length() { vec![value] }
                 / values:(type_size() ++ ("," _)) { values }) ")" _ { values })?
             charset:(enabled(name=="char") charset_keyword() !kw("default") value:charset_name() {
-                let literal=value.kind==Kind::String;Node { kind:Kind::Charset,..value }.value(u64::from(literal))
+                let literal=value.kind==Kind::String;value.with_kind(Kind::Charset).value(u64::from(literal))
             })? end:position!() {?
                 let mut parameters=parameters.unwrap_or_default();
                 let max=match name { "signed"|"unsigned"|"double"|"json" => 0,"decimal" => 2,_ => 1 };
                 if parameters.len()>max || parameters.iter().any(|value| !matches!(value.kind,Kind::Int|Kind::Uint)) { Err("invalid cast type parameters") }
                 else { parameters.extend(charset);Ok(Node::new(Kind::CastType,parameters).text(name.into()).at(start,end)) }
             }
-            / !kw("geometry") value:geometry_type() { Node { kind:Kind::CastType,..value } }
+            / !kw("geometry") value:geometry_type() { value.with_kind(Kind::CastType) }
         rule serial_type() -> Node = start:position!() kw("serial") end:position!() {?
             Node::data_type("bigint",vec![],Some(true),false,start,end)
         }
@@ -1430,7 +1430,7 @@ peg::parser! {
                     / kw("national") ((kw("char") / kw("character")) kw("varying") / kw("varchar") / kw("varcharacter"))) { "varchar" }
                 / (kw("nchar") / kw("national") (kw("char") / kw("character"))) { "char" })
             parameters:("(" _ value:string_length() ")" _ { vec![value] })?
-            binary:kw("binary")? collation:(enabled(routine) kw("collate") value:collation_name() { Node { kind:Kind::Collation,..value } })? end:position!() {?
+            binary:kw("binary")? collation:(enabled(routine) kw("collate") value:collation_name() { value.with_kind(Kind::Collation) })? end:position!() {?
                 let parameters=parameters.unwrap_or_else(|| if routine { vec![Node::new(Kind::Int,vec![]).value(1)] } else { vec![] });
                 let mut value=Node::data_type(name,parameters,None,false,start,end)?;
                 value.children.push(Node::new(Kind::Charset,vec![]).text("utf8mb4".into()));
@@ -1441,7 +1441,7 @@ peg::parser! {
         rule routine_data_type() -> Node = serial_type() / national_type(true)
             / value:data_type() collation:(enabled(matches!(value.kind,Kind::EnumType|Kind::SetType)
                     || matches!(value.text.as_str(),"char"|"varchar"|"tinytext"|"text"|"mediumtext"|"longtext"|"string"))
-                kw("collate") value:collation_name() { Node { kind:Kind::Collation,..value } })? end:position!() {
+                kw("collate") value:collation_name() { value.with_kind(Kind::Collation) })? end:position!() {
                     let mut value=value;
                     value.children.extend(collation);
                     value.end=end;
@@ -1466,7 +1466,7 @@ peg::parser! {
         rule scalar_type() -> Node
             = start:position!() kind:(kw("enum") { Kind::EnumType } / kw("set") { Kind::SetType })
                 "(" _ values:(string() ++ ("," _)) ")" _ binary:(kw("binary") { Node::new(Kind::BinaryAttribute,vec![]).value(1) })?
-                charset:(charset_keyword() !kw("default") value:charset_name() { Node { kind:Kind::Charset,..value } })? end:position!() {
+                charset:(charset_keyword() !kw("default") value:charset_name() { value.with_kind(Kind::Charset) })? end:position!() {
                     Node::new(kind,vec![Node::optional(charset),Node::missing(),Node::optional(binary),Node::new(Kind::StringList,values)]).at(start,end)
                 }
             / geometry_type()
@@ -1476,7 +1476,7 @@ peg::parser! {
                 value:string_length() { vec![value] } / enabled(name=="float") value:fractional_type_size() { vec![value] }
                 / values:(type_size() ++ ("," _)) { values }) ")" _ { values })?
             unsigned:(kw("unsigned") { true } / kw("signed") { false })? zerofill:kw("zerofill")? binary:kw("binary")?
-            charset:(charset_keyword() !kw("default") value:charset_name() { Node { kind:Kind::Charset,..value } })? end:position!() {?
+            charset:(charset_keyword() !kw("default") value:charset_name() { value.with_kind(Kind::Charset) })? end:position!() {?
                 let mut value=Node::data_type(name, parameters.unwrap_or_default(), unsigned, zerofill.is_some(), start, end)?;
                 if binary.is_some() || charset.is_some() {
                     if !matches!(name,"char"|"varchar"|"tinytext"|"text"|"mediumtext"|"longtext"|"string") { return Err("character type"); }
@@ -1503,7 +1503,7 @@ peg::parser! {
             / kw("on") kw("update") value:atom(0) {?
                 if value.kind==Kind::CurrentTimestamp { Ok(Node::new(Kind::OnUpdate,vec![value])) } else { Err("current timestamp") }
             }
-            / kw("collate") value:collation_name() { Node { kind:Kind::Collation,..value } }
+            / kw("collate") value:collation_name() { value.with_kind(Kind::Collation) }
             / kw("skip_index") "(" _ kinds:(skip_index_kind() ** ("," _)) ")" _ {
                 Node::new(Kind::ColumnSkipIndex,kinds)
             }
@@ -1555,7 +1555,7 @@ peg::parser! {
                 ddl::Column { name, data_type, tail:ddl::ColumnTail { attributes, position, ..Default::default() } }.into_node()
             }
             / name:column() data_type:data_type() tail:(
-                collation:(kw("collate") value:collation_name() { Node { kind:Kind::Collation,..value } })?
+                collation:(kw("collate") value:collation_name() { value.with_kind(Kind::Collation) })?
                 generated:(kw("generated") kw("always"))?
                 kw("as") "(" _ start:position!() value:expr(0) end:position!() ")" _
                 storage:(kind:(kw("virtual") { Kind::VirtualColumn } / kw("stored") { Kind::StoredColumn }) { Node::new(kind,vec![]) })?
@@ -1590,7 +1590,7 @@ peg::parser! {
         rule table_option() -> Node
             = kw("organization") ("=" _)? kind:(kw("index") { Kind::OrganizationIndex } / kw("heap") { Kind::OrganizationHeap }) { Node::new(Kind::Organization,vec![Node::new(kind,vec![])]) }
             / kw("default")? charset_keyword() ("=" _)? value:charset_name() { Node::new(Kind::TableCharset,vec![value]) }
-            / kw("default")? kw("collate") ("=" _)? value:collation_name() { Node { kind:Kind::Collation,..value } }
+            / kw("default")? kw("collate") ("=" _)? value:collation_name() { value.with_kind(Kind::Collation) }
             / parallel_option()
             / read_access()
             / kw("engine") ("=" _)? value:collation_name() { Node::new(Kind::Engine,vec![value]) }
@@ -1615,8 +1615,8 @@ peg::parser! {
                     Node::new(Kind::StoreFormat,vec![Node::new(Kind::HiddenInt,vec![]).value(value)])
                 }
         rule database_option() -> Node
-            = kw("default")? charset_keyword() ("=" _)? !kw("default") value:charset_name() { Node { kind:Kind::Charset,..value } }
-            / kw("default")? kw("collate") ("=" _)? value:collation_name() { Node { kind:Kind::Collation,..value } }
+            = kw("default")? charset_keyword() ("=" _)? !kw("default") value:charset_name() { value.with_kind(Kind::Charset) }
+            / kw("default")? kw("collate") ("=" _)? value:collation_name() { value.with_kind(Kind::Collation) }
             / read_access()
         rule index_method() -> Node = kw("using") value:(kw("btree") { Node::missing() } / kw("hash") { Node::new(Kind::UsingHash,vec![]) }) { value }
         rule index_column(fulltext: bool) -> Node = value:(name:ident() prefix:("(" _ value:type_size() ")" _ { value })? { (Node::name(name),Node::optional(prefix)) }
@@ -1733,7 +1733,7 @@ peg::parser! {
             / kw("alter") kw("column")? name:column() value:(kw("set") kw("default") value:expr(0) { Node::new(Kind::ColumnDefault,vec![value]) }
                 / kw("drop") kw("default") { Node::new(Kind::Nullable,vec![]) }) { Node::new(Kind::ColumnAlter,vec![name,value]) }
         rule alter_key_definition() -> Node
-            = !kw("vector") value:index_definition(true) { Node { kind:Kind::IndexAdd,..value } }
+            = !kw("vector") value:index_definition(true) { value.with_kind(Kind::IndexAdd) }
             / primary_key_header() "(" _ names:(ident() ++ ("," _)) ")" _ options:index_options(false) {
                 Node::new(Kind::PrimaryKey,vec![Node::new(Kind::ColumnList,names.into_iter().map(Node::name).collect()),options])
             }
@@ -1745,20 +1745,21 @@ peg::parser! {
             / kw("rename") (kw("index") / kw("key")) from:ident() kw("to") to:ident() { Node::new(Kind::IndexRename,vec![Node::name(from),Node::name(to)]) }
             / keyword("alter") hint_slot() kw("index") name:ident() value:(
                 index_visibility()
-                / value:parallel_option() { Node::new(Kind::IndexParallel,value.children) }) {
-                let mut children=vec![Node::name(name)];children.extend(value.children);
-                Node::new(value.kind,children).value(value.value)
+                / value:parallel_option() { Node::new(Kind::IndexParallel,value.into_children()) }) {
+                let (kind,flags)=(value.kind,value.value);
+                let mut children=vec![Node::name(name)];children.extend(value.into_children());
+                Node::new(kind,children).value(flags)
             }
         rule partition_names() -> Node = names:(ident() ++ ("," _)) { Node::new(Kind::Names,names.into_iter().map(Node::name).collect()) }
         rule alter_partition() -> Node
-            = value:partition_option() { Node::new(Kind::Repartition,value.children) }
+            = value:partition_option() { Node::new(Kind::Repartition,value.into_children()) }
             / kw("exchange") kw("partition") name:ident() kw("with") kw("table") table:name() kw("without") kw("validation") {?
                 Ok(Node::new(Kind::PartitionExchange,vec![Node::name(name),Node::relation(table)?]))
             }
             / kw("add") kw("partition") start:position!()
-                values:(value:partition_elements(Kind::RangePartition,None) { Node { kind:Kind::RangePartitions,..value } }
+                values:(value:partition_elements(Kind::RangePartition,None) { value.with_kind(Kind::RangePartitions) }
                     / partition_elements(Kind::ListPartition,None)) end:position!() {
-                Node::new(Kind::PartitionAdd,values.children).at(start,end)
+                Node::new(Kind::PartitionAdd,values.into_children()).at(start,end)
             }
             / truncate:(kw("truncate") { true } / kw("drop") { false })
                 sub:(kw("subpartition") { true } / kw("partition") { false })
@@ -1914,7 +1915,7 @@ peg::parser! {
             / expr_or_default()
         rule charset_name() -> Node = kw("default") { Node::new(Kind::Default,vec![]) }
             / start:position!() kw("binary") { Node::new(Kind::CharsetName,vec![]).text("binary".into()).at(start,start+6) }
-            / string() / name:ident() { Node { kind:Kind::CharsetName,..Node::name(name) } }
+            / string() / name:ident() { Node::name(name).with_kind(Kind::CharsetName) }
         rule collation_name() -> Node = string() / name:ident() { Node::name(name) }
         rule assignment_name(scoped: bool) -> Name
             = (enabled(scoped) / !kw("password")) name:ident() { name }
@@ -2071,7 +2072,7 @@ peg::parser! {
             = kw("current_user") ("(" _ ")" _)? { Node::new(Kind::CurrentUser,vec![]) }
             / account()
         rule named_account_spec() -> Node = principal:account() { Node::new(Kind::UserSpec,vec![principal]) }
-        rule password() -> Node = value:string() { Node { kind:Kind::Password,..value } }
+        rule password() -> Node = value:string() { value.with_kind(Kind::Password) }
         rule authentication() -> Node = kw("identified")
             plugin:(kw("with") value:account_name() { Node::new(Kind::AuthenticationPlugin,vec![value]) })?
             password:(kw("by") encoded:kw("password")? value:password() {
@@ -2326,7 +2327,7 @@ peg::parser! {
             Node::list(Kind::RoutineParameters,values).at(start,end)
         }
         rule routine_characteristic() -> Node
-            = kw("comment") value:string() { Node { kind:Kind::ColumnComment,..value } }
+            = kw("comment") value:string() { value.with_kind(Kind::ColumnComment) }
             / kw("language") kw("sql") { Node::missing() }
             / kw("not") kw("deterministic") { Node::missing() }
             / kw("deterministic") { Node::new(Kind::Deterministic,vec![]) }
@@ -2478,7 +2479,7 @@ peg::parser! {
             / !kw("begin") statement:sql_statement() { Node::new(Kind::PlSql,vec![statement]) }
         ) end:position!() { value.at(start,end) }
         pub rule routine_body() -> Node = _ value:(anonymous_statement() / package_block() / kw("create") value:routine_definition(true) { value }
-            / value:routine_definition(true) { value.children.into_iter().last().unwrap() } / pl_statement(0)) (";" _)* { value }
+            / value:routine_definition(true) { value.into_children().into_iter().last().unwrap() } / pl_statement(0)) (";" _)* { value }
         rule prepared_statement() -> Node
             = kw("prepare") name:ident() kw("from") source:(string() / user_variable()) {
                 Node::new(Kind::Prepare,vec![source]).text(name.text)

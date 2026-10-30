@@ -26,6 +26,15 @@ pub struct Node {
     pub(crate) operator: Option<Operator>,
 }
 
+impl Drop for Node {
+    fn drop(&mut self) {
+        let mut pending = std::mem::take(&mut self.children);
+        while let Some(mut node) = pending.pop() {
+            pending.append(&mut node.children);
+        }
+    }
+}
+
 pub(crate) enum Operator {
     Unary(ffi::UnaryOperator),
     Binary(ffi::BinaryOperator),
@@ -101,7 +110,7 @@ impl Select {
             && self.limit.is_none()
             && self.set.as_ref().is_some_and(|set| set.kind == kind);
         let children = if flatten {
-            let mut children = self.set.take().unwrap().children;
+            let mut children = self.set.take().unwrap().into_children();
             children.push(right);
             children
         } else {
@@ -157,8 +166,23 @@ impl Node {
     pub fn span(&self) -> ffi::Span { ffi::Span { start: self.start, end: self.end } }
 
     fn contains_user_variable(&self) -> bool {
-        matches!(self.kind, Kind::GetUserVariable | Kind::UserAssignment)
-            || self.children.iter().any(Self::contains_user_variable)
+        let mut pending = vec![self];
+        while let Some(node) = pending.pop() {
+            if matches!(node.kind, Kind::GetUserVariable | Kind::UserAssignment) {
+                return true;
+            }
+            pending.extend(&node.children);
+        }
+        false
+    }
+
+    pub(crate) fn into_children(mut self) -> Vec<Self> {
+        std::mem::take(&mut self.children)
+    }
+
+    pub(crate) fn with_kind(mut self, kind: Kind) -> Self {
+        self.kind = kind;
+        self
     }
 
     pub(crate) fn pl_expression(self) -> Result<Self, &'static str> {
@@ -243,8 +267,8 @@ impl Node {
         hints: Vec<Self>,
     ) -> Self {
         let source = match values.kind {
-            Kind::ValueList => Self::new(Kind::InsertRows, values.children),
-            Kind::AssignList => Self::new(Kind::InsertAssignments, values.children),
+            Kind::ValueList => Self::new(Kind::InsertRows, values.into_children()),
+            Kind::AssignList => Self::new(Kind::InsertAssignments, values.into_children()),
             Kind::Select => Self::new(Kind::InsertQuery, vec![values]),
             _ => unreachable!(),
         };
@@ -513,7 +537,7 @@ impl Node {
             && crate::expression::call_arguments(&self).len() == 1;
         if unquoted {
             self = self
-                .children
+                .into_children()
                 .into_iter()
                 .find(|child| child.kind == Kind::CallArguments)
                 .unwrap()
@@ -527,17 +551,17 @@ impl Node {
         let mut children = if self.kind == Kind::Column && !unquoted {
             vec![self, Self::new(Kind::HiddenString, vec![])]
         } else if self.kind == Kind::JsonValue {
-            self.children.into_iter().take(2).collect()
+            self.into_children().into_iter().take(2).collect()
         } else if self.kind == Kind::Function
             && crate::expression::call_qualifiers(&self).is_empty()
             && crate::expression::call_name(&self).eq_ignore_ascii_case("json_extract")
             && crate::expression::call_arguments(&self).len() == 2
         {
-            self.children
+            self.into_children()
                 .into_iter()
                 .find(|child| child.kind == Kind::CallArguments)
                 .unwrap()
-                .children
+                .into_children()
         } else {
             return Err("CAST ARRAY requires a JSON column or extracted path");
         };
@@ -921,15 +945,13 @@ impl Node {
             children.push(Self::new(Kind::Hints, query.hints));
         }
         if let Some(into) = query.into_end {
-            children.push(Self {
-                kind: match into.kind {
-                    Kind::IntoVariables => Kind::TrailingIntoVariables,
-                    Kind::IntoOutfile => Kind::TrailingIntoOutfile,
-                    Kind::IntoDumpfile => Kind::TrailingIntoDumpfile,
-                    _ => unreachable!(),
-                },
-                ..into
-            });
+            let kind = match into.kind {
+                Kind::IntoVariables => Kind::TrailingIntoVariables,
+                Kind::IntoOutfile => Kind::TrailingIntoOutfile,
+                Kind::IntoDumpfile => Kind::TrailingIntoDumpfile,
+                _ => unreachable!(),
+            };
+            children.push(into.with_kind(kind));
         }
         children.extend(query.approximate);
         children.extend(query.vector_parameters);

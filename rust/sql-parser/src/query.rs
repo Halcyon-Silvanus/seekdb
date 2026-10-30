@@ -514,7 +514,7 @@ pub(crate) fn associate_join(kind: Kind, left: Node, mut right: Node, condition:
     {
         let right_left = std::mem::replace(&mut right.children[1], Node::missing());
         right.children[1] = associate_join(kind, left, right_left, condition)?;
-        Node::new(Kind::JoinedTable, right.children).expression(0, 0)
+        Node::new(Kind::JoinedTable, right.into_children()).expression(0, 0)
     } else {
         joined_table(kind, left, right, condition)
     }

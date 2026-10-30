@@ -160,13 +160,16 @@ pub fn parse(sql: &[u8], mode: SqlMode, parse_mode: ParseMode) -> Result<Parsed,
 }
 
 fn invalid_bit_width(node: &Node) -> Option<usize> {
-    if node.kind == Kind::DataType && node.text == "bit"
-        && node.children.first().is_some_and(|width| width.value > 64)
-    {
-        Some(node.start)
-    } else {
-        node.children.iter().find_map(invalid_bit_width)
+    let mut pending = vec![node];
+    while let Some(node) = pending.pop() {
+        if node.kind == Kind::DataType && node.text == "bit"
+            && node.children.first().is_some_and(|width| width.value > 64)
+        {
+            return Some(node.start);
+        }
+        pending.extend(node.children.iter().rev());
     }
+    None
 }
 
 fn number_parameters(
@@ -174,17 +177,15 @@ fn number_parameters(
     count: &mut usize,
     names: &mut Vec<String>,
 ) -> Result<(), usize> {
-    fn collect<'a>(node: &'a mut Node, parameters: &mut Vec<&'a mut Node>) {
+    let mut parameters = Vec::new();
+    let mut pending = vec![node];
+    while let Some(node) = pending.pop() {
         if node.kind == Kind::Parameter {
             parameters.push(node);
         } else {
-            for child in &mut node.children {
-                collect(child, parameters);
-            }
+            pending.extend(node.children.iter_mut().rev());
         }
     }
-    let mut parameters = Vec::new();
-    collect(node, &mut parameters);
     parameters.sort_by_key(|parameter| parameter.start);
     for node in parameters {
         if node.text.is_empty() {
