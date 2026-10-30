@@ -1434,7 +1434,15 @@ peg::parser! {
                 value.children.extend(collation);
                 Ok(value)
             }
-        rule routine_data_type() -> Node = serial_type() / national_type(true) / data_type()
+        rule routine_data_type() -> Node = serial_type() / national_type(true)
+            / value:data_type() collation:(enabled(matches!(value.kind,Kind::EnumType|Kind::SetType)
+                    || matches!(value.text.as_str(),"char"|"varchar"|"tinytext"|"text"|"mediumtext"|"longtext"|"string"))
+                kw("collate") value:collation_name() { Node { kind:Kind::Collation,..value } })? end:position!() {
+                    let mut value=value;
+                    value.children.extend(collation);
+                    value.end=end;
+                    value
+                }
         rule data_type() -> Node = collection_type(0)
         rule collection_type(level: usize) -> Node = depth(level) start:position!() value:(
                 kw("array") "(" _ value:collection_type(level+1) ")" end:position!() _ {
