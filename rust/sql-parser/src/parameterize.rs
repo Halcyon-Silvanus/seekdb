@@ -134,6 +134,9 @@ impl<'a> Collector<'a> {
     ) {
         let value = expression_literal(node);
         if value.hidden {
+            if scope.excluded && node.start < node.end {
+                self.exclusions.push(node);
+            }
             return;
         }
         if scope.excluded

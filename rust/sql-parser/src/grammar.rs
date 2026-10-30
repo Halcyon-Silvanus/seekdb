@@ -16,6 +16,9 @@ use crate::{access, ddl, load_data, select_into, lex::decode_string as decode, n
 use std::borrow::Cow;
 
 const WEIGHT_STRING_PAD_WITH_SPACE: u64 = 0x40;
+const WEIGHT_STRING_LEVELS: u64 = 6;
+const WEIGHT_STRING_DESC: u64 = 1 << 8;
+const WEIGHT_STRING_REVERSE: u64 = 1 << 16;
 
 pub(crate) fn executable_sql(
     sql: &str,
@@ -573,6 +576,20 @@ peg::parser! {
                 / kw("in") kw("match") kw("phrase") kw("mode") { 4 })? ")" end:position!() _ {?
                 Node::new(Kind::MatchAgainst,vec![Node::new(Kind::MatchColumns,columns),search]).value(search_mode.unwrap_or(0)).expression(start,end)
             }
+        rule weight_level_number() -> u64 = value:type_size() {?
+            if matches!(value.kind,Kind::Int|Kind::Uint) { Ok(value.value.clamp(1,WEIGHT_STRING_LEVELS)-1) }
+            else { Err("integer weight level") }
+        }
+        rule weight_level() -> u64 = level:weight_level_number()
+            descending:(kw("asc") { false } / kw("desc") { true })? reverse:kw("reverse")? {
+                (1 | if descending==Some(true) { WEIGHT_STRING_DESC } else { 0 }
+                    | if reverse.is_some() { WEIGHT_STRING_REVERSE } else { 0 }) << level
+            }
+        rule weight_levels() -> u64
+            = first:weight_level_number() "-" _ last:weight_level_number() {
+                (first..=last.max(first)).fold(0,|flags,level| flags | (1 << level))
+            }
+            / levels:(weight_level() ++ ("," _)) { levels.into_iter().fold(0,|flags,level| flags | level) }
         rule string_function(level: usize) -> Node = start:position!() function:(
                 kw("position") "(" _ needle:bit_or(level) kw("in") haystack:expr(level) { ("position",vec![needle,haystack]) }
                 / (kw("substr") / kw("substring")) "(" _ value:expr(level)
@@ -588,10 +605,16 @@ peg::parser! {
                 / kw("weight_string") "(" _ value:expr(level)
                     args:("," _ length:type_size() "," _ weights:type_size() "," _ flags:type_size() "," _ binary:type_size() { vec![length,weights,flags,binary] }
                         / as_type:(kw("as") binary:(kw("binary") { true } / (kw("char") / kw("character")) { false })
-                            "(" _ weights:type_size() ")" _ {? if weights.value>0 { Ok((binary,weights)) } else { Err("positive weight length") } })? {
+                            "(" _ weights:type_size() ")" _ {? if weights.value>0 { Ok((binary,weights)) } else { Err("positive weight length") } })?
+                            levels:(start:position!() kw("level") flags:weight_levels() end:position!() {
+                                Node::new(Kind::HiddenInt,vec![]).value(flags).at(start,end)
+                            })? {?
                             let (binary,weights)=as_type.unwrap_or_else(|| (false,Node::new(Kind::HiddenInt,vec![])));
+                            if binary && levels.is_some() { return Err("weight levels require character input"); }
                             let padding=if weights.value>0 { WEIGHT_STRING_PAD_WITH_SPACE } else { 0 };
-                            vec![Node::new(Kind::HiddenInt,vec![]),weights,Node::new(Kind::HiddenInt,vec![]).value(padding),Node::new(Kind::HiddenInt,vec![]).value(u64::from(binary))]
+                            let mut flags=levels.unwrap_or_else(|| Node::new(Kind::HiddenInt,vec![]));
+                            flags.value |= padding;
+                            Ok(vec![Node::new(Kind::HiddenInt,vec![]),weights,flags,Node::new(Kind::HiddenInt,vec![]).value(u64::from(binary))])
                         }) { let mut args=args;args.insert(0,value);("weight_string",args) }
             ) ")" end:position!() _ {?
                 Node::named_call(Kind::Function,Node::new(Kind::Ident,vec![]).text(function.0.into()),function.1).expression(start,end)
