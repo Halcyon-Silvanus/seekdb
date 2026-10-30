@@ -241,9 +241,17 @@ peg::parser! {
             / "`" ("``" / !"`" [_])* "`"
             / "/*" !"!" (!"*/" [_])* "*/"
             / ("--" &(space() / ![_]) / "#") (!"\n" [_])*
+        rule executable_comment_start() -> (usize,usize)
+            = start:position!() "/*!" (['0'..='9']*<5>)? content:position!() { (start,content) }
         pub rule executable_comments() -> Vec<(usize,usize,usize,usize)> = spans:(
-                start:position!() "/*!" (['0'..='9']*<5>)? content:position!()
-                (opaque_comment_token() / !"*/" [_])* close:position!() "*/" end:position!() { vec![(start,content,close,end)] }
+                outer:executable_comment_start()
+                nested:(opaque_comment_token() { None }
+                    / marker:executable_comment_start() { Some((marker.0,marker.1,marker.1,marker.1)) }
+                    / !"*/" [_] { None })* close:position!() "*/" end:position!() {
+                    let mut spans=vec![(outer.0,outer.1,close,end)];
+                    spans.extend(nested.into_iter().flatten());
+                    spans
+                }
                 / opaque_comment_token() { vec![] }
                 / ((!['\''|'"'|'`'|'/'|'-'|'#'] [_])+ / !"/*!" [_]) { vec![] }
             )* { spans.into_iter().flatten().collect() }
