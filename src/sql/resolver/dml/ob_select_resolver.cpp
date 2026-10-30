@@ -1344,8 +1344,12 @@ int ObSelectResolver::resolve_field_list(rust::Slice<const peg::Node> projection
 
       if (OB_SUCC(ret) && !has_alias) {
         if (sel_expr->is_column_ref_expr()) {
-          if (project_node.kind() == peg::NodeKind::Column && !peg::name_parts(project_node).empty()) {
-            const auto parts = peg::name_parts(project_node);
+          const peg::Node *column = &project_node;
+          while (column->kind() == peg::NodeKind::Parenthesized) {
+            column = &peg::parenthesized_expression(*column);
+          }
+          if (column->kind() == peg::NodeKind::Column && !peg::name_parts(*column).empty()) {
+            const auto parts = peg::name_parts(*column);
             const peg::Node &name = parts[parts.size() - 1];
             const auto name_text = name.text();
             OZ(ob_write_string(*allocator_, ObString(name_text.size(), name_text.data()), select_item.alias_name_));

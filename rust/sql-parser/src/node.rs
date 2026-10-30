@@ -645,6 +645,16 @@ impl Node {
         if !valid_arity {
             return Err("invalid function argument count");
         }
+        if matches!(function.as_str(),
+            "ascii" | "date" | "day" | "year" | "time" | "month" | "quarter"
+                | "second" | "minute" | "microsecond" | "hour" | "timestamp" | "week"
+                | "dump" | "charset" | "collation" | "version" | "user" | "database"
+                | "coalesce" | "repeat" | "row_count" | "reverse" | "right" | "left"
+                | "replace" | "insert" | "truncate" | "format" | "normal" | "password"
+                | "ai" | "model" | "if" | "isnull")
+        {
+            name.text.clone_from(&function);
+        }
         if matches!(function.as_str(), "any" | "some") {
             return Err("quantified comparison");
         }

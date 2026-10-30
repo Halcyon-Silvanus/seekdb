@@ -1732,8 +1732,9 @@ peg::parser! {
                 / kw("list") columns:kw("columns")? { if columns.is_some() { Kind::ListColumnsPartition } else { Kind::ListPartition } })
             "(" _ start:position!() expressions:(enabled(kind==Kind::KeyPartition) names:(ident() ** ("," _)) { names.into_iter().map(Node::name).collect() }
                 / enabled(matches!(kind,Kind::RangeColumnsPartition|Kind::ListColumnsPartition)) names:(ident() ++ ("," _)) { names.into_iter().map(Node::name).collect() }
-                / enabled(matches!(kind,Kind::HashPartition|Kind::RangePartition|Kind::ListPartition)) value:expr(0) { vec![value] }) end:position!() ")" _ {?
+                / enabled(matches!(kind,Kind::HashPartition|Kind::RangePartition|Kind::ListPartition)) value:expr(0) { vec![value] }) ")" _ {?
                 if sub && kind==Kind::KeyPartition && expressions.is_empty() { return Err("subpartition key columns"); }
+                let end=expressions.last().map_or(start,|expression| expression.end);
                 let hash=matches!(kind,Kind::KeyPartition|Kind::HashPartition);
                 let expression=if hash {
                     Node::named_call(if kind==Kind::KeyPartition { Kind::PartitionKeyFunction } else { Kind::PartitionHashFunction },
