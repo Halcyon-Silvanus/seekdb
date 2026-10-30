@@ -1610,8 +1610,8 @@ peg::parser! {
             = kw("not") kw("enforced") { Kind::NotEnforced } / kw("enforced") { Kind::Enforced }
         rule check_constraint() -> Node = name:constraint_name()?
             kw("check") "(" _ start:position!() value:expr(0) end:position!() ")" _
-            state:check_state()? {
-                Node::new(Kind::CheckConstraint,vec![Node::optional(name),value.at(start,end),Node::new(state.unwrap_or(Kind::Enforced),vec![])]).value(1)
+            state:(check_state() / !kw("not") { Kind::Enforced }) {
+                Node::new(Kind::CheckConstraint,vec![Node::optional(name),value.at(start,end),Node::new(state,vec![])]).value(1)
             }
         rule column_definition() -> Node
             = name:column() data_type:serial_type() attributes:column_attribute()* position:column_position()? {
@@ -1850,6 +1850,9 @@ peg::parser! {
             }
         rule alter_action() -> Node
             = kw("add") value:check_constraint() { value }
+            / kw("drop") (kw("check") / kw("constraint")) "(" _ names:(ident() ++ ("," _)) ")" _ {
+                Node::new(Kind::CheckConstraintDrop,names.into_iter().map(Node::name).collect())
+            }
             / kw("drop") kw("check") name:ident() { Node::new(Kind::CheckConstraintDrop,vec![Node::name(name)]) }
             / keyword("alter") hint_slot() check_only:(kw("check") { true } / kw("constraint") { false })
                 name:ident() state:check_state() {
@@ -2435,11 +2438,11 @@ peg::parser! {
         rule routine_parameters(function: bool,row_types: bool) -> Node = "(" start:position!() _ values:(routine_parameter(function,row_types) ** ("," _)) end:position!() ")" _ {
             Node::list(Kind::RoutineParameters,values).at(start,end)
         }
-        rule routine_characteristic() -> Node
+        rule routine_characteristic(alter: bool) -> Node
             = kw("comment") value:string() { value.with_kind(Kind::ColumnComment) }
             / kw("language") kw("sql") { Node::missing() }
-            / kw("not") kw("deterministic") { Node::missing() }
-            / kw("deterministic") { Node::new(Kind::Deterministic,vec![]) }
+            / enabled(!alter) kw("not") kw("deterministic") { Node::missing() }
+            / enabled(!alter) kw("deterministic") { Node::new(Kind::Deterministic,vec![]) }
             / value:(kw("contains") kw("sql") { 0 } / kw("no") kw("sql") { 1 }
                 / kw("reads") kw("sql") kw("data") { 2 } / kw("modifies") kw("sql") kw("data") { 3 }) {
                 Node::new(Kind::DataAccess,vec![]).value(value)
@@ -2448,7 +2451,7 @@ peg::parser! {
         rule routine_definition(internal: bool, level: usize) -> Node = start:position!() function:(kw("procedure") { false } / kw("function") { true })
             absent:if_not_exists()? name:routine_name() params:routine_parameters(function,internal)
             result:(enabled(function) kw("returns") value:routine_data_type() { value })?
-            clauses:routine_characteristic()* body:pl_statement(level) end:position!() {?
+            clauses:routine_characteristic(false)* body:pl_statement(level) end:position!() {?
                 if function && result.is_none() { return Err("function return type"); }
                 let mut children=vec![Node::missing(),name,params];
                 if function { children.push(Node::optional(result)); }
@@ -2478,7 +2481,7 @@ peg::parser! {
             / kw("drop") kind:(kw("procedure") { Kind::DropProcedure } / kw("function") { Kind::DropFunction } / kw("trigger") { Kind::DropTrigger }) exists:if_exists()? name:routine_name() {
                 Node::new(kind,vec![name]).value(u64::from(exists.is_some()))
             }
-            / kw("alter") kind:(kw("procedure") { Kind::AlterProcedure } / kw("function") { Kind::AlterFunction }) name:routine_name() clauses:routine_characteristic()* {
+            / kw("alter") kind:(kw("procedure") { Kind::AlterProcedure } / kw("function") { Kind::AlterFunction }) name:routine_name() clauses:routine_characteristic(true)* {
                 Node::new(kind,vec![name,Node::list(Kind::RoutineClauses,clauses.into_iter().filter(|node| node.kind!=Kind::Missing).collect())])
             }
         rule pl_expression(level: usize) -> Node = value:expr(level) {? value.pl_expression() }

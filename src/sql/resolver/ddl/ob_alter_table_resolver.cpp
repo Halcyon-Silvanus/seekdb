@@ -1479,31 +1479,33 @@ int ObAlterTableResolver::resolve_drop_constraint(const peg::Node &node)
 {
   int ret = OB_SUCCESS;
   ObAlterTableStmt *statement = get_alter_table_stmt();
-  const auto &name = peg::alter_constraint_name(node);
-  const auto name_text = name.text();
-  ObString text(name_text.size(), name_text.data());
-  ObConstraint constraint;
-  auto iter = table_schema_->constraint_begin();
   if (OB_ISNULL(statement)) {
     ret = OB_ERR_UNEXPECTED;
   } else {
-    for (; OB_SUCC(ret) && iter != table_schema_->constraint_end(); ++iter) {
-      if (0 == text.case_compare((*iter)->get_constraint_name_str())) {
-        OZ(constraint.assign(**iter));
-        break;
+    for (const auto &name : peg::alter_constraint_names(node)) {
+      if (OB_FAIL(ret)) break;
+      const auto name_text = name.text();
+      ObString text(name_text.size(), name_text.data());
+      ObConstraint constraint;
+      auto iter = table_schema_->constraint_begin();
+      for (; OB_SUCC(ret) && iter != table_schema_->constraint_end(); ++iter) {
+        if (0 == text.case_compare((*iter)->get_constraint_name_str())) {
+          OZ(constraint.assign(**iter));
+          break;
+        }
       }
-    }
-    if (OB_FAIL(ret)) {
-    } else if (iter == table_schema_->constraint_end()) {
-      if (node.kind() == peg::NodeKind::DropConstraint) {
-        ret = OB_ERR_NONEXISTENT_CONSTRAINT;
-        LOG_USER_ERROR(OB_ERR_NONEXISTENT_CONSTRAINT, text.length(), text.ptr());
+      if (OB_FAIL(ret)) {
+      } else if (iter == table_schema_->constraint_end()) {
+        if (node.kind() == peg::NodeKind::DropConstraint) {
+          ret = OB_ERR_NONEXISTENT_CONSTRAINT;
+          LOG_USER_ERROR(OB_ERR_NONEXISTENT_CONSTRAINT, text.length(), text.ptr());
+        } else {
+          ret = OB_ERR_CHECK_CONSTRAINT_NOT_FOUND;
+          LOG_USER_ERROR(OB_ERR_CHECK_CONSTRAINT_NOT_FOUND, text.length(), text.ptr());
+        }
       } else {
-        ret = OB_ERR_CHECK_CONSTRAINT_NOT_FOUND;
-        LOG_USER_ERROR(OB_ERR_CHECK_CONSTRAINT_NOT_FOUND, text.length(), text.ptr());
+        OZ(statement->get_alter_table_arg().alter_table_schema_.add_constraint(constraint));
       }
-    } else {
-      OZ(statement->get_alter_table_arg().alter_table_schema_.add_constraint(constraint));
     }
   }
   return ret;

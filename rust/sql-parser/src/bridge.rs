@@ -2167,6 +2167,7 @@ pub(crate) mod ffi {
         fn alter_column_has_default(node: &Node) -> bool;
         fn alter_column_default(node: &Node) -> &Node;
         fn alter_column_drop_behavior(node: &Node) -> DropBehavior;
+        fn alter_constraint_names(node: &Node) -> &[Node];
         fn alter_constraint_name(node: &Node) -> &Node;
         fn alter_constraint_check_only(node: &Node) -> bool;
         fn alter_constraint_enforced(node: &Node) -> bool;
@@ -2757,7 +2758,7 @@ use crate::inspect::embedded_sql_references;
 use crate::ddl::{
     alter_charset_collation, alter_charset_has_collation, alter_charset_name, alter_column_default,
     alter_column_definitions, alter_column_storage, alter_column_drop_behavior, alter_column_has_default,
-    alter_column_name, alter_column_new_name, alter_constraint_name, alter_constraint_check_only,
+    alter_column_name, alter_column_new_name, alter_constraint_names, alter_constraint_name, alter_constraint_check_only,
     alter_constraint_enforced, alter_partition_additions, alter_subpartition_addition,
     alter_partition_definition, alter_partition_exchange_name, alter_partition_exchange_table,
     alter_partition_names, alter_table_actions, alter_table_relation, alter_table_renamed_relation,

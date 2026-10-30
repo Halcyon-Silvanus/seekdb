@@ -261,8 +261,13 @@ impl Column {
         let mut data_type = self.data_type;
         data_type.children.extend(self.tail.collation);
         let mut children = vec![self.name, data_type];
-        if !self.tail.attributes.is_empty() {
-            children.push(Node::new(Kind::ColumnAttributes, self.tail.attributes));
+        let last_default = self.tail.attributes.iter().rposition(|attr| attr.kind == Kind::ColumnDefault);
+        let attributes: Vec<_> = self.tail.attributes.into_iter().enumerate()
+            .filter_map(|(index, attr)| {
+                (attr.kind != Kind::ColumnDefault || Some(index) == last_default).then_some(attr)
+            }).collect();
+        if !attributes.is_empty() {
+            children.push(Node::new(Kind::ColumnAttributes, attributes));
         }
         if let Some(generation) = self.tail.generation {
             children.push(Node::new(
@@ -751,6 +756,9 @@ pub(crate) fn alter_column_drop_behavior(node: &Node) -> DropBehavior {
         2 => DropBehavior::Cascade,
         _ => unreachable!(),
     }
+}
+pub(crate) fn alter_constraint_names(node: &Node) -> &[Node] {
+    &node.children
 }
 pub(crate) fn alter_constraint_name(node: &Node) -> &Node {
     &node.children[0]
