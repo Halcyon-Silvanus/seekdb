@@ -122,7 +122,9 @@ fn compress(
         }
     };
     let mut suffix_parameters = 0;
+    let mut suffix_end = sql.len();
     if !constructor {
+        suffix_end = last_end;
         match suffix {
             Some(token) if token.is(b"on") => {
                 for word in [b"duplicate".as_slice(), b"key", b"update"] {
@@ -138,6 +140,7 @@ fn compress(
                     } else if finished || token.text.starts_with(b"/*!") {
                         return None;
                     } else {
+                        suffix_end = token.end;
                         has_assignment = true;
                         if token.is(b"?") {
                             suffix_parameters += 1;
@@ -162,7 +165,7 @@ fn compress(
     }
     let mut output = Vec::with_capacity(sql.len() - (last_end - first.end));
     output.extend_from_slice(&sql[..first.end]);
-    output.extend_from_slice(&sql[last_end..]);
+    output.extend_from_slice(&sql[last_end..suffix_end]);
     Some(BatchCompression {
         eligible: true,
         recognized_rows: true,
