@@ -103,8 +103,14 @@ pub(crate) fn embedded_sql_references(statement: &Node) -> Vec<bridge::ffi::SqlR
             }
             return;
         }
-        for child in &node.children {
-            visit(child, references);
+        let column_argument = node.kind == Kind::DefaultValue
+            || node.kind == Kind::Function
+                && crate::expression::call_qualifiers(node).is_empty()
+                && crate::expression::call_name(node).eq_ignore_ascii_case("values");
+        if !column_argument {
+            for child in &node.children {
+                visit(child, references);
+            }
         }
         let kind = match node.kind {
             Kind::Parameter => Role::Parameter,
