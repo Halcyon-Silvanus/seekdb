@@ -748,7 +748,7 @@ peg::parser! {
         rule simple_expr(level: usize) -> Node = left:unary(level)
             rest:(enabled(mode.pipes_as_concat) "||" _ right:unary(level) { ("concat".into(),right) })* {? chain(left,rest) }
         rule comparison_tail(level: usize) -> Tail
-            = op:$("<=>" / "<=" / ">=" / "<>" / "!=" / "=" / "<" / ">") _
+            = op:(enabled(pl) "==" { "=" } / value:$("<=>" / "<=" / ">=" / "<>" / "!=" / "=" / "<" / ">") { value }) _
                 tail:(enabled(op!="<=>") start:position!() kind:(kw("all") { Kind::All } / (kw("any") / kw("some")) { Kind::Any })
                     "(" _ query:select(level+1) ")" end:position!() _ {?
                         Node::new(kind,vec![query]).expression(start,end).map(|right| Tail::Compare(op.into(),right))
