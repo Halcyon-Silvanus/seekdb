@@ -8871,11 +8871,11 @@ int ObDMLResolver::resolve_values_table_for_select(const peg::Node &table_node,
     int64_t column_cnt = 0;
     for (int64_t i = 0; OB_SUCC(ret) && i < rows.size(); i++) {
       const auto values = peg::row_elements(rows[i]);
-      if (row_alias && values.size() != upper_insert_resolver_->get_insert_stmt()->get_values_desc().count()) {
+      if (values.empty()) {
+        ret = OB_ERR_VALUES_CLAUSE_NEED_HAVE_COLUMN;
+      } else if (row_alias && values.size() != upper_insert_resolver_->get_insert_stmt()->get_values_desc().count()) {
         ret = OB_ERR_COULUMN_VALUE_NOT_MATCH;
         LOG_USER_ERROR(OB_ERR_COULUMN_VALUE_NOT_MATCH, i + 1);
-      } else if (values.empty()) {
-        ret = OB_ERR_VALUES_CLAUSE_NEED_HAVE_COLUMN;
       } else if (values.size() > common::OB_USER_ROW_MAX_COLUMNS_COUNT) {
         ret = OB_ERR_TOO_MANY_COLUMNS;
       } else {

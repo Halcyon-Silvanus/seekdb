@@ -456,6 +456,25 @@ int ObPLResolver::resolve(const peg::Node *parse_tree, ObPLFunctionAST &func)
         ret = OB_ER_SP_NO_RECURSIVE_CREATE;
         LOG_USER_ERROR(OB_ER_SP_NO_RECURSIVE_CREATE);
         break;
+      case peg::NodeKind::AlterFunction:
+      case peg::NodeKind::DropFunction:
+        ret = OB_ERR_SP_NO_DROP_SP;
+        LOG_USER_ERROR(OB_ERR_SP_NO_DROP_SP, "FUNCTION");
+        break;
+      case peg::NodeKind::AlterProcedure:
+      case peg::NodeKind::DropProcedure:
+        ret = OB_ERR_SP_NO_DROP_SP;
+        LOG_USER_ERROR(OB_ERR_SP_NO_DROP_SP, "PROCEDURE");
+        break;
+      case peg::NodeKind::CreateTrigger:
+      case peg::NodeKind::DropTrigger:
+        if (resolve_ctx_.session_info_.is_for_trigger_package() || func.is_function()) {
+          ret = OB_ER_COMMIT_NOT_ALLOWED_IN_SF_OR_TRG;
+        } else {
+          ret = OB_NOT_SUPPORTED;
+          LOG_USER_ERROR(OB_NOT_SUPPORTED, "trigger DDL in stored routines");
+        }
+        break;
       default:
         ret = OB_NOT_SUPPORTED;
         LOG_USER_ERROR(OB_NOT_SUPPORTED, "statement in routine");

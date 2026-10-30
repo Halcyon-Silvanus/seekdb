@@ -1319,6 +1319,9 @@ peg::parser! {
                 query.projection=vec![projection];query.from=vec![Node::new(Kind::Table,vec![values])];query
             }
         rule column() -> Node = start:position!() names:name() {? let end = names.last().unwrap().end; Node::column(names, false, start, end) }
+        rule insert_column() -> Node = start:position!() names:name() wildcard:("." _ "*" end:position!() _ { end })? {?
+            let end = wildcard.unwrap_or_else(|| names.last().unwrap().end); Node::column(names, wildcard.is_some(), start, end)
+        }
         rule expr_or_default() -> Node = kw("default") !"(" { Node::new(Kind::Default, vec![]) } / expr(0)
         rule assignment() -> Node = column:column() "=" _ value:expr_or_default() { Node::new(Kind::Assignment, vec![column, value]) }
         rule assignments() -> Vec<Node> = values:(assignment() ++ ("," _)) { values }
@@ -1327,7 +1330,7 @@ peg::parser! {
         }
         rule insert() -> Node = replace:(keyword("insert") { false } / keyword("replace") { true }) hints:hint_slot()
             (kw("low_priority") / kw("high_priority"))? ignore:kw("ignore")? kw("into")? table:relation_name() partition:use_partition()?
-            columns:("(" _ columns:(column() ** ("," _)) ")" _ { columns })?
+            columns:("(" _ columns:(insert_column() ** ("," _)) ")" _ { columns })?
             values:((kw("values") / kw("value")) rows:(row() ++ ("," _)) { Node::new(Kind::ValueList, rows) }
                 / kw("set") values:assignments() { Node::new(Kind::AssignList, values) }
                 / select(0))
@@ -2410,10 +2413,10 @@ peg::parser! {
                 Node::new(Kind::DataAccess,vec![]).value(value)
             }
             / kw("sql") kw("security") value:(kw("definer") { 0 } / kw("invoker") { 2 }) { Node::new(Kind::InvokeRights,vec![]).value(value) }
-        rule routine_definition(internal: bool) -> Node = start:position!() function:(kw("procedure") { false } / kw("function") { true })
+        rule routine_definition(internal: bool, level: usize) -> Node = start:position!() function:(kw("procedure") { false } / kw("function") { true })
             absent:if_not_exists()? name:routine_name() params:routine_parameters(function,internal)
             result:(enabled(function) kw("returns") value:routine_data_type() { value })?
-            clauses:routine_characteristic()* body:pl_statement(0) end:position!() {?
+            clauses:routine_characteristic()* body:pl_statement(level) end:position!() {?
                 if function && result.is_none() { return Err("function return type"); }
                 let mut children=vec![Node::missing(),name,params];
                 if function { children.push(Node::optional(result)); }
@@ -2421,23 +2424,23 @@ peg::parser! {
                 children.push(body);
                 Ok(Node::new(if function { Kind::CreateFunction } else { Kind::CreateProcedure },children).value(u64::from(absent.is_some())).at(start,end))
             }
-        rule trigger_source() -> Node = start:position!() kw("trigger") absent:if_not_exists()? name:routine_name()
+        rule trigger_source(level: usize) -> Node = start:position!() kw("trigger") absent:if_not_exists()? name:routine_name()
             after:(kw("before") { false } / kw("after") { true })
             event:(kw("insert") { Kind::Insert } / kw("update") { Kind::Update } / kw("delete") { Kind::Delete })
             kw("on") table:routine_name() kw("for") kw("each") kw("row")
             order:(value:(kw("follows") { 1 } / kw("precedes") { 2 }) name:routine_name() { Node::new(Kind::TriggerOrder,vec![name]).value(value) })?
-            body:pl_statement(0) end:position!() {
+            body:pl_statement(level) end:position!() {
                 Node::new(Kind::TriggerSource,vec![name,Node::new(Kind::TriggerDefinition,
                     vec![Node::new(event,vec![]),table,Node::optional(order),body]).value(u64::from(after)).at(start,end)])
                     .value(u64::from(absent.is_some()))
             }
-        pub rule trigger() -> Node = _ value:trigger_source() (";" _)* { value }
-        rule routine_statement() -> Node
+        pub rule trigger() -> Node = _ value:trigger_source(0) (";" _)* { value }
+        rule routine_statement(level: usize) -> Node
             = kw("create") definer:(kw("definer") "=" _ value:(kw("current_user") ("(" _ ")" _)? {
                 Node::new(Kind::UserHost,vec![Node::new(Kind::Ident,vec![]).text("CURRENT_USER".into()),Node::missing()])
             } / name:account_name() start:position!() "@%" end:position!() _ {
                 Node::new(Kind::UserHost,vec![name,Node::new(Kind::UserVariable,vec![]).text("%".into()).at(start,end)])
-            } / account()) { value })? mut_value:(routine_definition(false) / source:trigger_source() { Node::new(Kind::CreateTrigger,vec![Node::missing(),source]) }) {
+            } / account()) { value })? mut_value:(routine_definition(false,level) / source:trigger_source(level) { Node::new(Kind::CreateTrigger,vec![Node::missing(),source]) }) {
                 let mut value=mut_value;value.children[0]=Node::optional(definer);value
             }
             / kw("drop") kind:(kw("procedure") { Kind::DropProcedure } / kw("function") { Kind::DropFunction } / kw("trigger") { Kind::DropTrigger }) exists:if_exists()? name:routine_name() {
@@ -2549,11 +2552,11 @@ peg::parser! {
             / kw("fetch") (kw("next") kw("from") / kw("from"))? name:pl_ident() kw("into") variables:((value:pl_expression(level+1) {? crate::routine::cursor_fetch_target(value) }) ++ ("," _)) {
                 Node::new(Kind::PlFetch,vec![Node::name(name),Node::new(Kind::IntoVariables,vec![Node::new(Kind::PlInto,variables)])])
             }
-            / pl_call() / pl_signal() / pl_do(level+1) / pl_setting(level+1)
+            / routine_statement(level+1) / pl_call() / pl_signal() / pl_do(level+1) / pl_setting(level+1)
             / !kw("begin") statement:sql_statement() { Node::new(Kind::PlSql,vec![statement]) }
         ) end:position!() { value.at(start,end) }
-        pub rule routine_body() -> Node = _ value:(anonymous_statement() / package_block() / kw("create") value:routine_definition(true) { value }
-            / value:routine_definition(true) { value.into_children().into_iter().last().unwrap() } / pl_statement(0)) (";" _)* { value }
+        pub rule routine_body() -> Node = _ value:(anonymous_statement() / package_block() / kw("create") value:routine_definition(true,0) { value }
+            / value:routine_definition(true,0) { value.into_children().into_iter().last().unwrap() } / pl_statement(0)) (";" _)* { value }
         rule prepared_statement() -> Node
             = kw("prepare") name:ident() kw("from") source:(string() / user_variable()) {
                 Node::new(Kind::Prepare,vec![source]).text(name.text)
@@ -2674,7 +2677,7 @@ peg::parser! {
                 }.into_node())
             }
         rule sql_statement() -> Node = select(0) / insert() / update() / delete() / transaction() / ddl() / account_statement() / role_statement() / setting() / explain() / show() / alter_system() / prepared_statement() / diagnostics() / analyze() / lock_tables() / load_data() / kill() / purge() / restore_table() / restore_database()
-        rule statement() -> Node = _ value:(package_statement() / routine_statement() / pl_call() / anonymous_statement() / sql_statement()) { value }
+        rule statement() -> Node = _ value:(package_statement() / routine_statement(0) / pl_call() / anonymous_statement() / sql_statement()) { value }
         #[no_eof]
         pub rule statement_end() -> usize = (statement() / _) (";" / ![_]) end:position!() { end }
         pub rule query() -> Node = value:(
