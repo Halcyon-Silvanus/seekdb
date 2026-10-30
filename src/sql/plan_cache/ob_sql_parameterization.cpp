@@ -242,6 +242,7 @@ int ObSqlParameterization::transform_syntax_tree(ObIAllocator &allocator,
       for (const auto &name : result.user_variables) {
         ObString copied;
         OZ (ob_write_string(allocator, ObString(name.size(), name.data()), copied));
+        if (OB_SUCC(ret)) ObCharset::casedn(CS_TYPE_UTF8MB4_GENERAL_CI, copied);
         OZ (user_variables->push_back(copied));
       }
     }
