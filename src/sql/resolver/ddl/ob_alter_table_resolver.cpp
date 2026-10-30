@@ -1229,7 +1229,7 @@ int ObAlterTableResolver::inner_add_partition(rust::Slice<const peg::Node> eleme
     ret = OB_ERR_UNEXPECTED;
   } else if (part_option.is_range_part()) {
     if (elements[0].kind() == peg::NodeKind::ListPartitionElement) {
-      ret = OB_ERR_PARTITION_EXPECT_VALUES_LESS_THAN;
+      ret = OB_ERR_PARSER_SYNTAX;
     } else if (OB_FAIL(resolve_range_partition_elements(alter_stmt,
                                                         elements,
                                                         alter_table_schema,

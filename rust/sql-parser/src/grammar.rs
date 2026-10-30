@@ -1753,7 +1753,7 @@ peg::parser! {
             / sub:subpartition_option() count:partition_count()? { (count,Some(sub)) }
             / { (None,None) }
         rule partition_option() -> Node = kw("partition") kw("by") header:partition_header(false) options:partition_options()
-            elements:partition_elements(header.kind,Some(options.1.as_ref().map_or(Kind::Missing,|sub| sub.kind)))? {?
+            elements:partition_elements(header.kind,options.1.as_ref().map(|sub| sub.kind))? {?
                 if matches!(header.kind,Kind::ListPartition|Kind::ListColumnsPartition) && elements.is_none() { return Err("list partitions"); }
                 let partition=ddl::Partition { count:options.0, subpartition:options.1, elements, ..header };
                 Ok(Node::new(Kind::PartitionOption,vec![partition.into_node()]))
