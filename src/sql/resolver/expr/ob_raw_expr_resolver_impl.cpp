@@ -75,6 +75,7 @@ ObItemType callable_expression_type(peg::NodeKind kind)
     case peg::NodeKind::Min: return T_FUN_MIN;
     case peg::NodeKind::Max: return T_FUN_MAX;
     case peg::NodeKind::Avg: return T_FUN_AVG;
+    case peg::NodeKind::PercentileCont: return T_FUN_GROUP_PERCENTILE_CONT;
     case peg::NodeKind::Grouping: return T_FUN_GROUPING;
     case peg::NodeKind::JsonArrayAgg: return T_FUN_JSON_ARRAYAGG;
     case peg::NodeKind::JsonObjectAgg: return T_FUN_JSON_OBJECTAGG;
@@ -506,6 +507,7 @@ int ObRawExprResolverImpl::do_recursive_resolve(const peg::Node &node,
       case peg::NodeKind::Min:
       case peg::NodeKind::Max:
       case peg::NodeKind::Avg:
+      case peg::NodeKind::PercentileCont:
       case peg::NodeKind::Grouping:
       case peg::NodeKind::JsonArrayAgg:
       case peg::NodeKind::JsonObjectAgg:
@@ -2487,12 +2489,18 @@ int ObRawExprResolverImpl::process_agg_node(const peg::Node &node, ObRawExpr *&e
       }
     }
     OZ(aggregate->add_real_param_expr(value));
+    if (OB_SUCC(ret) && type == T_FUN_GROUP_PERCENTILE_CONT && aggregate->get_real_param_count() > 1) {
+      ret = OB_ERR_PARAM_SIZE;
+    }
     if (OB_SUCC(ret) && i == 0 && (type == T_FUN_HYBRID_HIST || type == T_FUN_JSON_OBJECTAGG)) {
       OrderItem order;
       order.expr_ = value;
       order.order_type_ = NULLS_FIRST_ASC;
       OZ(aggregate->add_order_item(order));
     }
+  }
+  if (OB_SUCC(ret) && type == T_FUN_GROUP_PERCENTILE_CONT && distinct) {
+    ret = OB_DISTINCT_NOT_ALLOWED;
   }
   if (OB_SUCC(ret) && peg::aggregate_has_separator(node)) {
     ObRawExpr *separator = nullptr;
@@ -2932,6 +2940,9 @@ int ObRawExprResolverImpl::process_fun_sys_node(const peg::Node &node,
   if (mark_values) OZ(ctx_.parents_expr_info_.add_member(IS_VALUES));
   for (const auto &argument : arguments) {
     ObRawExpr *value = nullptr;
+    if (OB_SUCC(ret) && argument.kind() == peg::NodeKind::AliasedArgument) {
+      ret = OB_ERR_FUNCTION_UNKNOWN;
+    }
     OZ(SMART_CALL(recursive_resolve(argument, value)));
     OZ(function->add_param_expr(value));
   }

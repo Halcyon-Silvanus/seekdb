@@ -114,6 +114,8 @@ pub(crate) mod ffi {
         VectorParameter,
         CallName,
         CallArguments,
+        AliasedArgument,
+        PercentileCont,
 
         Select,
         WithClause,

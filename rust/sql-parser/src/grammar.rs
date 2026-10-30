@@ -483,7 +483,7 @@ peg::parser! {
             / depth(level) start:position!() !(['x'|'X'] "'" hex_digit()* "'") parts:expression_name() tail:("." _ "*" end:position!() _ { (None, end) }
                 / enabled(parts.len()!=1 || parts[0].quoted || !["row","match","point","json_query","json_value","trim","position","weight_string","char","character","array","map","array_agg",
                     "array_map","array_filter","array_first","array_sortby","vector_distance","vector_similarity","group_concat","listagg","get_format"].iter().any(|name| parts[0].text.eq_ignore_ascii_case(name)))
-                    "(" _ modifier:((kw("distinct") / kw("unique")) { Kind::Distinct } / kw("all") { Kind::All })? args:expr_list(level+1)? ")" close:position!() _
+                    "(" _ modifier:((kw("distinct") / kw("unique")) { Kind::Distinct } / kw("all") { Kind::All })? args:(function_argument(level+1) ++ ("," _))? ")" close:position!() _
                     window:(kw("over") value:window(level+1) { value })? followed_by_over:(&kw("over") { true } / { false })
                     { let end=window.as_ref().map_or(close,|value| value.end); (Some((modifier, args.unwrap_or_default(),window,followed_by_over)), end) })?
                 {? match tail {
@@ -498,6 +498,13 @@ peg::parser! {
                 } }
             / enabled(pl) depth(level) start:position!() text:$(keyword("force") / keyword("cascade")) end:position!() _ {?
                 Node::column(vec![Name { text:text.to_owned(),quoted:false,start,end }],false,start,end)
+            }
+        rule function_argument(level: usize) -> Node = value:expr(level)
+            alias:(enabled(!value.is_wildcard()) kw("as")? label:(name:ident() { Node::name(name) } / string()) { label })? {
+                match alias {
+                    Some(alias) => { let (start,end)=(value.start,alias.end); Node::new(Kind::AliasedArgument,vec![value,alias]).at(start,end) },
+                    None => value,
+                }
             }
         rule lambda(level: usize) -> Node = parameters:(name:ident() { vec![name] }
                 / "(" _ names:(ident() ++ ("," _)) ")" _ { names }) "->" _ value:expr(level) {

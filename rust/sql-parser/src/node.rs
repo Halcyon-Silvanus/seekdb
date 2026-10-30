@@ -655,8 +655,8 @@ impl Node {
         {
             name.text.clone_from(&function);
         }
-        if matches!(function.as_str(), "any" | "some") {
-            return Err("quantified comparison");
+        if matches!(function.as_str(), "any" | "some" | "value" | "unknown") {
+            return Err("function name");
         }
         if function == "cast" && (arguments.len() != 2 || arguments[1].kind != Kind::CastType) {
             return Err("CAST requires an expression and AS type");
@@ -682,8 +682,9 @@ impl Node {
         ) {
             return Err("date function syntax");
         }
+        let aliased = arguments.iter().any(|argument| argument.kind == Kind::AliasedArgument);
         if function == "mod" {
-            if window.is_some() || modifier.is_some() || arguments.len() != 2 {
+            if window.is_some() || modifier.is_some() || arguments.len() != 2 || aliased {
                 return Err("MOD requires two arguments");
             }
             return Self::binary_operands("mod".into(), arguments)
@@ -701,6 +702,7 @@ impl Node {
         if let Some(kind) = geometry {
             if modifier.is_some()
                 || window.is_some()
+                || aliased
                 || (kind != Kind::GeometryCollection && arguments.is_empty())
             {
                 return Err("geometry constructor arguments");
@@ -730,6 +732,7 @@ impl Node {
             "min" => Kind::Min,
             "max" => Kind::Max,
             "avg" => Kind::Avg,
+            "percentile_cont" => Kind::PercentileCont,
             "grouping" => Kind::Grouping,
             "json_arrayagg" => Kind::JsonArrayAgg,
             "json_objectagg" => Kind::JsonObjectAgg,
@@ -766,6 +769,14 @@ impl Node {
             "current_user" => Kind::CurrentUser,
             _ => Kind::Function,
         };
+        if aliased
+            && (kind != Kind::Function || matches!(function.as_str(),
+                "ascii" | "date" | "day" | "year" | "time" | "month" | "quarter"
+                    | "second" | "minute" | "microsecond" | "hour" | "timestamp" | "week"
+                    | "ln" | "log"))
+        {
+            return Err("argument aliases require a generic function call");
+        }
         if matches!(function.as_str(), "substr" | "substring") {
             name.text = "substr".into();
         } else if function == "schema" {
@@ -802,6 +813,18 @@ impl Node {
                 Kind::CurrentTime => "current_time",
                 _ => function.as_str(),
             }.into();
+        }
+        if kind == Kind::PercentileCont {
+            if arguments.len() < 2 || window.is_some() || arguments.iter().any(Self::is_wildcard) {
+                return Err("PERCENTILE_CONT requires a value and percentile");
+            }
+            let value = arguments.remove(0);
+            let order = Self::new(Kind::Order, vec![Self::new(Kind::SortKey,
+                vec![value, Self::new(Kind::Asc, vec![])])]);
+            let mut call = Self::named_call(kind, Self::name(name), arguments);
+            call.children.push(order);
+            call.children.extend(modifier.map(|kind| Self::new(kind, vec![])));
+            return call.expression(start, end);
         }
         let approximate = matches!(
             kind,
