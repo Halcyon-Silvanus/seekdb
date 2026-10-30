@@ -8595,6 +8595,7 @@ int ObDMLResolver::resolve_cte_table(const peg::Node &table,
     table_item->type_ = TableItem::TEMP_TABLE;
     table_item->ref_query_ = definition->ref_query_;
     table_item->cte_type_ = definition->cte_type_;
+    table_item->has_cte_column_aliases_ = definition->has_cte_column_aliases_;
     OZ(statement->add_table_item(session_info_, table_item));
   }
   return ret;
@@ -8733,6 +8734,7 @@ int ObDMLResolver::resolve_with_clause_subquery(const peg::Node &parse_tree, Tab
       item->type_ = TableItem::GENERATED_TABLE;
       item->cte_type_ = ref_stmt->is_recursive_union() ?
          TableItem::RECURSIVE_CTE : TableItem::NORMAL_CTE;
+      item->has_cte_column_aliases_ = !columns.empty();
       table_item = item;
     }
   }

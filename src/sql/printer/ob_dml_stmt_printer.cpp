@@ -1244,7 +1244,7 @@ int ObDMLStmtPrinter::print_cte_define_title(TableItem* cte_table)
   } else {
     PRINT_TABLE_NAME(print_params_, cte_table);
   }
-  if (OB_SUCC(ret)) {
+  if (OB_SUCC(ret) && cte_table->has_cte_column_aliases_) {
     DATA_PRINTF("(");
     const ObIArray<SelectItem> &sub_select_items = sub_select_stmt->get_select_items();
     // Print column

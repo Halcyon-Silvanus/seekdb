@@ -140,6 +140,7 @@ struct TableItem
     is_system_table_ = true;
     is_recursive_union_fake_table_ = false;
     cte_type_ = CTEType::NOT_CTE;
+    has_cte_column_aliases_ = false;
     type_ = BASE_TABLE;
     is_view_table_ = false;
     for_update_ = false;
@@ -171,7 +172,7 @@ struct TableItem
                "view_base_item",
                (NULL == view_base_item_ ? OB_INVALID_ID : view_base_item_->table_id_),
                K_(ddl_schema_version), K_(ddl_table_id),
-               K_(is_view_table), K_(part_ids), K_(part_names), K_(cte_type),
+               K_(is_view_table), K_(part_ids), K_(part_names), K_(cte_type), K_(has_cte_column_aliases),
                KPC_(function_table_expr),
                K_(snapshot_query_type), KPC_(snapshot_query_expr), K_(table_type),
                K_(exec_params), KPC_(sample_info));
@@ -281,6 +282,7 @@ struct TableItem
   bool is_recursive_union_fake_table_; //mark whether this table is a tmp fake table for resolve the recursive cte table
   share::schema::ObTableType table_type_;
   CTEType cte_type_;
+  bool has_cte_column_aliases_;
   common::ObString database_name_;
   /* FOR UPDATE clause */
   bool for_update_;
