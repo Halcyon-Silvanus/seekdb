@@ -2641,6 +2641,9 @@ int ObRawExprResolverImpl::process_call_param_node(const peg::Node &node, ObRawE
   ObCallParamRawExpr *result = nullptr;
   ObRawExpr *value = nullptr;
   const auto &identifier = peg::named_argument_name(node);
+  if (identifier.kind() != peg::NodeKind::Ident) {
+    ret = OB_ERR_CALL_WRONG_ARG;
+  }
   ObString name;
   const auto identifier_text = identifier.text();
   OZ(ob_write_string(ctx_.expr_factory_.get_allocator(), ObString(identifier_text.size(), identifier_text.data()), name));
@@ -3064,6 +3067,9 @@ int ObRawExprResolverImpl::resolve_stored_function(const peg::Node &call, ObUDFI
       if (argument.kind() == peg::NodeKind::PlNamedArgument) {
         named = true;
         const auto &identifier = peg::named_argument_name(argument);
+        if (identifier.kind() != peg::NodeKind::Ident) {
+          ret = OB_ERR_CALL_WRONG_ARG;
+        }
         ObString parameter_name;
         const auto identifier_text = identifier.text();
         OZ(ob_write_string(ctx_.expr_factory_.get_allocator(), ObString(identifier_text.size(), identifier_text.data()), parameter_name));

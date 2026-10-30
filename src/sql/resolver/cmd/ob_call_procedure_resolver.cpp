@@ -145,18 +145,13 @@ int ObCallProcedureResolver::resolve_cparam_with_assign(const peg::Node *argumen
   CK (OB_NOT_NULL(argument), OB_NOT_NULL(routine_info));
   if (OB_SUCC(ret)) {
     const peg::Node &name = peg::named_argument_name(*argument);
-    const peg::Node *identifier = nullptr;
-    if (name.kind() == peg::NodeKind::Ident) {
-      identifier = &name;
-    } else if (name.kind() == peg::NodeKind::Column && peg::name_parts(name).size() == 1) {
-      identifier = &peg::name_parts(name)[0];
-    } else {
+    if (name.kind() != peg::NodeKind::Ident) {
       ret = OB_ERR_CALL_WRONG_ARG;
       LOG_USER_ERROR(OB_ERR_CALL_WRONG_ARG, routine_info->get_routine_name().length(),
                      routine_info->get_routine_name().ptr());
     }
     if (OB_SUCC(ret)) {
-      const auto identifier_text = identifier->text();
+      const auto identifier_text = name.text();
       ObString parameter_name(identifier_text.size(), identifier_text.data());
       int64_t position = -1;
       OZ (routine_info->find_param_by_name(parameter_name, position));

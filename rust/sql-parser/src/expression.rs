@@ -525,7 +525,11 @@ pub(crate) fn named_argument_name(argument: &Node) -> &Node {
     while name.kind == Kind::Parenthesized {
         name = parenthesized_expression(name);
     }
-    name
+    if name.kind == Kind::Column && !name.is_wildcard() && name.children.len() == 1 {
+        &name.children[0]
+    } else {
+        name
+    }
 }
 pub(crate) fn named_argument_value(argument: &Node) -> &Node {
     &argument.children[1]
