@@ -1748,7 +1748,10 @@ peg::parser! {
             / kw("drop") kw("column")? name:column() behavior:(kw("cascade") { 2 } / kw("restrict") { 1 })? { Node::new(Kind::ColumnDrop,vec![name]).value(behavior.unwrap_or(0)) }
             / kw("modify") kw("column")? value:column_definition() { Node::new(Kind::ColumnModify,vec![value]) }
             / kw("change") kw("column")? name:column() value:column_definition() { Node::new(Kind::ColumnChange,vec![name,value]) }
-            / kw("rename") kw("column") from:column() kw("to") to:ident() { Node::new(Kind::ColumnRename,vec![from,Node::name(to)]) }
+            / kw("rename") kw("column") from:ident() kw("to") to:ident() {?
+                let (start,end)=(from.start,from.end);
+                Ok(Node::new(Kind::ColumnRename,vec![Node::column(vec![from],false,start,end)?,Node::name(to)]))
+            }
             / kw("alter") kw("column")? name:column() value:(kw("set") kw("default") value:column_default_value(false) { Node::new(Kind::ColumnDefault,vec![value]) }
                 / kw("drop") kw("default") { Node::new(Kind::Nullable,vec![]) }) { Node::new(Kind::ColumnAlter,vec![name,value]) }
         rule alter_key_definition() -> Node
