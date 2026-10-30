@@ -200,6 +200,41 @@ bool valid_encoded_password(const ObString &password)
 
 namespace
 {
+template <typename Statement>
+int resolve_tls(const peg::TlsRequirement &requirement, Statement &statement)
+{
+  int ret = OB_SUCCESS;
+  ObSSLType type = ObSSLType::SSL_TYPE_NOT_SPECIFIED;
+  switch (requirement.mode) {
+    case peg::TlsMode::Absent: break;
+    case peg::TlsMode::None: type = ObSSLType::SSL_TYPE_NONE; break;
+    case peg::TlsMode::Ssl: type = ObSSLType::SSL_TYPE_ANY; break;
+    case peg::TlsMode::X509: type = ObSSLType::SSL_TYPE_X509; break;
+    case peg::TlsMode::Specified: type = ObSSLType::SSL_TYPE_SPECIFIED; break;
+  }
+  ObString values[3];
+  bool seen[3] = {};
+  for (const auto &option : requirement.options) {
+    if (OB_FAIL(ret)) break;
+    ObSSLSpecifiedType field = ObSSLSpecifiedType::SSL_SPEC_TYPE_CIPHER;
+    switch (option.field) {
+      case peg::TlsField::Cipher: field = ObSSLSpecifiedType::SSL_SPEC_TYPE_CIPHER; break;
+      case peg::TlsField::Issuer: field = ObSSLSpecifiedType::SSL_SPEC_TYPE_ISSUER; break;
+      case peg::TlsField::Subject: field = ObSSLSpecifiedType::SSL_SPEC_TYPE_SUBJECT; break;
+    }
+    const int index = static_cast<int>(field);
+    if (seen[index]) {
+      ret = OB_ERR_DUP_ARGUMENT;
+      LOG_USER_ERROR(OB_ERR_DUP_ARGUMENT, get_ssl_spec_type_str(field));
+    } else {
+      seen[index] = true;
+      values[index].assign_ptr(option.value.data(), option.value.size());
+    }
+  }
+  OZ (statement.add_ssl_info(get_ssl_type_string(type), values[0], values[1], values[2]));
+  return ret;
+}
+
 int resolve_create_user(const peg::Node &node, ObResolverParams &params, ObStmt *&stmt)
 {
   int ret = OB_SUCCESS;
@@ -245,7 +280,7 @@ int resolve_create_user(const peg::Node &node, ObResolverParams &params, ObStmt 
         }
       }
     }
-    OZ (created->add_ssl_info(get_ssl_type_string(ObSSLType::SSL_TYPE_NOT_SPECIFIED), {}, {}, {}));
+    OZ (resolve_tls(peg::account_tls(node), *created));
   }
   if (OB_SUCC(ret)) { stmt = created; }
   return ret;
@@ -332,6 +367,8 @@ int resolve_password(const peg::Node &node, ObResolverParams &params, ObStmt *&s
     const auto &account = peg::access_accounts(node)[0];
     const auto limits = peg::account_limits(node);
     const bool modifying_limits = limits.has_connections_per_hour || limits.has_user_connections;
+    const auto tls = peg::account_tls(node);
+    const bool modifying_tls = tls.mode != peg::TlsMode::Absent;
     ObString name;
     ObString host;
     ObString password;
@@ -347,7 +384,7 @@ int resolve_password(const peg::Node &node, ObResolverParams &params, ObStmt *&s
       if (OB_ISNULL(current_user)) {
         ret = OB_ERR_UNEXPECTED;
       } else {
-        changed->set_for_current_user(!modifying_limits && name == current_user->get_user_name_str()
+        changed->set_for_current_user(!modifying_limits && !modifying_tls && name == current_user->get_user_name_str()
                                       && host == current_user->get_host_name_str());
       }
     }
@@ -360,14 +397,14 @@ int resolve_password(const peg::Node &node, ObResolverParams &params, ObStmt *&s
       if (limits.has_user_connections) {
         changed->set_max_user_connections(std::min<uint64_t>(limits.user_connections, UINT32_MAX));
       }
-    } else {
+    } else if (!modifying_tls) {
       OZ (copy_text(peg::account_password(account), params, password));
       OZ (check_password_strength(password, params));
     }
     if (OB_SUCC(ret)) {
       changed->set_need_enc(!password.empty());
       OZ (changed->set_user_password(name, host, password));
-      OZ (changed->add_ssl_info(get_ssl_type_string(ObSSLType::SSL_TYPE_NOT_SPECIFIED), {}, {}, {}));
+      OZ (resolve_tls(tls, *changed));
     }
   }
   if (OB_SUCC(ret)) { stmt = changed; }

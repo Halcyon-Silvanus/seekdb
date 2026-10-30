@@ -384,6 +384,10 @@ int ObResolver::resolve(const peg::Node &statement, ObStmt *&stmt)
         params_.resolver_scope_stmt_type_ = T_SHOW_CREATE_DATABASE;
         ret = stmt_resolver_func<ObShowResolver>(params_, statement, stmt);
         break;
+      case peg::NodeKind::ShowCreateUser:
+        params_.resolver_scope_stmt_type_ = T_SHOW_CREATE_USER;
+        ret = stmt_resolver_func<ObShowResolver>(params_, statement, stmt);
+        break;
       case peg::NodeKind::ShowCreateTable:
         params_.resolver_scope_stmt_type_ = T_SHOW_CREATE_TABLE;
         ret = stmt_resolver_func<ObShowResolver>(params_, statement, stmt);

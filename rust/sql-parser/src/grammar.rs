@@ -2090,6 +2090,9 @@ peg::parser! {
             / kw("create") kind:(kw("table") { Kind::ShowCreateTable } / kw("view") { Kind::ShowCreateView }
                 / kw("procedure") { Kind::ShowCreateProcedure } / kw("function") { Kind::ShowCreateFunction }
                 / kw("trigger") { Kind::ShowCreateTrigger }) name:relation_name() {? Ok(Node::new(kind,vec![Node::relation(name)?])) }
+            / kw("create") kw("user") user:user_spec(false) {
+                Node::new(Kind::ShowCreateUser,vec![Node::new(Kind::Users,vec![user])])
+            }
             / kw("create") (kw("database") / kw("schema")) absent:if_not_exists()? name:ident() { Node::new(Kind::ShowCreateDatabase,vec![Node::optional(absent),Node::name(name)]) }
             / kind:(kw("warnings") { Kind::ShowWarnings } / kw("errors") { Kind::ShowErrors }) limit:show_limit()? { Node::new(kind,vec![Node::optional(limit)]) }
             / kw("count") "(" _ "*" _ ")" _ kind:(kw("warnings") { Kind::ShowWarnings } / kw("errors") { Kind::ShowErrors }) {
@@ -2150,8 +2153,12 @@ peg::parser! {
             / kw("set")? actions:(config_assignment() ++ ("," _)) { Node::new(Kind::SetConfig,vec![Node::new(Kind::ConfigList,actions)]) }
         ) { value }
         rule account_name() -> Node = string() / name:ident() { Node::name(name) }
-        rule account() -> Node = name:account_name() host:user_variable()? {
-            Node::new(Kind::UserHost,vec![name,Node::optional(host)])
+        rule account() -> Node = name:account_name() host:user_variable()? {?
+            if host.as_ref().is_some_and(|host| !host.text.chars().all(|ch|
+                !ch.is_ascii() || ch.is_ascii_alphanumeric() || "_.$/%`\"'".contains(ch))) {
+                return Err("account host");
+            }
+            Ok(Node::new(Kind::UserHost,vec![name,Node::optional(host)]))
         }
         rule account_principal() -> Node
             = kw("current_user") ("(" _ ")" _)? { Node::new(Kind::CurrentUser,vec![]) }
@@ -2297,6 +2304,16 @@ peg::parser! {
         rule purge() -> Node = kw("purge") value:(kw("recyclebin") { Node::new(Kind::PurgeRecyclebin,vec![]) }
             / kind:(kw("table") { Kind::PurgeTable } / kw("index") { Kind::PurgeIndex }) name:relation_name() {? Ok(Node::new(kind,vec![Node::relation(name)?])) }
             / (kw("database") / kw("schema")) name:ident() { Node::new(Kind::PurgeDatabase,vec![Node::name(name)]) }) { value }
+        rule account_tls() -> Node = kw("require") value:(
+            kw("none") { Node::new(Kind::TlsNone,vec![]) }
+            / kw("ssl") { Node::new(Kind::TlsSsl,vec![]) }
+            / kw("x509") { Node::new(Kind::TlsX509,vec![]) }
+            / options:(account_tls_option() ++ (kw("and")?)) { Node::new(Kind::TlsOptions,options) }
+        ) { value }
+        rule account_tls_option() -> Node = kind:(kw("cipher") { Kind::TlsCipher }
+            / kw("issuer") { Kind::TlsIssuer } / kw("subject") { Kind::TlsSubject }) value:string() {
+            value.with_kind(kind)
+        }
         rule account_resource_limits() -> Vec<Node> = kw("with") limits:(
             kind:(kw("max_connections_per_hour") { Kind::MaxConnectionsPerHour }
                 / kw("max_user_connections") { Kind::MaxUserConnections }) value:number() {?
@@ -2304,9 +2321,10 @@ peg::parser! {
                 Ok(Node::new(kind,vec![]).value(value.value))
             })+ { limits }
         rule account_statement() -> Node
-            = kw("create") kw("user") absent:if_not_exists()? users:(user_spec(true) ++ ("," _)) limits:account_resource_limits()? {
+            = kw("create") kw("user") absent:if_not_exists()? users:(user_spec(true) ++ ("," _)) tls:account_tls()? limits:account_resource_limits()? {
                 let mut children=vec![Node::new(Kind::Users,users)];
                 children.extend(absent);
+                children.extend(tls);
                 children.extend(limits.into_iter().flatten());
                 Node::new(Kind::CreateUser,children)
             }
@@ -2321,6 +2339,9 @@ peg::parser! {
             }
             / kw("alter") kw("user") users:accounts() kw("account") locked:(kw("lock") { true } / kw("unlock") { false }) {
                 Node::new(Kind::LockUser,vec![users]).value(u64::from(locked))
+            }
+            / kw("alter") kw("user") user:user_spec(false) tls:account_tls() {
+                Node::new(Kind::SetPassword,vec![Node::new(Kind::Users,vec![user]),tls])
             }
             / kw("alter") kw("user") user:user_spec(false) limits:account_resource_limits() {
                 let mut children=vec![Node::new(Kind::Users,vec![user])];

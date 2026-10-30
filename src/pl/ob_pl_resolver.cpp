@@ -2534,6 +2534,8 @@ int ObPLResolver::check_and_record_stmt_type(ObPLFunctionAST &func,
       }
       break;
     }
+    case stmt::T_SET_ROLE:
+      break;
     default: {
       if (ObStmt::is_ddl_stmt(type, false)
           || ObStmt::is_dcl_stmt(type)

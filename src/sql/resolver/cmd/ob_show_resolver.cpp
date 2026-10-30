@@ -100,6 +100,88 @@ int ObShowResolver::check_db_access_for_show_sql(const ObShowResolverContext &sh
   return ret;
 }
 
+int ObShowResolver::resolve_show_create_user(const peg::Node &statement,
+                                             ObShowResolverContext &show_resv_ctx,
+                                             ObString &select_sql, ObSqlStrGenerator &sql_gen)
+{
+  int ret = OB_SUCCESS;
+  show_resv_ctx.stmt_type_ = stmt::T_SHOW_CREATE_USER;
+  const auto &account = peg::access_accounts(statement)[0];
+  ObString name;
+  ObString host;
+  OZ(access_control::resolve_account(account, params_, access_control::AccountNameMode::Verbatim, name, host));
+  const ObUserInfo *user = nullptr;
+  if (OB_SUCC(ret) && OB_FAIL(schema_checker_->get_user_info(name, host, user))) {
+    if (ret == OB_USER_NOT_EXIST) ret = OB_SUCCESS;
+  }
+  const bool current = peg::account_kind(account) == peg::AccountKind::Current
+      || (user != nullptr && user->get_user_id() == session_info_->get_user_id());
+  ObSessionPrivInfo privilege;
+  OZ(session_info_->get_session_priv_info(privilege));
+  ObStmtNeedPrivs required;
+  required.need_privs_.set_allocator(allocator_);
+  OZ(required.need_privs_.init(current ? 5 : 3));
+  ObNeedPriv need;
+  need.priv_set_ = OB_PRIV_SELECT;
+  need.priv_level_ = OB_PRIV_USER_LEVEL;
+  OZ(required.need_privs_.push_back(need));
+  need.priv_level_ = OB_PRIV_DB_LEVEL;
+  need.db_ = OB_SYS_DATABASE_NAME;
+  OZ(required.need_privs_.push_back(need));
+  need.db_ = OB_MYSQL_SCHEMA_NAME;
+  OZ(required.need_privs_.push_back(need));
+  if (current) {
+    need.priv_level_ = OB_PRIV_TABLE_LEVEL;
+    need.db_ = OB_SYS_DATABASE_NAME;
+    need.table_ = OB_ALL_USER_TNAME;
+    OZ(required.need_privs_.push_back(need));
+    need.db_ = OB_MYSQL_SCHEMA_NAME;
+    need.table_ = "user";
+    OZ(required.need_privs_.push_back(need));
+  }
+  bool can_show_password = true;
+  if (OB_SUCC(ret) && OB_FAIL(schema_checker_->check_priv_or(
+          privilege, session_info_->get_enable_role_array(), required))) {
+    if (ret == OB_ERR_NO_DB_PRIVILEGE || ret == OB_ERR_NO_TABLE_PRIVILEGE) {
+      can_show_password = false;
+      if (current) {
+        ret = OB_SUCCESS;
+      } else if (ret == OB_ERR_NO_DB_PRIVILEGE) {
+        LOG_USER_ERROR(OB_ERR_NO_DB_PRIVILEGE, privilege.user_name_.length(), privilege.user_name_.ptr(),
+                       privilege.host_name_.length(), privilege.host_name_.ptr(),
+                       int(strlen(OB_SYS_DATABASE_NAME)), OB_SYS_DATABASE_NAME);
+      } else {
+        LOG_USER_ERROR(OB_ERR_NO_TABLE_PRIVILEGE, 6, "SELECT", privilege.user_name_.length(),
+                       privilege.user_name_.ptr(), privilege.host_name_.length(), privilege.host_name_.ptr(),
+                       int(strlen("OCEANBASE.__ALL_USER")), "OCEANBASE.__ALL_USER");
+      }
+    }
+  }
+  if (OB_SUCC(ret) && user == nullptr) {
+    ObSqlString account_name;
+    OZ(account_name.append_fmt("`%.*s`@`%.*s`", name.length(), name.ptr(), host.length(), host.ptr()));
+    if (OB_SUCC(ret)) {
+      ret = OB_CANNOT_USER;
+      LOG_USER_ERROR(OB_CANNOT_USER, int(strlen("SHOW CREATE USER")), "SHOW CREATE USER", int(account_name.length()), account_name.ptr());
+    }
+  }
+  if (OB_SUCC(ret)) {
+    char *definition = static_cast<char *>(allocator_->alloc(OB_MAX_VARCHAR_LENGTH));
+    int64_t length = 0;
+    ObSchemaPrinter printer(*schema_checker_->get_schema_guard());
+    if (OB_ISNULL(definition)) {
+      ret = OB_ALLOCATE_MEMORY_FAILED;
+    } else {
+      OZ(printer.print_user_definition(*user, definition, OB_MAX_VARCHAR_LENGTH, length,
+                                      false, !can_show_password && current));
+      GEN_SQL_STEP_1(ObShowSqlSet::SHOW_CREATE_USER);
+      GEN_SQL_STEP_2(ObShowSqlSet::SHOW_CREATE_USER, length, definition,
+                     name.length(), name.ptr(), host.length(), host.ptr());
+    }
+  }
+  return ret;
+}
+
 int ObShowResolver::resolve(const peg::Node &statement)
 {
   int ret = OB_SUCCESS;
@@ -400,6 +482,9 @@ int ObShowResolver::resolve(const peg::Node &statement)
       show_resv_ctx.stmt_type_ = stmt::T_SHOW_COLLATION;
       GEN_SQL_STEP_1(ObShowSqlSet::SHOW_COLLATION);
       GEN_SQL_STEP_2(ObShowSqlSet::SHOW_COLLATION, OB_SYS_DATABASE_NAME, OB_ALL_VIRTUAL_COLLATION_TNAME);
+      break;
+    case peg::NodeKind::ShowCreateUser:
+      OZ(resolve_show_create_user(statement, show_resv_ctx, select_sql, sql_gen));
       break;
     case peg::NodeKind::ShowGrants: {
       show_resv_ctx.stmt_type_ = stmt::T_SHOW_GRANTS;

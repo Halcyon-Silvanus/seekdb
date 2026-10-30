@@ -14,7 +14,7 @@
 
 use crate::bridge::ffi::{
     AccessOptions, AccountIdentity, AccountKind, AccountLimits, AccountNameForm, AuthenticationKind,
-    PrivilegeObject, PrivilegeScope, PrivilegeTarget, RoleSelection,
+    PrivilegeObject, PrivilegeScope, PrivilegeTarget, RoleSelection, TlsMode, TlsField, TlsOption, TlsRequirement,
 };
 use crate::node::{Kind, Node};
 
@@ -66,6 +66,30 @@ pub(crate) fn account_limits(statement: &Node) -> AccountLimits {
         }
     }
     limits
+}
+
+pub(crate) fn account_tls(statement: &Node) -> TlsRequirement<'_> {
+    let requirement = statement.children.iter().find(|node|
+        matches!(node.kind, Kind::TlsNone | Kind::TlsSsl | Kind::TlsX509 | Kind::TlsOptions));
+    TlsRequirement {
+        mode: match requirement.map(|node| node.kind) {
+            Some(Kind::TlsNone) => TlsMode::None,
+            Some(Kind::TlsSsl) => TlsMode::Ssl,
+            Some(Kind::TlsX509) => TlsMode::X509,
+            Some(Kind::TlsOptions) => TlsMode::Specified,
+            None => TlsMode::Absent,
+            _ => unreachable!(),
+        },
+        options: requirement.into_iter().flat_map(|node| &node.children).map(|option| TlsOption {
+            field: match option.kind {
+                Kind::TlsCipher => TlsField::Cipher,
+                Kind::TlsIssuer => TlsField::Issuer,
+                Kind::TlsSubject => TlsField::Subject,
+                _ => unreachable!(),
+            },
+            value: &option.text,
+        }).collect(),
+    }
 }
 
 pub(crate) fn access_accounts(statement: &Node) -> &[Node] {

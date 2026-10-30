@@ -56,6 +56,8 @@ private:
                 K_(valid));
   };
   typedef common::hash::ObHashSet<ObShowResolver::CheckTableInfo, common::hash::NoPthreadDefendMode> TableInfoSet;
+  int resolve_show_create_user(const peg::Node &statement, ObShowResolverContext &context,
+                               ObString &select_sql, ObSqlStrGenerator &sql_gen);
   int resolve_show_check_table(const peg::Node &statement, ObShowResolverContext &context,
                                ObString &select_sql);
   int resolve_check_table_info(const peg::Node &table, ObIAllocator &allocator,

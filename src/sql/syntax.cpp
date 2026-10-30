@@ -180,6 +180,7 @@ std::optional<NativeStatementTraits> native_statement_traits(Kind kind)
     case Kind::ShowStatus: return NativeStatementTraits{stmt::T_SHOW_STATUS, true, false};
     case Kind::ShowColumns: return NativeStatementTraits{stmt::T_SHOW_COLUMNS, true, false};
     case Kind::ShowCreateDatabase: return NativeStatementTraits{stmt::T_SHOW_CREATE_DATABASE, true, false};
+    case Kind::ShowCreateUser: return NativeStatementTraits{stmt::T_SHOW_CREATE_USER, true, false};
     case Kind::ShowCreateTable: return NativeStatementTraits{stmt::T_SHOW_CREATE_TABLE, true, false};
     case Kind::ShowCreateView: return NativeStatementTraits{stmt::T_SHOW_CREATE_VIEW, true, false};
     case Kind::ShowCreateProcedure: return NativeStatementTraits{stmt::T_SHOW_CREATE_PROCEDURE, true, false};

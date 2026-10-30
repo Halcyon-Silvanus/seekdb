@@ -523,6 +523,7 @@ pub(crate) mod ffi {
         ShowStatus,
         ShowParameters,
         ShowProcesslist,
+        ShowCreateUser,
         ShowCreateTable,
         ShowCreateDatabase,
         ShowCreateProcedure,
@@ -733,6 +734,13 @@ pub(crate) mod ffi {
         AccountRename,
         MaxConnectionsPerHour,
         MaxUserConnections,
+        TlsNone,
+        TlsSsl,
+        TlsX509,
+        TlsOptions,
+        TlsCipher,
+        TlsIssuer,
+        TlsSubject,
         CreateRole,
         DropRole,
         GrantRole,
@@ -1067,6 +1075,30 @@ pub(crate) mod ffi {
         connections_per_hour: u64,
         has_user_connections: bool,
         user_connections: u64,
+    }
+
+    enum TlsMode {
+        Absent,
+        None,
+        Ssl,
+        X509,
+        Specified,
+    }
+
+    enum TlsField {
+        Cipher,
+        Issuer,
+        Subject,
+    }
+
+    struct TlsOption<'a> {
+        field: TlsField,
+        value: &'a str,
+    }
+
+    struct TlsRequirement<'a> {
+        mode: TlsMode,
+        options: Vec<TlsOption<'a>>,
     }
 
     struct PrivilegeTarget {
@@ -2304,6 +2336,7 @@ pub(crate) mod ffi {
         fn execution_arguments(node: &Node) -> &[Node];
         fn access_options(statement: &Node) -> AccessOptions;
         fn account_limits(statement: &Node) -> AccountLimits;
+        unsafe fn account_tls<'a>(statement: &'a Node) -> TlsRequirement<'a>;
         fn access_accounts(statement: &Node) -> &[Node];
         fn account_renames(statement: &Node) -> &[Node];
         fn account_rename_source(rename: &Node) -> &Node;
@@ -2582,7 +2615,7 @@ use crate::access::{
     access_accounts, access_options, access_privileges, access_role_selection, access_roles,
     access_target, access_target_database, access_target_object, account_authentication,
     account_has_host, account_has_plugin, account_host, account_identity, account_kind, account_limits,
-    account_name, account_name_form, account_password, account_plugin, account_rename_source,
+    account_tls, account_name, account_name_form, account_password, account_plugin, account_rename_source,
     account_rename_target, account_renames, privilege_columns,
     privilege_name,
 };
