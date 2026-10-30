@@ -1806,6 +1806,10 @@ peg::parser! {
                     / partition_elements(Kind::ListPartition,None)) end:position!() {
                 Node::new(Kind::PartitionAdd,values.into_children()).at(start,end)
             }
+            / kw("modify") kw("partition") parent:relation_name() kw("add") kw("subpartition")
+                elements:(subpartition_elements(Kind::RangePartition) / subpartition_elements(Kind::ListPartition)) {?
+                Ok(Node::new(Kind::SubpartitionAdd,vec![Node::relation(parent)?,elements]))
+            }
             / truncate:(kw("truncate") { true } / kw("drop") { false })
                 sub:(kw("subpartition") { true } / kw("partition") { false })
                 names:(partition_names() / enabled(!truncate) "(" _ names:partition_names() ")" _ { names }) {

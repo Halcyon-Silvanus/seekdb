@@ -128,6 +128,8 @@ private:
                           share::schema::ObTableSchema &alter_table_schema);
   int resolve_drop_partition(const peg::Node &node,
                              const share::schema::ObTableSchema &orig_table_schema);
+  int resolve_add_subpartition(const peg::Node &node,
+                              const share::schema::ObTableSchema &orig_table_schema);
   int resolve_drop_subpartition(const peg::Node &node,
                                 const share::schema::ObTableSchema &orig_table_schema);
   int resolve_exchange_partition(const peg::Node &node,

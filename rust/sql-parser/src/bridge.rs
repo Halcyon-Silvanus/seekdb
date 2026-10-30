@@ -429,6 +429,7 @@ pub(crate) mod ffi {
         PartitionExchange,
         PartitionDrop,
         PartitionTruncate,
+        SubpartitionAdd,
         SubpartitionDrop,
         SubpartitionTruncate,
         RangePartitions,
@@ -1879,6 +1880,10 @@ pub(crate) mod ffi {
         value_kind: PartitionValues,
         subpartitions: &'a [Node],
     }
+    struct AlterSubpartitionAddition<'a> {
+        parent: &'a Node,
+        elements: &'a [Node],
+    }
     struct ForeignKeyDefinition<'a> {
         columns: &'a [Node],
         parent: &'a Node,
@@ -2121,6 +2126,7 @@ pub(crate) mod ffi {
         fn alter_partition_names(node: &Node) -> &[Node];
         fn alter_partition_definition(node: &Node) -> &Node;
         fn alter_partition_additions(node: &Node) -> &[Node];
+        unsafe fn alter_subpartition_addition<'a>(node: &'a Node) -> AlterSubpartitionAddition<'a>;
         fn alter_partition_exchange_name(node: &Node) -> &Node;
         fn alter_partition_exchange_table(node: &Node) -> &Node;
         fn alter_table_renamed_relation(node: &Node) -> &Node;
@@ -2703,7 +2709,7 @@ use crate::ddl::{
     alter_charset_collation, alter_charset_has_collation, alter_charset_name, alter_column_default,
     alter_column_definitions, alter_column_storage, alter_column_drop_behavior, alter_column_has_default,
     alter_column_name, alter_column_new_name, alter_constraint_name, alter_constraint_check_only,
-    alter_constraint_enforced, alter_partition_additions,
+    alter_constraint_enforced, alter_partition_additions, alter_subpartition_addition,
     alter_partition_definition, alter_partition_exchange_name, alter_partition_exchange_table,
     alter_partition_names, alter_table_actions, alter_table_relation, alter_table_renamed_relation,
     check_constraint_enforced, check_constraint_expression, check_constraint_has_name,

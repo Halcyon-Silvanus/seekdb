@@ -12233,6 +12233,14 @@ int ObDDLService::check_alter_add_subpartitions(const share::schema::ObTableSche
       for (int j = 0; OB_SUCC(ret) && j < inc_part->get_subpartition_num(); j++) {
         ObSubPartition *subpart = NULL;
         ObSubPartition *inc_subpart = inc_part->get_subpart_array()[j];
+        if (OB_ISNULL(inc_subpart)) {
+          ret = OB_ERR_UNEXPECTED;
+        } else if (ObCharset::case_insensitive_equal(part->get_part_name(),
+                                                    inc_subpart->get_part_name())) {
+          ret = OB_ERR_SAME_NAME_SUBPARTITION;
+          LOG_USER_ERROR(OB_ERR_SAME_NAME_SUBPARTITION, inc_subpart->get_part_name().length(),
+                         inc_subpart->get_part_name().ptr());
+        }
         int64_t k = 0, subpart_num = part->get_subpartition_num();
         for (k = 0; OB_SUCC(ret) && k < subpart_num; k++) {
           subpart = part->get_subpart_array()[k];

@@ -439,6 +439,7 @@ int ObAlterTableResolver::resolve_action_list(rust::Slice<const peg::Node> actio
         case peg::NodeKind::PartitionExchange:
         case peg::NodeKind::PartitionDrop:
         case peg::NodeKind::PartitionTruncate:
+        case peg::NodeKind::SubpartitionAdd:
         case peg::NodeKind::SubpartitionDrop:
         case peg::NodeKind::SubpartitionTruncate: {
             has_alter_partition = true;
@@ -1611,6 +1612,71 @@ int ObAlterTableResolver::resolve_drop_partition(const peg::Node &node,
   return ret;
 }
 
+int ObAlterTableResolver::resolve_add_subpartition(const peg::Node &node,
+                                                   const ObTableSchema &orig_table_schema)
+{
+  int ret = OB_SUCCESS;
+  ObTableStmt *alter_stmt = get_alter_table_stmt();
+  if (OB_ISNULL(alter_stmt)) {
+    ret = OB_ERR_UNEXPECTED;
+  } else if (share::schema::PARTITION_LEVEL_ONE == orig_table_schema.get_part_level()) {
+    ret = OB_ERR_NOT_COMPOSITE_PARTITION;
+  } else {
+    const auto addition = peg::alter_subpartition_addition(node);
+    const auto parent_text = peg::relation_name(addition.parent).text();
+    ObString partition_name(parent_text.size(), parent_text.data());
+    const ObPartitionOption &subpart_option = orig_table_schema.get_sub_part_option();
+    AlterTableSchema &alter_table_schema = get_alter_table_stmt()->get_alter_table_arg().alter_table_schema_;
+    ObSEArray<ObString, 8> dummy_part_keys;
+    ObPartition dummy_part;
+    ObPartition *cur_partition = nullptr;
+    bool found_parent = false;
+    alter_stmt->set_use_def_sub_part(false);
+    alter_table_schema.get_sub_part_option() = orig_table_schema.get_sub_part_option();
+    for (int64_t i = 0; OB_SUCC(ret) && i < orig_table_schema.get_partition_num(); ++i) {
+      const ObPartition *partition = orig_table_schema.get_part_array()[i];
+      if (OB_ISNULL(partition)) {
+        ret = OB_ERR_UNEXPECTED;
+      } else if (partition->get_part_name() == partition_name) {
+        found_parent = true;
+        break;
+      }
+    }
+    if (OB_FAIL(ret)) {
+    } else if (!found_parent) {
+      ret = OB_UNKNOWN_PARTITION;
+      LOG_USER_ERROR(OB_UNKNOWN_PARTITION, partition_name.length(), partition_name.ptr(),
+          orig_table_schema.get_table_name_str().length(), orig_table_schema.get_table_name_str().ptr());
+    } else if (OB_FAIL(dummy_part.set_part_name(partition_name))) {
+    } else if (OB_FAIL(alter_table_schema.add_partition(dummy_part))) {
+    } else if (OB_ISNULL(cur_partition = alter_table_schema.get_part_array()[0])) {
+      ret = OB_ERR_UNEXPECTED;
+    } else if (OB_FAIL(resolve_stored_partition_function(orig_table_schema, true,
+        alter_stmt->get_subpart_fun_exprs(), dummy_part_keys))) {
+    } else if (subpart_option.is_range_part()
+               && addition.elements[0].kind() == peg::NodeKind::ListPartitionElement) {
+      ret = OB_ERR_SUBPARTITION_NOT_EXPECT_VALUES_IN;
+    } else if (subpart_option.is_list_part()
+               && addition.elements[0].kind() == peg::NodeKind::RangePartitionElement) {
+      ret = OB_ERR_SUBPARTITION_EXPECT_VALUES_IN;
+    } else if (subpart_option.is_range_part() || subpart_option.is_list_part()) {
+      if (OB_FAIL(resolve_subpartition_elements(alter_stmt, addition.elements,
+                                               alter_table_schema, cur_partition))) {
+      }
+    }
+    if (OB_SUCC(ret)) {
+      alter_table_schema.set_part_level(orig_table_schema.get_part_level());
+      alter_table_schema.get_part_option() = orig_table_schema.get_part_option();
+      alter_table_schema.get_part_option().set_part_num(alter_table_schema.get_partition_num());
+      cur_partition->set_sub_part_num(cur_partition->get_subpartition_num());
+      if ((subpart_option.is_range_part() || subpart_option.is_list_part())
+          && OB_FAIL(check_and_set_individual_subpartition_names(alter_stmt, alter_table_schema))) {
+      }
+    }
+  }
+  return ret;
+}
+
 int ObAlterTableResolver::resolve_drop_subpartition(const peg::Node &node,
                                                     const ObTableSchema &orig_table_schema)
 {
@@ -2258,6 +2324,13 @@ int ObAlterTableResolver::resolve_partition_options(const peg::Node &node)
           } else {
             alter_table_stmt->get_alter_table_arg().is_update_global_indexes_ = true;
             alter_table_stmt->get_alter_table_arg().alter_part_type_ = ObAlterTableArg::DROP_PARTITION;
+          }
+          break;
+        }
+        case peg::NodeKind::SubpartitionAdd: {
+          if (OB_FAIL(resolve_add_subpartition(node, *table_schema_))) {
+          } else {
+            alter_table_stmt->get_alter_table_arg().alter_part_type_ = ObAlterTableArg::ADD_SUB_PARTITION;
           }
           break;
         }

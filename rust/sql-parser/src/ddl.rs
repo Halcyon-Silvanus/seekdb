@@ -58,7 +58,7 @@ pub(crate) fn view_definition(node: &Node) -> ViewDefinition<'_> {
 }
 
 use crate::bridge::ffi::{
-    AnalyzeAction, AnalyzeDefinition, ColumnDefinition, ColumnGeneration, ColumnPosition, ColumnSkipIndexSyntax, DropBehavior,
+    AlterSubpartitionAddition, AnalyzeAction, AnalyzeDefinition, ColumnDefinition, ColumnGeneration, ColumnPosition, ColumnSkipIndexSyntax, DropBehavior,
     ForeignKeyDefinition, JsonStorageDefinition, RestoreDatabaseDefinition,
     IndexDefinition, IndexKind, IndexMethod, PartitionDefinition, PartitionElement, PartitionKind,
     PartitionValues, ReferenceAction, ReferenceEvent, ReferentialAction, TableDefinition,
@@ -769,6 +769,12 @@ pub(crate) fn alter_partition_definition(node: &Node) -> &Node {
 }
 pub(crate) fn alter_partition_additions(node: &Node) -> &[Node] {
     &node.children
+}
+pub(crate) fn alter_subpartition_addition(node: &Node) -> AlterSubpartitionAddition<'_> {
+    AlterSubpartitionAddition {
+        parent: &node.children[0],
+        elements: &node.children[1].children,
+    }
 }
 pub(crate) fn alter_partition_exchange_name(node: &Node) -> &Node {
     &node.children[0]
