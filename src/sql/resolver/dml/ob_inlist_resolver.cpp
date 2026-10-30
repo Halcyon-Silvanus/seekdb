@@ -633,10 +633,10 @@ int ObInListResolver::group_inlists(ObExprResolveContext &resolve_ctx,
                                    CS_TYPE_INVALID, enable_decimal_int, is_prepare_stmt);
     InListRewriteInfo previous_info;
     bool previous_is_membership = false;
-    const peg::Node *operands[] = {&peg::binary_left(root), &peg::binary_right(root)};
-    for (const auto *written_operand : operands) {
+    const auto operands = peg::logical_operands(root);
+    for (const auto &written_operand : operands) {
       if (OB_FAIL(ret)) break;
-      const peg::Node *operand = &unparenthesized(*written_operand);
+      const peg::Node *operand = &written_operand.node;
       bool can_merge = false;
       const bool is_membership = enabled && operand->kind() == peg::NodeKind::In
           && peg::membership_source(*operand) == peg::MembershipSource::Expressions

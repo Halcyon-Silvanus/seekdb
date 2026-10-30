@@ -1210,6 +1210,10 @@ pub(crate) mod ffi {
         NotRegexp,
     }
 
+    struct LogicalOperand<'a> {
+        node: &'a Node,
+    }
+
     enum MembershipSource {
         Expressions,
         Query,
@@ -2395,6 +2399,7 @@ pub(crate) mod ffi {
         fn binary_operator(expression: &Node) -> BinaryOperator;
         fn binary_left(expression: &Node) -> &Node;
         fn binary_right(expression: &Node) -> &Node;
+        unsafe fn logical_operands<'a>(expression: &'a Node) -> Vec<LogicalOperand<'a>>;
         fn like_has_escape(expression: &Node) -> bool;
         fn like_escape(expression: &Node) -> &Node;
         fn predicate_negated(expression: &Node) -> bool;
@@ -2634,7 +2639,7 @@ use crate::expression::{
     json_document, json_empty_clause, json_empty_default, json_error_clause, json_error_default,
     json_mismatch_clause, json_nested_columns, json_options, json_path, json_returning,
     json_table_columns, lambda_body, lambda_parameters, like_escape, like_has_escape,
-    membership_expressions, membership_query, membership_source, named_argument_name,
+    logical_operands, membership_expressions, membership_query, membership_source, named_argument_name,
     named_argument_value, named_window_definition, named_window_name, parenthesized_expression,
     odbc_action, odbc_operand, placeholder_index, placeholder_name, predicate_negated, predicate_subject,
     quantified_comparison, quantified_query, type_charset, type_collation, type_element, type_key,

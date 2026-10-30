@@ -15,7 +15,7 @@
 use crate::bridge::ffi::{
     AggregateQuantifier, BinaryNotation, BinaryOperator, ComparisonQuantifier, ExpressionLiteral,
     FrameBound, FrameUnit, FulltextMode, GeometryType, JsonColumnKind, JsonOptions, JsonResponse,
-    JsonScalars, JsonWrapper, LiteralKind, MembershipSource, NthOrigin, NullTreatment, OdbcAction, TypeName,
+    JsonScalars, JsonWrapper, LiteralKind, LogicalOperand, MembershipSource, NthOrigin, NullTreatment, OdbcAction, TypeName,
     TypeSyntax, UnaryOperator, VariableScope, VectorMetric,
 };
 use crate::node::{Kind, Node};
@@ -203,6 +203,24 @@ pub(crate) fn binary_left(expression: &Node) -> &Node {
 pub(crate) fn binary_right(expression: &Node) -> &Node {
     &expression.children[1]
 }
+pub(crate) fn logical_operands(expression: &Node) -> Vec<LogicalOperand<'_>> {
+    let operator = binary_operator(expression);
+    let mut operands = Vec::new();
+    let mut pending = vec![expression];
+    while let Some(mut node) = pending.pop() {
+        while node.kind == Kind::Parenthesized {
+            node = parenthesized_expression(node);
+        }
+        if node.kind == Kind::Binary && binary_operator(node) == operator {
+            pending.push(binary_right(node));
+            pending.push(binary_left(node));
+        } else {
+            operands.push(LogicalOperand { node });
+        }
+    }
+    operands
+}
+
 pub(crate) fn like_has_escape(expression: &Node) -> bool {
     expression.children.len() == 3
 }
