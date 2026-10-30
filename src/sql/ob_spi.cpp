@@ -1832,21 +1832,17 @@ int ObSPIService::spi_prepare(common::ObIAllocator &allocator,
                               const peg::Node &origin,
                               const ObString &origin_source)
 {
-  int ret = OB_SUCCESS;
-  if (OB_SUCC(ret)) {
-    ret = spi_parse_prepare(allocator,
-                            session,
-                            sql_proxy,
-                            schema_guard,
-                            expr_factory,
-                            pl_sql_runtime,
-                            sql,
-                            secondary_namespace,
-                            prepare_result,
-                            origin,
-                            origin_source);
-  }
-  return ret;
+  return SMART_CALL_LARGE(spi_parse_prepare(allocator,
+                                           session,
+                                           sql_proxy,
+                                           schema_guard,
+                                           expr_factory,
+                                           pl_sql_runtime,
+                                           sql,
+                                           secondary_namespace,
+                                           prepare_result,
+                                           origin,
+                                           origin_source));
 }
 
 namespace {
