@@ -2530,7 +2530,9 @@ int ObDDLResolver::resolve_part_func(ObResolverParams &params,
 int ObDDLResolver::check_partition_name_duplicate(rust::Slice<const peg::Node> elements)
 {
   int ret = OB_SUCCESS;
-  ObPartitionNameSet names;
+  void *buffer = allocator_->alloc(sizeof(ObPartitionNameSet));
+  if (buffer == nullptr) return OB_ALLOCATE_MEMORY_FAILED;
+  auto &names = *new (buffer) ObPartitionNameSet();
   for (size_t i = 0; OB_SUCC(ret) && i < elements.size(); ++i) {
     const auto &name = peg::relation_name(peg::partition_element(elements[i]).name);
     const auto name_text = name.text();
