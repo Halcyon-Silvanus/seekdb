@@ -2026,7 +2026,10 @@ peg::parser! {
             u64::from(full.is_some()) | (u64::from(extended.is_some()) << 1)
         }
         rule show_body() -> Node
-            = kw("grants") user:(kw("for") value:(kw("current_user") ("(" _ ")" _)? { Node::missing() } / account()) { value })? { Node::new(Kind::ShowGrants,vec![Node::optional(user),Node::missing()]) }
+            = kw("grants") user:(kw("for") value:(kw("current_user") ("(" _ ")" _)? { Node::missing() } / account()) { value })?
+                roles:(enabled(user.as_ref().is_some_and(|user| user.kind!=Kind::Missing)) kw("using") values:roles() { values })? {
+                    Node::new(Kind::ShowGrants,vec![Node::optional(user),Node::new(Kind::Roles,roles.unwrap_or_default())])
+                }
             / kw("parameters") condition:show_condition()? { Node::new(Kind::ShowParameters,vec![Node::optional(condition),Node::missing()]) }
             / full:kw("full")? kw("processlist") { Node::new(Kind::ShowProcesslist,vec![Node::new(Kind::HiddenInt,vec![]).value(u64::from(full.is_some()))]) }
             / kind:(charset_keyword() { Kind::ShowCharset } / kw("collation") { Kind::ShowCollation })
@@ -2205,6 +2208,7 @@ peg::parser! {
         rule accounts() -> Node = values:(user_spec(false) ++ ("," _)) { Node::new(Kind::Users,values) }
         rule roles() -> Vec<Node> = values:(named_account_spec() ++ ("," _)) { values }
         rule granted_roles() -> Vec<Node> = values:((!privilege_name() value:named_account_spec() { value }) ++ ("," _)) { values }
+        rule ignore_unknown_user() -> Node = kw("ignore") kw("unknown") kw("user") { Node::new(Kind::IgnoreUnknownUser,vec![]) }
         rule role_selection(session: bool) -> Node
             = kw("all") except:(enabled(session) kw("except") roles:granted_roles() { roles })? {
                 match except {
@@ -2233,7 +2237,7 @@ peg::parser! {
                 Node::new(Kind::GrantRole,children)
             }
             / kw("revoke") exists:if_exists()? roles:granted_roles() kw("from") users:accounts()
-                ignore:(kw("ignore") kw("unknown") kw("user") { Node::new(Kind::IgnoreUnknownUser,vec![]) })? {
+                ignore:ignore_unknown_user()? {
                     let mut children=vec![Node::new(Kind::Roles,roles),users];
                     children.extend(exists);
                     children.extend(ignore);
@@ -2315,14 +2319,16 @@ peg::parser! {
                     children.extend(option);
                     Node::new(Kind::Grant,children)
                 }
-            / kw("revoke") exists:if_exists()? kw("all") kw("privileges")? "," _ kw("grant") kw("option") kw("from") users:accounts() {
+            / kw("revoke") exists:if_exists()? kw("all") kw("privileges")? "," _ kw("grant") kw("option") kw("from") users:accounts() ignore:ignore_unknown_user()? {
                 let mut children=vec![users];
                 children.extend(exists);
+                children.extend(ignore);
                 Node::new(Kind::RevokeAll,children)
             }
-            / kw("revoke") exists:if_exists()? privileges:privileges() kw("on") target:privilege_target() kw("from") users:accounts() {
+            / kw("revoke") exists:if_exists()? privileges:privileges() kw("on") target:privilege_target() kw("from") users:accounts() ignore:ignore_unknown_user()? {
                 let mut children=vec![Node::new(Kind::Privileges,privileges),target,users];
                 children.extend(exists);
+                children.extend(ignore);
                 Node::new(Kind::Revoke,children)
             }
         rule routine_reserved_word() = text:$(word()) {?

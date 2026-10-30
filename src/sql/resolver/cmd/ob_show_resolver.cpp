@@ -17,6 +17,7 @@
 #define USING_LOG_PREFIX SQL_RESV
 #include "sql/resolver/cmd/ob_show_resolver.h"
 #include "sql/resolver/ob_resolver_utils.h"
+#include "sql/resolver/dcl/access_control_common.h"
 #include "sql/resolver/cmd/ob_show_table_status_sql.h"
 #include "sql/printer/ob_schema_printer.h"
 
@@ -413,8 +414,38 @@ int ObShowResolver::resolve(const peg::Node &statement)
         } else host = ObString::make_string(OB_DEFAULT_HOST_NAME);
         OZ(schema_checker_->get_user_id(user, host, user_id));
       }
+      ObSqlString principals;
+      OZ(principals.append_fmt("%lu", user_id));
+      const auto roles = peg::access_roles(statement);
+      const ObUserInfo *user_info = nullptr;
+      if (OB_SUCC(ret) && !roles.empty()) {
+        OZ(schema_checker_->get_user_info(user_id, user_info));
+      }
+      for (const auto &role : roles) {
+        if (OB_FAIL(ret)) break;
+        ObString role_name;
+        ObString role_host;
+        uint64_t role_id = OB_INVALID_ID;
+        OZ(access_control::resolve_account(role, params_, access_control::AccountNameMode::Verbatim,
+                                           role_name, role_host));
+        OZ(schema_checker_->get_user_id(role_name, role_host, role_id));
+        if (ret == OB_USER_NOT_EXIST) {
+          ret = OB_ERR_NO_GRANT_DEFINED_FOR_USER;
+          LOG_USER_ERROR(OB_ERR_NO_GRANT_DEFINED_FOR_USER,
+                         role_name.length(), role_name.ptr(), role_host.length(), role_host.ptr());
+        }
+        if (OB_SUCC(ret) && !has_exist_in_array(user_info->get_role_id_array(), role_id)) {
+          ret = OB_ERR_ROLE_NOT_GRANTED_TO;
+          LOG_USER_ERROR(OB_ERR_ROLE_NOT_GRANTED_TO,
+                         role_name.length(), role_name.ptr(), role_host.length(), role_host.ptr(),
+                         user_info->get_user_name_str().length(), user_info->get_user_name_str().ptr(),
+                         user_info->get_host_name_str().length(), user_info->get_host_name_str().ptr());
+        }
+        OZ(principals.append_fmt(",%lu", role_id));
+      }
       GEN_SQL_STEP_1(ObShowSqlSet::SHOW_GRANTS, user.length(), user.ptr(), host.length(), host.ptr());
-      GEN_SQL_STEP_2(ObShowSqlSet::SHOW_GRANTS, OB_SYS_DATABASE_NAME, OB_ALL_VIRTUAL_PRIVILEGE_GRANT_TNAME, user_id);
+      GEN_SQL_STEP_2(ObShowSqlSet::SHOW_GRANTS, OB_SYS_DATABASE_NAME, OB_ALL_VIRTUAL_PRIVILEGE_GRANT_TNAME,
+                     principals.string().length(), principals.string().ptr());
       break;
     }
     case peg::NodeKind::ShowProcesslist:
@@ -1063,8 +1094,8 @@ DEFINE_SHOW_CLAUSE_SET(SHOW_COLLATION,
                        "Collation");
 DEFINE_SHOW_CLAUSE_SET(SHOW_GRANTS,
                        "SELECT grants AS `Grants for %.*s@%.*s` ",
-                       "SELECT grants FROM %s.%s WHERE user_id = %ld",
-                       R"(SELECT "GRANTS" AS "GRANTS" FROM %s.%s WHERE USER_ID = %ld)",
+                       "SELECT grants FROM %s.%s WHERE user_id IN (%.*s)",
+                       R"(SELECT "GRANTS" AS "GRANTS" FROM %s.%s WHERE USER_ID IN (%.*s))",
                        NULL);
 DEFINE_SHOW_CLAUSE_SET(SHOW_PROCESSLIST,
                        NULL,
