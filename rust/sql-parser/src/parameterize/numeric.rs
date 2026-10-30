@@ -78,6 +78,8 @@ pub fn resolve_unary<'a>(
                     value.integer,
                     &syntax_sql[sign.start..sign.end],
                 )
+            } else if !std::ptr::eq(sign_operand, literal) {
+                (LiteralKind::Unsigned, value.integer, value.text.as_bytes())
             } else {
                 (LiteralKind::Decimal, 0, value.text.as_bytes())
             };
