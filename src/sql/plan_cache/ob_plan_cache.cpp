@@ -666,6 +666,11 @@ int ObPlanCache::restore_param_to_truncated_sql(ObPlanCacheCtx &pc_ctx)
         ret = ob_write_string(pc_ctx.allocator_,
             ObString(restored.sql.size(), reinterpret_cast<const char *>(restored.sql.data())),
             pc_ctx.insert_batch_opt_info_.new_reconstruct_sql_);
+        if (OB_SUCC(ret)) {
+          for (size_t i = 0; i < restored.parameters.size(); ++i) {
+            raw_params->at(i)->source_offset_ = restored.parameters[i].source_offset;
+          }
+        }
       }
     }
   }
