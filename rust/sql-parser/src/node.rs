@@ -64,7 +64,7 @@ pub(crate) struct Select {
 
 impl Select {
     pub fn into_cte(
-        mut self,
+        mut self: Box<Self>,
         name: Name,
         columns: Vec<Name>,
         recursive: bool,
@@ -73,10 +73,9 @@ impl Select {
             if let Some(set) = &mut self.set {
                 if set.children.len() > 2 {
                     let right = set.children.pop().unwrap();
-                    let left = Node::select(Self {
-                        set: Some(Node::new(set.kind, std::mem::take(&mut set.children))),
-                        ..Self::default()
-                    })?;
+                    let mut left = Box::<Self>::default();
+                    left.set = Some(Node::new(set.kind, std::mem::take(&mut set.children)));
+                    let left = Node::select(left)?;
                     set.children = vec![left, right];
                 }
             }
@@ -94,7 +93,7 @@ impl Select {
         ))
     }
 
-    pub fn combine(self, kind: Kind, right: Self) -> Result<Self, &'static str> {
+    pub fn combine(mut self: Box<Self>, kind: Kind, right: Box<Self>) -> Result<Box<Self>, &'static str> {
         let right = Node::select(right)?;
         let flatten = matches!(kind, Kind::Union | Kind::UnionAll)
             && !self.parenthesized
@@ -102,27 +101,26 @@ impl Select {
             && self.limit.is_none()
             && self.set.as_ref().is_some_and(|set| set.kind == kind);
         let children = if flatten {
-            let mut children = self.set.unwrap().children;
+            let mut children = self.set.take().unwrap().children;
             children.push(right);
             children
         } else {
             vec![Node::select(self)?, right]
         };
-        Ok(Self {
-            set: Some(Node::new(kind, children)),
-            ..Self::default()
-        })
+        let mut combined = Box::<Self>::default();
+        combined.set = Some(Node::new(kind, children));
+        Ok(combined)
     }
 
     pub fn finish(
-        mut self,
+        mut self: Box<Self>,
         order: Vec<Node>,
         limit: Option<Node>,
         lock: Option<Node>,
         into: Option<Node>,
         approximate: Option<Node>,
         vector_parameters: Option<Node>,
-    ) -> Result<Self, &'static str> {
+    ) -> Result<Box<Self>, &'static str> {
         if approximate.is_some()
             && (order.is_empty()
                 || limit.is_none()
@@ -133,14 +131,13 @@ impl Select {
             return Err("APPROX requires a simple table query with ORDER BY and LIMIT");
         }
         if self.parenthesized && (!order.is_empty() || limit.is_some()) {
-            self = Self {
-                projection: vec![Node::new(
-                    Kind::Projection,
-                    vec![Node::new(Kind::Star, vec![])],
-                )],
-                from: vec![Node::table(Node::select(self)?, None)?],
-                ..Self::default()
-            };
+            let table = Node::table(Node::select(self)?, None)?;
+            self = Box::<Self>::default();
+            self.projection = vec![Node::new(
+                Kind::Projection,
+                vec![Node::new(Kind::Star, vec![])],
+            )];
+            self.from = vec![table];
         }
         if !order.is_empty() {
             self.order_by = order;
@@ -174,10 +171,9 @@ impl Node {
             Kind::Projection,
             vec![Self::new(Kind::Alias, vec![self, alias])],
         );
-        let mut query = Self::select(Select {
-            projection: vec![projection],
-            ..Select::default()
-        })?;
+        let mut query = Box::<Select>::default();
+        query.projection = vec![projection];
+        let mut query = Self::select(query)?;
         query.kind = Kind::PlSubquery;
         Ok(query.at(start, end))
     }
@@ -888,7 +884,7 @@ impl Node {
         Self::new(Kind::Projection, vec![value]).at(start, end)
     }
 
-    pub(crate) fn select(query: Select) -> Result<Self, &'static str> {
+    pub(crate) fn select(query: Box<Select>) -> Result<Self, &'static str> {
         if query.into.is_some() && query.into_end.is_some() {
             return Err("one INTO clause");
         }

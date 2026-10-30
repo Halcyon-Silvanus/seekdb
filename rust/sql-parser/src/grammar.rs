@@ -1172,7 +1172,7 @@ peg::parser! {
             = kw("union") modifier:(kw("all") { Kind::UnionAll } / (kw("distinct") / kw("unique")) { Kind::Union })? { modifier.unwrap_or(Kind::Union) }
             / kw("intersect") { Kind::Intersect }
             / (kw("except") / kw("minus")) { Kind::Except }
-        rule query_expression(level: usize) -> Select = depth(level) with:with_clause(level)? first:query_term(level)
+        rule query_expression(level: usize) -> Box<Select> = depth(level) with:with_clause(level)? first:query_term(level)
             rest:((kind:set_operator() right:query_term(level) { (kind,right) })*)
             order:(kw("order") kw("by") values:(order_item(level) ++ ("," _)) { values })?
             approximate:((kw("approx") / kw("approximate")) { Node::new(Kind::Approximate,vec![]) })?
@@ -1190,8 +1190,8 @@ peg::parser! {
             values:((name:ident() "=" _ value:vector_parameter_value() { Node::new(Kind::VectorParameter,vec![Node::name(name),value]) }) ++ ("," _)) end:position!() ")" _ {
                 Node::new(Kind::VectorParameters,values).at(start,end)
             }
-        rule query_term(level: usize) -> Select
-            = "(" _ value:query_expression(level+1) ")" _ { Select { parenthesized:true,..value } }
+        rule query_term(level: usize) -> Box<Select>
+            = "(" _ value:query_expression(level+1) ")" _ { let mut value=value;value.parenthesized=true;value }
             / select_query(level) / values_query(level)
         rule select_into(level: usize) -> Node = start:position!() kw("into") value:(
                 kw("outfile") filename:load_string() options:output_options(level) {
@@ -1247,18 +1247,23 @@ peg::parser! {
                 }) ++ ("," _)) rollup:(kw("with") kw("rollup") { Node::new(Kind::Rollup,vec![]) })? {
                     let mut children=vec![Node::new(Kind::SortList,keys)];children.extend(rollup);Node::new(Kind::GroupBy,children)
                 }
-        rule select_query(level: usize) -> Select = depth(level) keyword("select") hints:hint_slot() options:select_option()* projection:(item(level) ++ ("," _)) into:select_into(level)?
+        rule select_query(level: usize) -> Box<Select> = depth(level) keyword("select") hints:hint_slot() options:select_option()* projection:(item(level) ++ ("," _)) into:select_into(level)?
             from:(kw("from") tables:(kw("dual") { vec![] } / tables:(table(level) ++ ("," _)) { tables }) { tables })?
             filter:(kw("where") value:expr(level) { value })?
             group_by:group_by(level)?
             having:(kw("having") value:expr(level) { value })?
             windows:(kw("window") values:(named_window(level) ++ ("," _)) { values })? {
-                Select { options:options.into_iter().filter(|value| value.kind!=Kind::Missing).collect(),projection,into,from:from.unwrap_or_default(),filter,group_by,having,hints:hints.unwrap_or_default(),windows:windows.unwrap_or_default(),..Select::default() }
+                let mut query=Box::<Select>::default();
+                query.options=options.into_iter().filter(|value| value.kind!=Kind::Missing).collect();
+                query.projection=projection;query.into=into;query.from=from.unwrap_or_default();
+                query.filter=filter;query.group_by=group_by;query.having=having;
+                query.hints=hints.unwrap_or_default();query.windows=windows.unwrap_or_default();query
             }
-        rule values_query(level: usize) -> Select = depth(level) kw("values") rows:((kw("row") value:row() { value }) ++ ("," _)) {
+        rule values_query(level: usize) -> Box<Select> = depth(level) kw("values") rows:((kw("row") value:row() { value }) ++ ("," _)) {
                 let values=Node::new(Kind::Values,vec![Node::new(Kind::ValuesRows,rows)]);
                 let projection=Node::new(Kind::Projection,vec![Node::new(Kind::Star,vec![])]);
-                Select { projection:vec![projection],from:vec![Node::new(Kind::Table,vec![values])],..Select::default() }
+                let mut query=Box::<Select>::default();
+                query.projection=vec![projection];query.from=vec![Node::new(Kind::Table,vec![values])];query
             }
         rule column() -> Node = start:position!() names:name() {? let end = names.last().unwrap().end; Node::column(names, false, start, end) }
         rule expr_or_default() -> Node = kw("default") !"(" { Node::new(Kind::Default, vec![]) } / expr(0)
