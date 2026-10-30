@@ -2488,7 +2488,7 @@ peg::parser! {
             / kind:(kw("leave") { Kind::PlLeave } / kw("iterate") { Kind::PlIterate }) label:pl_ident() { Node::new(kind,vec![Node::name(label),Node::missing()]) }
             / kw("open") name:pl_ident() { Node::new(Kind::PlOpen,vec![Node::name(name),Node::missing(),Node::missing()]) }
             / kw("close") name:pl_ident() { Node::new(Kind::PlClose,vec![Node::name(name)]) }
-            / kw("fetch") (kw("next") kw("from") / kw("from"))? name:pl_ident() kw("into") variables:(pl_expression(level+1) ++ ("," _)) {
+            / kw("fetch") (kw("next") kw("from") / kw("from"))? name:pl_ident() kw("into") variables:((value:pl_expression(level+1) {? crate::routine::cursor_fetch_target(value) }) ++ ("," _)) {
                 Node::new(Kind::PlFetch,vec![Node::name(name),Node::new(Kind::IntoVariables,vec![Node::new(Kind::PlInto,variables)])])
             }
             / pl_call() / pl_signal() / pl_do(level+1) / pl_setting(level+1)

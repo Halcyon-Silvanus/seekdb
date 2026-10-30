@@ -122,6 +122,17 @@ pub(crate) fn cursor_query(node: &Node) -> &Node {
     &node.children[3]
 }
 
+pub(crate) fn cursor_fetch_target(mut value: Node) -> Result<Node, &'static str> {
+    while value.kind == Kind::Parenthesized {
+        value = value.children.pop().unwrap();
+    }
+    if matches!(value.kind, Kind::Select | Kind::PlSubquery) {
+        Err("FETCH target cannot be a query or contain a user variable")
+    } else {
+        Ok(value)
+    }
+}
+
 pub(crate) fn cursor_fetch_targets(node: &Node) -> &[Node] {
     &node.children[1].children[0].children
 }
