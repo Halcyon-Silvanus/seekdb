@@ -151,6 +151,8 @@ pub(crate) mod ffi {
         DisableParallelDasDml,
         QueryTimeout,
         TraceLog,
+        NoQueryTransformation,
+        NoCostBasedQueryTransformation,
         Tracing,
         Stat,
         Blocking,

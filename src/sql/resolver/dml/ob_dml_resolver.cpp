@@ -7169,6 +7169,12 @@ int ObDMLResolver::resolve_global_hint(const peg::Node &hint_node,
     case Kind::TraceLog:
       global_hint.force_trace_log_ = true;
       break;
+    case Kind::NoQueryTransformation:
+      global_hint.disable_transform_ = true;
+      break;
+    case Kind::NoCostBasedQueryTransformation:
+      global_hint.disable_cost_based_transform_ = true;
+      break;
     case Kind::CursorSharingExact:
       global_hint.merge_param_option_hint(ObParamOption::EXACT);
       break;

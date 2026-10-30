@@ -1096,6 +1096,8 @@ peg::parser! {
                 / kw("enable_parallel_das_dml") { Kind::EnableParallelDasDml } / kw("disable_parallel_das_dml") { Kind::DisableParallelDasDml }
                 / kw("gather_optimizer_statistics") { Kind::GatherStatistics } / kw("no_gather_optimizer_statistics") { Kind::NoGatherStatistics }
                 / kw("trace_log") { Kind::TraceLog }
+                / kw("no_query_transformation") { Kind::NoQueryTransformation }
+                / kw("no_cost_based_query_transformation") { Kind::NoCostBasedQueryTransformation }
                 / kw("cursor_sharing_exact") { Kind::CursorSharingExact }
                 / kw("no_parallel") { Kind::NoParallel }) { Node::new(kind,vec![]) }
             / kind:(kw("tracing") { Kind::Tracing } / kw("stat") { Kind::Stat } / kw("blocking") { Kind::Blocking })
