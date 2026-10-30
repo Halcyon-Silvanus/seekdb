@@ -2047,6 +2047,10 @@ peg::parser! {
         rule account() -> Node = name:account_name() host:user_variable()? {
             Node::new(Kind::UserHost,vec![name,Node::optional(host)])
         }
+        rule account_principal() -> Node
+            = kw("current_user") ("(" _ ")" _)? { Node::new(Kind::CurrentUser,vec![]) }
+            / account()
+        rule named_account_spec() -> Node = principal:account() { Node::new(Kind::UserSpec,vec![principal]) }
         rule password() -> Node = value:string() { Node { kind:Kind::Password,..value } }
         rule authentication() -> Node = kw("identified")
             plugin:(kw("with") value:account_name() { Node::new(Kind::AuthenticationPlugin,vec![value]) })?
@@ -2058,7 +2062,7 @@ peg::parser! {
                 children.extend(plugin);
                 Node::new(password.0,children)
             }
-        rule user_spec(authenticated: bool) -> Node = principal:account()
+        rule user_spec(authenticated: bool) -> Node = principal:account_principal()
             auth:(enabled(authenticated) value:authentication() { value })? {
             let mut children=vec![principal];
             children.extend(auth);
@@ -2119,8 +2123,8 @@ peg::parser! {
             Node::new(kind,vec![])
         }
         rule accounts() -> Node = values:(user_spec(false) ++ ("," _)) { Node::new(Kind::Users,values) }
-        rule roles() -> Vec<Node> = values:(user_spec(false) ++ ("," _)) { values }
-        rule granted_roles() -> Vec<Node> = values:((!privilege_name() value:user_spec(false) { value }) ++ ("," _)) { values }
+        rule roles() -> Vec<Node> = values:(named_account_spec() ++ ("," _)) { values }
+        rule granted_roles() -> Vec<Node> = values:((!privilege_name() value:named_account_spec() { value }) ++ ("," _)) { values }
         rule role_selection(session: bool) -> Node
             = kw("all") except:(enabled(session) kw("except") roles:granted_roles() { roles })? {
                 match except {
@@ -2143,14 +2147,14 @@ peg::parser! {
                 children.extend(exists);
                 Node::new(Kind::DropRole,children)
             }
-            / kw("grant") roles:granted_roles() kw("to") users:roles() option:(kw("with") kw("admin") kw("option") { Node::new(Kind::WithAdminOption,vec![]) })? {
-                let mut children=vec![Node::new(Kind::Roles,roles),Node::new(Kind::Users,users)];
+            / kw("grant") roles:granted_roles() kw("to") users:accounts() option:(kw("with") kw("admin") kw("option") { Node::new(Kind::WithAdminOption,vec![]) })? {
+                let mut children=vec![Node::new(Kind::Roles,roles),users];
                 children.extend(option);
                 Node::new(Kind::GrantRole,children)
             }
-            / kw("revoke") exists:if_exists()? roles:granted_roles() kw("from") users:roles()
+            / kw("revoke") exists:if_exists()? roles:granted_roles() kw("from") users:accounts()
                 ignore:(kw("ignore") kw("unknown") kw("user") { Node::new(Kind::IgnoreUnknownUser,vec![]) })? {
-                    let mut children=vec![Node::new(Kind::Roles,roles),Node::new(Kind::Users,users)];
+                    let mut children=vec![Node::new(Kind::Roles,roles),users];
                     children.extend(exists);
                     children.extend(ignore);
                     Node::new(Kind::RevokeRole,children)
@@ -2200,7 +2204,7 @@ peg::parser! {
                 Node::new(Kind::CreateUser,children)
             }
             / kw("rename") kw("user") pairs:(
-                source:user_spec(false) kw("to") target:user_spec(false) {
+                source:named_account_spec() kw("to") target:named_account_spec() {
                     Node::new(Kind::AccountRename,vec![source,target])
                 }) ++ ("," _) { Node::new(Kind::RenameUser,pairs) }
             / kw("drop") kw("user") exists:if_exists()? users:accounts() {
@@ -2208,17 +2212,15 @@ peg::parser! {
                 children.extend(exists);
                 Node::new(Kind::DropUser,children)
             }
-            / kw("alter") kw("user") users:((kw("current_user") ("(" _ ")" _)? {
-                Node::new(Kind::UserSpec,vec![Node::new(Kind::CurrentUser,vec![])])
-            } / user_spec(false)) ++ ("," _)) kw("account") locked:(kw("lock") { true } / kw("unlock") { false }) {
-                Node::new(Kind::LockUser,vec![Node::new(Kind::Users,users)]).value(u64::from(locked))
+            / kw("alter") kw("user") users:accounts() kw("account") locked:(kw("lock") { true } / kw("unlock") { false }) {
+                Node::new(Kind::LockUser,vec![users]).value(u64::from(locked))
             }
             / kw("alter") kw("user") user:user_spec(false) limits:account_resource_limits() {
                 let mut children=vec![Node::new(Kind::Users,vec![user])];
                 children.extend(limits);
                 Node::new(Kind::SetPassword,children)
             }
-            / kw("alter") kw("user") user:account() auth:authentication() {
+            / kw("alter") kw("user") user:account_principal() auth:authentication() {
                 Node::new(Kind::SetPassword,vec![Node::new(Kind::Users,vec![Node::new(Kind::UserSpec,vec![user,auth])])])
             }
             / kw("set") kw("password") user:(kw("for") user:account() { user })? "=" _

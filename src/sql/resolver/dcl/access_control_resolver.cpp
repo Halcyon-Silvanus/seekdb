@@ -54,8 +54,14 @@ int resolve_account(const peg::Node &spec, ObResolverParams &params, AccountName
   int ret = OB_SUCCESS;
   const bool current = peg::account_kind(spec) == peg::AccountKind::Current;
   if (current) {
-    OZ (ob_write_string(*params.allocator_, params.session_info_->get_user_name(), name));
-    OZ (ob_write_string(*params.allocator_, params.session_info_->get_host_name(), host));
+    const ObUserInfo *user = nullptr;
+    if (OB_FAIL(params.schema_checker_->get_user_info(params.session_info_->get_priv_user_id(), user))) {
+    } else if (OB_ISNULL(user)) {
+      ret = OB_ERR_UNEXPECTED;
+    } else {
+      OZ (ob_write_string(*params.allocator_, user->get_user_name_str(), name));
+      OZ (ob_write_string(*params.allocator_, user->get_host_name_str(), host));
+    }
   } else {
     OZ (copy_text(peg::account_name(spec), params, name));
     if (OB_SUCC(ret)) {
@@ -66,8 +72,8 @@ int resolve_account(const peg::Node &spec, ObResolverParams &params, AccountName
       }
     }
   }
-  if (OB_SUCC(ret) && mode == AccountNameMode::Schema
-      && (current || peg::account_name_form(spec) != peg::AccountNameForm::Identifier)) {
+  if (OB_SUCC(ret) && !current && mode == AccountNameMode::Schema
+      && peg::account_name_form(spec) != peg::AccountNameForm::Identifier) {
     OZ (ObSQLUtils::convert_sql_text_to_schema_for_storing(
         *params.allocator_, params.session_info_->get_dtc_params(), name));
   }
@@ -335,9 +341,15 @@ int resolve_password(const peg::Node &node, ObResolverParams &params, ObStmt *&s
       ret = OB_USER_NOT_EXIST;
       LOG_WARN("empty user cannot be used by SET PASSWORD", K(ret));
     }
+    const ObUserInfo *current_user = nullptr;
+    OZ (params.schema_checker_->get_user_info(params.session_info_->get_priv_user_id(), current_user));
     if (OB_SUCC(ret)) {
-      changed->set_for_current_user(!modifying_limits && name == params.session_info_->get_user_name()
-                                    && host == params.session_info_->get_host_name());
+      if (OB_ISNULL(current_user)) {
+        ret = OB_ERR_UNEXPECTED;
+      } else {
+        changed->set_for_current_user(!modifying_limits && name == current_user->get_user_name_str()
+                                      && host == current_user->get_host_name_str());
+      }
     }
     OZ (check_reserved_account(params, name, host));
     if (modifying_limits) {
