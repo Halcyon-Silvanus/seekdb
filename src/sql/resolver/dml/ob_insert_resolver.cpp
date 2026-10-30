@@ -31,7 +31,8 @@ ObInsertResolver::ObInsertResolver(ObResolverParams &params)
 : ObDelUpdResolver(params),
     row_count_(0),
     sub_select_resolver_(NULL),
-    autoinc_col_added_(false)
+    autoinc_col_added_(false),
+    row_alias_source_(nullptr)
 {
   params.contain_dml_ = true;
 }
@@ -476,13 +477,31 @@ int ObInsertResolver::resolve_source(const peg::Node &query, TableItem *table_it
     TableItem *sub_select_table = nullptr;
     ObString view_name;
     ObSEArray<ColumnItem, 4> column_items;
-    if (OB_FAIL(sub_select_resolver_->resolve(peg::insert_query(query)))) {
+    if (peg::insert_source(query) == peg::InsertSource::AliasedRows) {
+      const auto &alias_table = peg::insert_row_alias_table(query);
+      row_alias_source_ = &peg::table_source(alias_table);
+      const auto name = peg::table_alias(alias_table).text();
+      OZ(ob_write_string(*allocator_, ObString(name.size(), name.data()), view_name));
+    }
+    if (OB_FAIL(ret)) {
+    } else if (OB_FAIL(sub_select_resolver_->resolve(peg::insert_query(query)))) {
     } else if (OB_ISNULL(select_stmt = sub_select_resolver_->get_select_stmt())) {
       ret = OB_ERR_UNEXPECTED;
     } else if (!session_info_->get_ddl_info().is_ddl() &&
                !session_info_->get_ddl_info().is_dummy_ddl_for_inner_visibility() &&
                OB_FAIL(check_insert_select_field(*insert_stmt, *select_stmt))) {
     } else if (OB_FAIL(add_column_conv_for_diagnosis(insert_stmt, select_stmt, table_item))) {
+    }
+    if (OB_SUCC(ret) && has_row_alias()) {
+      ObNameCaseMode mode = OB_NAME_CASE_INVALID;
+      OZ(session_info_->get_name_case_mode(mode));
+      if (OB_SUCC(ret) && (mode == OB_ORIGIN_AND_SENSITIVE
+          ? table_item->table_name_ == view_name : table_item->table_name_.case_compare(view_name) == 0)) {
+        ret = OB_ERR_NONUNIQ_TABLE;
+        LOG_USER_ERROR(OB_ERR_NONUNIQ_TABLE, table_item->table_name_.length(), table_item->table_name_.ptr());
+      }
+    }
+    if (OB_FAIL(ret)) {
     } else if (OB_FAIL(resolve_generate_table_item(select_stmt, view_name, sub_select_table))) {
     } else if (OB_FAIL(resolve_all_generated_table_columns(*sub_select_table, column_items))) {
     } else {
@@ -627,8 +646,29 @@ int ObInsertResolver::replace_column_to_default(ObRawExpr *&origin)
 int ObInsertResolver::resolve_column_ref_expr(const ObQualifiedName &q_name, ObRawExpr *&real_ref_expr)
 {
   int ret = OB_SUCCESS;
-  if (OB_FAIL(resolve_basic_column_ref(q_name, real_ref_expr))) {
-    if ((OB_ERR_BAD_FIELD_ERROR == ret || OB_ERR_COLUMN_NOT_FOUND == ret) && sub_select_resolver_ != NULL) {
+  const bool values_argument = q_name.parents_expr_info_.has_member(IS_VALUES);
+  if (has_row_alias() && is_resolve_insert_update_ && !q_name.has_qualifier_
+      && q_name.tbl_name_.empty() && q_name.database_name_.empty()) {
+    const auto &targets = get_insert_stmt()->get_values_desc();
+    bool target_match = false;
+    for (int64_t i = 0; !target_match && i < targets.count(); ++i) {
+      target_match = targets.at(i)->get_column_name().case_compare(q_name.col_name_) == 0;
+    }
+    if (values_argument && !target_match) {
+      ret = OB_ERR_BAD_FIELD_ERROR;
+    } else if (!values_argument && target_match) {
+      const auto &source = sub_select_resolver_->get_select_stmt()->get_select_items();
+      for (int64_t i = 0; OB_SUCC(ret) && i < source.count(); ++i) {
+        if (source.at(i).alias_name_.case_compare(q_name.col_name_) == 0) {
+          ret = OB_NON_UNIQ_ERROR;
+        }
+      }
+    }
+  }
+  if (OB_FAIL(ret)) {
+  } else if (OB_FAIL(resolve_basic_column_ref(q_name, real_ref_expr))) {
+    if ((OB_ERR_BAD_FIELD_ERROR == ret || OB_ERR_COLUMN_NOT_FOUND == ret) && sub_select_resolver_ != NULL
+        && !(has_row_alias() && values_argument)) {
       //In insert into select stmt, insert clause and select clause belong to the same namespace
       //the on duplicate key update clause will see the column in select clause,
       //so need to add table reference to insert resolve column namespace checker

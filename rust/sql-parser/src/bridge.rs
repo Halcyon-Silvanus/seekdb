@@ -100,6 +100,7 @@ pub(crate) mod ffi {
         InsertColumns,
         InsertRows,
         InsertQuery,
+        InsertAliasedRows,
         InsertAssignments,
         DuplicateKeyAssignments,
         DeleteTargets,
@@ -1121,6 +1122,7 @@ pub(crate) mod ffi {
         Rows,
         Query,
         Assignments,
+        AliasedRows,
     }
 
     enum LockKind {
@@ -2372,6 +2374,7 @@ pub(crate) mod ffi {
         fn insert_columns(insert: &Node) -> &[Node];
         fn insert_source(insert: &Node) -> InsertSource;
         fn insert_query(insert: &Node) -> &Node;
+        fn insert_row_alias_table(insert: &Node) -> &Node;
         fn insert_rows(insert: &Node) -> &[Node];
         fn insert_assignments(insert: &Node) -> &[Node];
         fn insert_on_duplicate(insert: &Node) -> &[Node];
@@ -2634,7 +2637,7 @@ use crate::query::{
     hint_table_relation, hint_tables, hint_target, hint_timeout,
     hint_dop_fragment, hint_dop_degree, hint_allocation_targets, hint_log_level, hint_load_batch_size, hint_load_buffer_size, hint_has_load_buffer_size, hint_topk_minimum,
     hint_topk_precision, identifier_is_quoted, index_hint_kind, index_hint_names,
-    insert_assignments, insert_columns, insert_on_duplicate, insert_query, insert_replace,
+    insert_assignments, insert_columns, insert_on_duplicate, insert_query, insert_replace, insert_row_alias_table,
     insert_rows, insert_source, insert_target, join_columns, join_condition, join_kind, join_left,
     join_predicate, join_right, limit_comma_form, limit_count, limit_has_offset, limit_offset,
     lock_kind, lock_wait, lock_wait_seconds, name_is_wildcard, name_parts, projection_alias,

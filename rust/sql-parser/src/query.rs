@@ -372,12 +372,18 @@ pub(crate) fn insert_source(insert: &Node) -> InsertSource {
         InsertSource::Rows
     } else if child(insert, Kind::InsertQuery).is_some() {
         InsertSource::Query
+    } else if child(insert, Kind::InsertAliasedRows).is_some() {
+        InsertSource::AliasedRows
     } else {
         InsertSource::Assignments
     }
 }
 pub(crate) fn insert_query(insert: &Node) -> &Node {
-    &required(insert, Kind::InsertQuery).children[0]
+    &child(insert, Kind::InsertQuery)
+        .unwrap_or_else(|| required(insert, Kind::InsertAliasedRows)).children[0]
+}
+pub(crate) fn insert_row_alias_table(insert: &Node) -> &Node {
+    &query_sources(insert_query(insert))[0]
 }
 pub(crate) fn insert_rows(insert: &Node) -> &[Node] {
     list(insert, Kind::InsertRows)

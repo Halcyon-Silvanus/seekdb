@@ -1555,6 +1555,7 @@ int ObResolverUtils::resolve_column_ref(const peg::Node &node, const ObNameCaseM
   const bool wildcard = peg::name_is_wildcard(node);
   column_ref.is_star_ = wildcard;
   const int64_t qualifiers = parts.size() - (wildcard ? 0 : 1);
+  column_ref.has_qualifier_ = qualifiers > 0;
   if (qualifiers < 0 || qualifiers > 2) {
     ret = OB_ERR_UNEXPECTED;
   } else {

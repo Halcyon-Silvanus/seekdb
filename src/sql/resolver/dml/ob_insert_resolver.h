@@ -39,6 +39,8 @@ public:
   {
     return static_cast<ObInsertStmt*>(stmt_);
   }
+  bool has_row_alias() const { return row_alias_source_ != nullptr; }
+  bool is_row_alias_source(const peg::Node &query) const { return row_alias_source_ == &query; }
 protected:
   int process_values_function(ObRawExpr *&expr) override;
   virtual int mock_values_column_ref(const ObColumnRefRawExpr *column_ref) override;
@@ -81,6 +83,7 @@ private:
   int64_t row_count_;
   ObSelectResolver *sub_select_resolver_;
   bool autoinc_col_added_;
+  const peg::Node *row_alias_source_;
 };
 }  // namespace sql
 }  // namespace oceanbase

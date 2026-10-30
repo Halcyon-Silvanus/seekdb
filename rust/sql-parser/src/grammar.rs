@@ -1331,13 +1331,15 @@ peg::parser! {
             values:((kw("values") / kw("value")) rows:(row() ++ ("," _)) { Node::new(Kind::ValueList, rows) }
                 / kw("set") values:assignments() { Node::new(Kind::AssignList, values) }
                 / select(0))
+            alias:(enabled(matches!(values.kind,Kind::ValueList|Kind::AssignList)) kw("as") name:ident()
+                columns:("(" _ names:(ident() ++ ("," _)) ")" _ { names })? { (name,columns.unwrap_or_default()) })?
             duplicate:(kw("on") kw("duplicate") kw("key") kw("update") values:assignments() { values })? {?
                 if replace && (ignore.is_some() || duplicate.is_some()) { Err("REPLACE does not accept IGNORE or ON DUPLICATE KEY UPDATE") }
                 else if values.kind == Kind::AssignList && columns.is_some() { Err("INSERT SET does not accept a column list") }
                 else {
                     let mut children=vec![Node::relation(table)?];children.extend(partition);
                     let table=Node::new(Kind::Table,children);
-                    Ok(Node::insert(replace, ignore.is_some(), table, columns.unwrap_or_default(), values, duplicate.unwrap_or_default(), hints.unwrap_or_default()))
+                    Node::insert(replace, ignore.is_some(), table, columns.unwrap_or_default(), values, alias, duplicate.unwrap_or_default(), hints.unwrap_or_default())
                 }
             }
         rule update() -> Node = with:with_clause(0)? keyword("update") hints:hint_slot() kw("low_priority")? ignore:kw("ignore")?

@@ -723,6 +723,7 @@ private:
   int resolve_values_table_item(const peg::Node &table_node, TableItem *&table_item);
   int resolve_values_table_for_select(const peg::Node &table_node,
                                       ObValuesTableDef &table_values);
+  int resolve_row_alias_value(int64_t index, ObRawExpr *&expr);
   int resolve_values_table_for_insert(const peg::Node &table_node,
                                       ObValuesTableDef &table_values);
   int get_values_res_types(const ObIArray<ObRawExprResType> &cur_values_types,

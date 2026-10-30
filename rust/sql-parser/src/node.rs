@@ -261,16 +261,48 @@ impl Node {
         replace: bool,
         ignore: bool,
         table: Self,
-        columns: Vec<Self>,
+        mut columns: Vec<Self>,
         values: Self,
+        row_alias: Option<(Name, Vec<Name>)>,
         assignments: Vec<Self>,
         hints: Vec<Self>,
-    ) -> Self {
-        let source = match values.kind {
-            Kind::ValueList => Self::new(Kind::InsertRows, values.into_children()),
-            Kind::AssignList => Self::new(Kind::InsertAssignments, values.into_children()),
-            Kind::Select => Self::new(Kind::InsertQuery, vec![values]),
-            _ => unreachable!(),
+    ) -> Result<Self, &'static str> {
+        let source = if let Some((alias, names)) = row_alias {
+            let rows = if values.kind == Kind::AssignList {
+                let mut row = Vec::new();
+                for assignment in values.into_children() {
+                    let mut parts = assignment.into_children().into_iter();
+                    columns.push(parts.next().unwrap());
+                    row.push(parts.next().unwrap());
+                }
+                vec![Self::new(Kind::ValueVector, row)]
+            } else {
+                values.into_children()
+            };
+            let mut inner = Box::<Select>::default();
+            inner.projection = vec![Self::projection(Self::new(Kind::Star, vec![]), None)];
+            inner.from = vec![Self::table(
+                Self::new(Kind::Values, vec![Self::new(Kind::ValuesRows, rows)]),
+                None,
+            )?];
+            let mut table = Self::table(Self::select(inner)?, Some(alias))?;
+            if !names.is_empty() {
+                table.children.push(Self::new(
+                    Kind::DerivedColumns,
+                    names.into_iter().map(Self::name).collect(),
+                ));
+            }
+            let mut outer = Box::<Select>::default();
+            outer.projection = vec![Self::projection(Self::new(Kind::Star, vec![]), None)];
+            outer.from = vec![table];
+            Self::new(Kind::InsertAliasedRows, vec![Self::select(outer)?])
+        } else {
+            match values.kind {
+                Kind::ValueList => Self::new(Kind::InsertRows, values.into_children()),
+                Kind::AssignList => Self::new(Kind::InsertAssignments, values.into_children()),
+                Kind::Select => Self::new(Kind::InsertQuery, vec![values]),
+                _ => unreachable!(),
+            }
         };
         let mut children = vec![Self::new(Kind::InsertTarget, vec![table]), source];
         if !columns.is_empty() {
@@ -288,7 +320,7 @@ impl Node {
         if ignore {
             children.push(Self::new(Kind::Ignore, vec![]));
         }
-        Self::new(Kind::Insert, children)
+        Ok(Self::new(Kind::Insert, children))
     }
 
     pub(crate) fn data_type(

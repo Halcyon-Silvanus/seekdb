@@ -2381,6 +2381,10 @@ int ObDMLResolver::resolve_generate_table(const peg::Node &table_node,
   select_resolver.set_current_level(current_level_);
   select_resolver.set_current_view_level(current_view_level_);
   select_resolver.set_parent_namespace_resolver(parent_namespace_resolver_);
+  if (upper_insert_resolver_ != nullptr &&
+      upper_insert_resolver_->is_row_alias_source(peg::table_source(table_node))) {
+    select_resolver.set_upper_insert_resolver(upper_insert_resolver_);
+  }
   if (OB_ISNULL(stmt)) {
     ret = OB_ERR_UNEXPECTED;
   } else if (stmt->is_select_stmt() ||
@@ -8818,6 +8822,7 @@ int ObDMLResolver::resolve_values_table_item(const peg::Node &table_node, TableI
   ObDMLStmt *dml_stmt = get_stmt();
   TableItem *new_table_item = NULL;
   ObString alias_name;
+  const bool row_alias = upper_insert_resolver_ != nullptr && upper_insert_resolver_->has_row_alias();
   if (OB_ISNULL(dml_stmt) ||  OB_ISNULL(allocator_) || OB_ISNULL(session_info_)) {
     ret = OB_ERR_UNEXPECTED;
   } else if (OB_ISNULL(new_table_item = dml_stmt->create_table_item(*allocator_))) {
@@ -8830,10 +8835,10 @@ int ObDMLResolver::resolve_values_table_item(const peg::Node &table_node, TableI
     if (OB_ISNULL(buf = allocator_->alloc(sizeof(ObValuesTableDef)))) {
       ret = OB_ALLOCATE_MEMORY_FAILED;
     } else if (FALSE_IT(new_table_item->values_table_def_ = new (buf) ObValuesTableDef())) {
-    } else if (upper_insert_resolver_ == NULL &&
+    } else if ((upper_insert_resolver_ == NULL || row_alias) &&
                OB_FAIL(resolve_values_table_for_select(table_node, *new_table_item->values_table_def_))) {
     //insert values table: insert into ....values row(...), row(...),...
-    } else if (upper_insert_resolver_ != NULL &&
+    } else if (upper_insert_resolver_ != NULL && !row_alias &&
                OB_FAIL(resolve_values_table_for_insert(table_node, *new_table_item->values_table_def_))) {
     } else {
       new_table_item->table_id_ = generate_table_id();
@@ -8859,13 +8864,17 @@ int ObDMLResolver::resolve_values_table_for_select(const peg::Node &table_node,
 {
   int ret = OB_SUCCESS;
   const auto rows = peg::values_rows(table_node);
+  const bool row_alias = upper_insert_resolver_ != nullptr && upper_insert_resolver_->has_row_alias();
   if (OB_ISNULL(params_.expr_factory_)) {
     ret = OB_ERR_UNEXPECTED;
   } else {
     int64_t column_cnt = 0;
     for (int64_t i = 0; OB_SUCC(ret) && i < rows.size(); i++) {
       const auto values = peg::row_elements(rows[i]);
-      if (values.empty()) {
+      if (row_alias && values.size() != upper_insert_resolver_->get_insert_stmt()->get_values_desc().count()) {
+        ret = OB_ERR_COULUMN_VALUE_NOT_MATCH;
+        LOG_USER_ERROR(OB_ERR_COULUMN_VALUE_NOT_MATCH, i + 1);
+      } else if (values.empty()) {
         ret = OB_ERR_VALUES_CLAUSE_NEED_HAVE_COLUMN;
       } else if (values.size() > common::OB_USER_ROW_MAX_COLUMNS_COUNT) {
         ret = OB_ERR_TOO_MANY_COLUMNS;
@@ -8886,6 +8895,8 @@ int ObDMLResolver::resolve_values_table_for_select(const peg::Node &table_node,
             if (OB_FAIL(resolve_sql_expr(value_node, expr))) {
             } else if (OB_ISNULL(expr)) {
               ret = OB_ERR_UNEXPECTED;
+            } else if (row_alias) {
+              OZ(resolve_row_alias_value(j, expr));
             } else if (expr->get_expr_type() == T_DEFAULT) {
               ret = OB_ERR_VALUES_CLAUSE_CANNOT_USE_DEFAULT_VALUES;
             }
@@ -8919,6 +8930,29 @@ int ObDMLResolver::resolve_values_table_for_select(const peg::Node &table_node,
       } else if (OB_FAIL(estimate_values_table_stats(table_def))) {
       } else {
       }
+    }
+  }
+  return ret;
+}
+
+int ObDMLResolver::resolve_row_alias_value(int64_t index, ObRawExpr *&expr)
+{
+  int ret = OB_SUCCESS;
+  ObInsertStmt *insert_stmt = upper_insert_resolver_->get_insert_stmt();
+  auto &table_info = insert_stmt->get_insert_table_info();
+  const auto *target = table_info.values_desc_.at(index);
+  if (target->is_generated_column()) {
+    ret = OB_NON_DEFAULT_VALUE_FOR_GENERATED_COLUMN;
+    const ObString &column = target->get_column_name();
+    const ObString &table = insert_stmt->get_table_item_by_id(table_info.table_id_)->table_name_;
+    LOG_USER_ERROR(OB_NON_DEFAULT_VALUE_FOR_GENERATED_COLUMN, column.length(), column.ptr(), table.length(), table.ptr());
+  } else if (expr->get_expr_type() == T_DEFAULT) {
+    ColumnItem *column = insert_stmt->get_column_item_by_id(table_info.table_id_, target->get_column_id());
+    if (OB_ISNULL(column)) {
+      ret = OB_ERR_UNEXPECTED;
+    } else {
+      ObDefaultValueUtils defaults(insert_stmt, &params_, upper_insert_resolver_);
+      OZ(defaults.resolve_default_expr(*column, expr, T_INSERT_SCOPE));
     }
   }
   return ret;
@@ -9133,7 +9167,12 @@ int ObDMLResolver::gen_values_table_column_items(const int64_t column_cnt,
         // compatible Mysql8.0, column name is column_0, column_1, ...
         ObSqlString tmp_col_name;
         char *buf = NULL;
-        if (OB_FAIL(tmp_col_name.append_fmt("column_%ld", i))) {
+        if (upper_insert_resolver_ != nullptr && upper_insert_resolver_->has_row_alias()) {
+          OZ(tmp_col_name.append(upper_insert_resolver_->get_insert_stmt()->get_values_desc().at(i)->get_column_name()));
+        } else {
+          OZ(tmp_col_name.append_fmt("column_%ld", i));
+        }
+        if (OB_FAIL(ret)) {
         } else if (OB_ISNULL(buf = static_cast<char*>(allocator_->alloc(tmp_col_name.length())))) {
           ret = common::OB_ALLOCATE_MEMORY_FAILED;
         } else {

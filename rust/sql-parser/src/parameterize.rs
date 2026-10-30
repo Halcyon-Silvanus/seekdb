@@ -230,7 +230,7 @@ impl<'a> Collector<'a> {
                     ..scope
                 };
                 match insert_source(node) {
-                    InsertSource::Query => self.collect(insert_query(node), scope)?,
+                    InsertSource::Query | InsertSource::AliasedRows => self.collect(insert_query(node), scope)?,
                     InsertSource::Rows => {
                         for row in insert_rows(node) {
                             self.list(row_elements(row), value_scope)?;

@@ -2928,10 +2928,16 @@ int ObRawExprResolverImpl::process_fun_sys_node(const peg::Node &node,
   const int64_t hidden_arguments = node.kind() == peg::NodeKind::DefaultValue ? 4 : 0;
   const int64_t argument_count = arguments.size() + hidden_arguments;
   OZ(function->init_param_exprs(argument_count));
+  const bool mark_values = name.case_compare("values") == 0 && !ctx_.parents_expr_info_.has_member(IS_VALUES);
+  if (mark_values) OZ(ctx_.parents_expr_info_.add_member(IS_VALUES));
   for (const auto &argument : arguments) {
     ObRawExpr *value = nullptr;
     OZ(SMART_CALL(recursive_resolve(argument, value)));
     OZ(function->add_param_expr(value));
+  }
+  if (mark_values) {
+    const int cleanup_ret = ctx_.parents_expr_info_.del_member(IS_VALUES);
+    if (OB_SUCC(ret)) ret = cleanup_ret;
   }
   for (int64_t i = 0; OB_SUCC(ret) && i < hidden_arguments; ++i) {
     ObRawExpr *placeholder = nullptr;
