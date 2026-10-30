@@ -359,8 +359,9 @@ int ObTriggerResolver::resolve_base_object(ObCreateTriggerArg &tg_arg,
   if (OB_FAIL(ret)) {
   } else if (OB_ISNULL(table_schema)) {
     ret = OB_TABLE_NOT_EXIST;
-    LOG_MYSQL_USER_ERROR(OB_TABLE_NOT_EXIST, tg_arg.base_object_database_.ptr(),
-                          tg_arg.base_object_name_.ptr());
+    ObCStringHelper names;
+    LOG_MYSQL_USER_ERROR(OB_TABLE_NOT_EXIST, names.convert(tg_arg.base_object_database_),
+                          names.convert(tg_arg.base_object_name_));
   }
   if (OB_FAIL(ret)) {
   } else if (OB_ISNULL(table_schema)) {
