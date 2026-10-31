@@ -385,7 +385,8 @@ ObGeoType ObResolverUtils::resolve_geometry_type(peg::GeometryType type)
 
 int ObResolverUtils::resolve_unsigned_integer(const peg::Node &node, const char *context, uint64_t &value)
 {
-  if (node.kind() != peg::NodeKind::Int && node.kind() != peg::NodeKind::Uint) {
+  if (node.kind() != peg::NodeKind::Int && node.kind() != peg::NodeKind::Uint
+      && node.kind() != peg::NodeKind::SampleInt) {
     _LOG_USER_MSG(USER_ERROR, OB_INVALID_ARGUMENT, "%s requires an unsigned integer", context);
     return OB_INVALID_ARGUMENT;
   }

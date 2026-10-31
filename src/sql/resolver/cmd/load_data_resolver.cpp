@@ -577,8 +577,10 @@ int LoadDataResolver::resolve_hints(rust::Slice<const peg::Node> hints, ObLoadDa
         break;
       }
       case peg::NodeKind::LoadBatchSize: {
+        const auto &size = peg::hint_load_batch_size(node);
+        if (size.kind() != peg::NodeKind::Int) break;
         OZ(resolved.set_value(ObLoadDataHint::BATCH_SIZE,
-            static_cast<int64_t>(peg::hint_load_batch_size(node))));
+            static_cast<int64_t>(peg::integer_literal_value(size))));
         if (peg::hint_has_load_buffer_size(node)) {
           const auto text = peg::hint_load_buffer_size(node);
           ObString owned;

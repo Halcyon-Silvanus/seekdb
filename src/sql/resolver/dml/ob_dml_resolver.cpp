@@ -6419,7 +6419,7 @@ int ObDMLResolver::resolve_sample_clause(const peg::Node *sample_node,
       const auto &percent = peg::sample_percent(*sample_node);
       const auto percent_text = percent.text();
       const ObString spelling(percent_text.size(), percent_text.data());
-      if (percent.kind() == peg::NodeKind::SampleInt) {
+      if (percent.kind() == peg::NodeKind::SampleInt || percent.kind() == peg::NodeKind::Uint) {
         sample_info.percent_ = static_cast<double>(peg::integer_literal_value(percent));
       } else {
         OZ(ObOptEstObjToScalar::convert_string_to_scalar_for_number(spelling, sample_info.percent_));
@@ -6428,7 +6428,13 @@ int ObDMLResolver::resolve_sample_clause(const peg::Node *sample_node,
         // do nothing
       } else {
         if (peg::sample_has_seed(*sample_node)) {
-          sample_info.seed_ = peg::integer_literal_value(peg::sample_seed(*sample_node));
+          uint64_t seed = 0;
+          OZ(ObResolverUtils::resolve_unsigned_integer(peg::sample_seed(*sample_node), "SAMPLE SEED", seed));
+          if (OB_SUCC(ret) && seed > INT64_MAX) {
+            ret = OB_INVALID_ARGUMENT;
+            _LOG_USER_MSG(USER_ERROR, OB_INVALID_ARGUMENT, "SAMPLE SEED exceeds the signed integer range");
+          }
+          OX(sample_info.seed_ = static_cast<int64_t>(seed));
         } else {
           // seed is set to -1 when not provided and we will pick a random seed in this case.
           sample_info.seed_ = -1;
@@ -7223,8 +7229,12 @@ int ObDMLResolver::resolve_global_hint(const peg::Node &hint_node,
     case Kind::Tracing:
     case Kind::Stat:
     case Kind::Blocking: {
+      const auto targets = peg::hint_allocation_targets(hint_node);
+      for (const auto &target : targets) {
+        if (target.kind() == Kind::Uint || target.kind() == Kind::Number) return OB_SUCCESS;
+      }
       ObSEArray<ObAllocOpHint, 8> operators;
-      for (const auto &target : peg::hint_allocation_targets(hint_node)) {
+      for (const auto &target : targets) {
         if (OB_SUCC(ret)) {
           ObAllocOpHint hint;
           hint.flags_ = hint_node.kind() == Kind::Blocking ? ObAllocOpHint::OB_MATERIAL
@@ -7283,10 +7293,16 @@ int ObDMLResolver::resolve_global_hint(const peg::Node &hint_node,
         const auto value_text = value.text();
         OZ(ob_write_string(*allocator_, ObString(value_text.size(), value_text.data()), text));
         val.set_varchar(text);
-      } else if (value.kind() == Kind::Int) {
-        val.set_int(static_cast<int64_t>(peg::integer_literal_value(value)));
       } else {
-        ret = OB_ERR_UNEXPECTED;
+        const bool signed_value = value.kind() == Kind::Unary;
+        const bool negative = signed_value && peg::unary_operator(value) == peg::UnaryOperator::Minus;
+        const auto &number = signed_value ? peg::unary_operand(value) : value;
+        if (number.kind() != Kind::Int && number.kind() != Kind::Uint) return OB_SUCCESS;
+        const uint64_t magnitude = peg::integer_literal_value(number);
+        const uint64_t maximum = negative ? uint64_t(1) << 63 : INT64_MAX;
+        if (magnitude > maximum) return OB_SUCCESS;
+        val.set_int(negative ? (magnitude == (uint64_t(1) << 63) ? INT64_MIN : -static_cast<int64_t>(magnitude))
+                             : static_cast<int64_t>(magnitude));
       }
       OZ(global_hint.opt_params_.add_opt_param_hint(param_name, val));
       break;
@@ -7323,8 +7339,16 @@ int ObDMLResolver::resolve_global_hint(const peg::Node &hint_node,
           break;
       }
       break;
-    case Kind::Dop:
-      OZ(global_hint.merge_dop_hint(peg::hint_dop_fragment(hint_node), peg::hint_dop_degree(hint_node)));
+    case Kind::Dop: {
+      const auto &fragment = peg::hint_dop_fragment(hint_node);
+      const auto &degree = peg::hint_dop_degree(hint_node);
+      if (fragment.kind() == Kind::Int && degree.kind() == Kind::Int) {
+        OZ(global_hint.merge_dop_hint(peg::integer_literal_value(fragment), peg::integer_literal_value(degree)));
+      }
+      break;
+    }
+    case Kind::LoadBatchSize:
+      resolved_hint = peg::hint_load_batch_size(hint_node).kind() != Kind::Int;
       break;
     case Kind::DmlParallel:
       global_hint.merge_dml_parallel_hint(peg::integer_literal_value(peg::hint_parallel_degree(hint_node)));
@@ -7740,6 +7764,7 @@ int ObDMLResolver::resolve_window_distribution_hint(const peg::Node &hint_node, 
           break;
       }
       for (const auto &index : peg::window_distribution_indexes(option)) {
+        if (index.kind() != peg::NodeKind::Int) return OB_SUCCESS;
         OZ(resolved.win_func_idxs_.push_back(peg::integer_literal_value(index)));
       }
       if (!resolved.is_valid()) {

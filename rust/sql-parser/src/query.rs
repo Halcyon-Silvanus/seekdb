@@ -338,7 +338,7 @@ pub(crate) fn lock_kind(lock: &Node) -> LockKind {
     }
 }
 pub(crate) fn lock_wait(lock: &Node) -> LockWait {
-    if lock.value == u64::MAX {
+    if lock.value == u64::MAX && lock.text.is_empty() {
         LockWait::Default
     } else if lock.start == lock.end {
         LockWait::NoWait
@@ -742,11 +742,11 @@ pub(crate) fn hint_parallel_policy(hint: &Node) -> ParallelPolicy {
 pub(crate) fn hint_parallel_degree(hint: &Node) -> &Node {
     hint.children.last().unwrap()
 }
-pub(crate) fn hint_dop_fragment(hint: &Node) -> u64 {
-    hint.children[0].value
+pub(crate) fn hint_dop_fragment(hint: &Node) -> &Node {
+    &hint.children[0]
 }
-pub(crate) fn hint_dop_degree(hint: &Node) -> u64 {
-    hint.children[1].value
+pub(crate) fn hint_dop_degree(hint: &Node) -> &Node {
+    &hint.children[1]
 }
 pub(crate) fn hint_allocation_targets(hint: &Node) -> &[Node] {
     &hint.children
@@ -757,8 +757,8 @@ pub(crate) fn hint_timeout(hint: &Node) -> &Node {
 pub(crate) fn hint_log_level(hint: &Node) -> &str {
     &hint.children[0].text
 }
-pub(crate) fn hint_load_batch_size(hint: &Node) -> u64 {
-    hint.children[0].value
+pub(crate) fn hint_load_batch_size(hint: &Node) -> &Node {
+    &hint.children[0]
 }
 pub(crate) fn hint_has_load_buffer_size(hint: &Node) -> bool {
     hint.children.len() > 1

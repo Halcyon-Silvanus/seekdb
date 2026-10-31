@@ -1091,13 +1091,27 @@ int ObSelectResolver::resolve_for_update_clause_mysql(const peg::Node &node)
   } else if (peg::lock_wait(node) == peg::LockWait::NoWait) {
     wait_us = 0;
   } else if (peg::lock_wait(node) == peg::LockWait::Duration) {
-    if (node.kind() == peg::NodeKind::LockWait) {
-      const uint64_t wait_seconds = peg::integer_literal_value(node);
-      wait_us = static_cast<int64_t>(wait_seconds * 1000000ULL);
-    } else {
-      const auto duration = peg::lock_wait_seconds(node);
-      const ObString time_str(duration.size(), duration.data());
-      OZ(ObTimeUtility2::str_to_time(time_str, wait_us, ObTimeUtility2::DIGTS_SENSITIVE));
+    const auto duration = peg::lock_wait_seconds(node);
+    size_t integer_length = 0;
+    while (integer_length < duration.size() && duration.data()[integer_length] != '.') ++integer_length;
+    int error = 0;
+    const uint64_t seconds = ObCharset::strntoull(duration.data(), integer_length, 10, &error);
+    bool overflow = error != 0 || seconds > INT64_MAX / 1000000ULL;
+    if (!overflow) {
+      int64_t fraction = 0;
+      if (integer_length < duration.size()) {
+        const ObString time_str(duration.size(), duration.data());
+        int64_t position = integer_length + 1;
+        OZ(ObTimeUtility2::extract_usec(time_str, position, fraction, ObTimeUtility2::DIGTS_SENSITIVE));
+      }
+      if (OB_SUCC(ret)) {
+        overflow = seconds > static_cast<uint64_t>((INT64_MAX - fraction) / 1000000);
+        if (!overflow) wait_us = static_cast<int64_t>(seconds * 1000000ULL) + fraction;
+      }
+    }
+    if (overflow) {
+      ret = OB_INVALID_ARGUMENT;
+      _LOG_USER_MSG(USER_ERROR, OB_INVALID_ARGUMENT, "WAIT duration exceeds the supported range");
     }
   }
   if (OB_SUCC(ret) && OB_FAIL(set_for_update_mysql(*select_stmt, wait_us, skip_locked))) {

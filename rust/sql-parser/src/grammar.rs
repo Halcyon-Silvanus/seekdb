@@ -901,10 +901,15 @@ peg::parser! {
         rule snapshot(level: usize) -> Node = kw("as") kw("of") kw("snapshot") value:expr(level) {
             Node::new(Kind::Snapshot,vec![value,Node::new(Kind::Ident,vec![])])
         }
-        rule sample_number(integer: bool) -> Node = value:number() {?
-            let kind=match value.kind { Kind::Int => Kind::SampleInt,Kind::Number | Kind::Double if !integer => Kind::SampleDecimal,_ => return Err("sample value") };
-            Ok(value.with_kind(kind))
-        }
+        rule sample_number(integer: bool) -> Node
+            = value:(enabled(integer) value:type_size() { value } / enabled(!integer) value:number() { value }) {
+                let kind=match value.kind {
+                    Kind::Int => Kind::SampleInt,
+                    Kind::Number | Kind::Double if !integer => Kind::SampleDecimal,
+                    kind => kind,
+                };
+                value.with_kind(kind)
+            }
         rule sample() -> Node = kw("sample") method:(kw("block") { 2 } / kw("hybrid") { 3 })?
             scope:(kw("all") { Kind::All } / kw("base") { Kind::SampleBase } / kw("incr") { Kind::SampleIncremental })?
             "(" _ percent:sample_number(false) ")" _ seed:(kw("seed") "(" _ value:sample_number(true) ")" _ { value })? {
@@ -1026,7 +1031,7 @@ peg::parser! {
             / start:position!() (kw("nowait") / kw("no_wait")) { Node::new(Kind::LockWait,vec![]).at(start,start) }
             / kw("wait") start:position!() text:$(['0'..='9']+ ("." ['0'..='9']+)?) end:position!() _ {?
                 let mut value=Node::number(text,start,end)?;
-                value.kind=match value.kind { Kind::Int => Kind::LockWait, Kind::Number => Kind::LockWaitDecimal, _ => return Err("lock wait duration") };
+                value.kind=if matches!(value.kind,Kind::Int|Kind::Uint) { Kind::LockWait } else { Kind::LockWaitDecimal };
                 Ok(value)
             }
         rule lock() -> Node
@@ -1275,15 +1280,8 @@ peg::parser! {
             / kw("qb_name") "(" _ name:hint_qb_name() ")" _ { Node::new(Kind::QbName,vec![name]) }
             / kw("opt_param") "(" _ name:hint_string() ("," _)? value:(
                 hint_string()
-                / start:position!() sign:("-" _ { true } / "+" _ { false })? value:type_size() {?
-                    let negative=sign.unwrap_or(false);
-                    let maximum=if negative { 1u64 << 63 } else { i64::MAX as u64 };
-                    if !matches!(value.kind,Kind::Int|Kind::Uint) || value.value>maximum { Err("signed integer hint argument") }
-                    else {
-                        let mut value=value;value.kind=Kind::Int;value.start=start;
-                        if negative { value.value=value.value.wrapping_neg(); }
-                        Ok(value)
-                    }
+                / start:position!() sign:("-" _ { "-" } / "+" _ { "+" })? value:type_size() {?
+                    match sign { Some(sign) => Node::unary(sign,value,start),None => Ok(value) }
                 }
             ) ")" _ { Node::new(Kind::OptParam,vec![name,value]) }
         rule hints() -> Vec<Node> = "/*+" _ options:((value:hint_option() { value }
@@ -2753,9 +2751,7 @@ peg::parser! {
         }
         rule load_text() -> Node = load_string() / binary_literal()
         rule load_integer() -> Node = type_size()
-        rule hint_integer() -> Node = value:type_size() {?
-            if value.kind == Kind::Int { Ok(value) } else { Err("signed integer hint argument") }
-        }
+        rule hint_integer() -> Node = type_size()
         rule load_field_option() -> Node
             = kw("terminated") kw("by") value:load_text() { Node::new(Kind::LoadFieldTerminated,vec![value]) }
             / optional:kw("optionally")? kw("enclosed") kw("by") value:load_text() {

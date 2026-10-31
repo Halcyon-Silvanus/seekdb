@@ -36,7 +36,7 @@ int resolve_output_size(const peg::Node &node, int64_t &size)
     uint64_t integer = 0;
     OZ(ObResolverUtils::resolve_unsigned_integer(node, "Output size", integer));
     OX(size = static_cast<int64_t>(integer));
-  } else if (literal.kind == peg::LiteralKind::String) {
+  } else {
     ObSqlString text;
     bool valid = false;
     if (OB_FAIL(text.append(literal.text.data(), literal.text.size()))) {

@@ -2618,12 +2618,12 @@ pub(crate) mod ffi {
         fn hint_aggregation_sort(hint: &Node) -> AggregationSort;
         fn hint_parallel_policy(hint: &Node) -> ParallelPolicy;
         fn hint_parallel_degree(hint: &Node) -> &Node;
-        fn hint_dop_fragment(hint: &Node) -> u64;
-        fn hint_dop_degree(hint: &Node) -> u64;
+        fn hint_dop_fragment(hint: &Node) -> &Node;
+        fn hint_dop_degree(hint: &Node) -> &Node;
         fn hint_timeout(hint: &Node) -> &Node;
         fn hint_allocation_targets(hint: &Node) -> &[Node];
         fn hint_log_level(hint: &Node) -> &str;
-        fn hint_load_batch_size(hint: &Node) -> u64;
+        fn hint_load_batch_size(hint: &Node) -> &Node;
         fn hint_load_buffer_size(hint: &Node) -> &str;
         fn hint_has_load_buffer_size(hint: &Node) -> bool;
         fn query_into_kind(query: &Node) -> IntoKind;
