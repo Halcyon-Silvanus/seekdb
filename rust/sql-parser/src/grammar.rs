@@ -465,7 +465,8 @@ peg::parser! {
             / depth(level) start:position!() value:(kw("cast") "(" _ value:expr(level+1) kw("as") target:cast_target() array:kw("array")? ignore:kw("ignore")? { (value,target,ignore.is_some(),array.is_some()) }
                 / kw("convert") "(" _ value:expr(level+1) "," _ target:cast_target() { (value,target,false,false) }) ")" end:position!() _ failure:position!() {?
                 let result=if value.3 { value.0.cast_array(value.1,start,end) }
-                else { Node::call(vec![Name { text:"cast".into(),quoted:false,start,end:start+4 }],None,vec![value.0,value.1],None,false,start,end).map(|call| call.value(u64::from(value.2))) };
+                else { Node::named_call(Kind::Cast,Node::new(Kind::Ident,vec![]).text("cast".into()).at(start,start+4),vec![value.0,value.1])
+                    .value(u64::from(value.2)).expression(start,end) };
                 result.map_err(|message| diagnostics.record(message,crate::Span { start,end },failure))
             }
             / depth(level) start:position!() kw("case") operand:expr(level+1)?
@@ -1548,13 +1549,9 @@ peg::parser! {
         }
         rule charset_keyword() = kw("charset") / (kw("character") / kw("char")) kw("set")
         rule cast_target() -> Node = cast_type()
-            / start:position!() text:$(data_type()) {
-                let text=text.trim_end();
-                let name=text.chars().take_while(|ch| ch.is_ascii_alphanumeric() || *ch=='_').collect();
-                Node::new(Kind::DataType,vec![]).text(name).at(start,start+text.len())
-            }
-            / name:(ident() / name_keyword()) parameters:("(" _ values:(type_size() ++ ("," _)) ")" _ { values })? {
-                Node::new(Kind::DataType,parameters.unwrap_or_default()).text(name.text).at(name.start,name.end)
+            / data_type()
+            / name:(ident() / name_keyword()) parameters:("(" _ values:(type_size() ++ ("," _)) ")" _ { values })? end:position!() {
+                Node::new(Kind::DataType,parameters.unwrap_or_default()).text(name.text).at(name.start,end)
             }
         rule cast_type() -> Node
             = start:position!() (kw("nchar") / kw("national") (kw("char") / kw("character")))
@@ -1887,12 +1884,12 @@ peg::parser! {
                 / enabled(matches!(kind,Kind::ListPartition|Kind::ListColumnsPartition)) kw("values") kw("in") "(" _
                     value:(kw("default") { Node::new(Kind::Default,vec![]) } / values:expr_list(0) { Node::new(Kind::ExprList,values) }) ")" _ { (Kind::ListPartitionElement,value) }
                 / enabled(matches!(kind,Kind::KeyPartition|Kind::HashPartition)) { (Kind::HashPartitionElement,Node::missing()) })
-            engine:(kw("engine") "=" _ value:collation_name() {? if value.text.eq_ignore_ascii_case("innodb") { Ok(()) } else { Err("InnoDB engine") } })?
+            engine:(kw("engine") "=" _ value:collation_name() { Node::new(Kind::Engine,vec![value]) })?
             elements:(enabled(subkind!=Some(Kind::Missing)) values:(
                 subpartition_elements(subkind.unwrap_or(Kind::RangePartition))
                 / enabled(subkind.is_none()) value:(subpartition_elements(Kind::ListPartition)
                     / subpartition_elements(Kind::HashPartition)) { value }) { values })? {?
-                Ok(ddl::PartitionEntry { kind:bound.0, name:Node::relation(name)?, values:bound.1, subpartitions:elements }.into_node())
+                Ok(ddl::PartitionEntry { kind:bound.0, name:Node::relation(name)?, values:bound.1, engine, subpartitions:elements }.into_node())
             }
         rule rename_table() -> Node = from:relation_name() kw("to") to:relation_name() {?
             Ok(Node::new(Kind::RenameTableAction,vec![Node::relation(from)?,Node::relation(to)?]))
@@ -2672,8 +2669,8 @@ peg::parser! {
             items:(diagnostics_item(condition.is_some()) ++ ("," _)) {
                 Node::new(Kind::Diagnostics,vec![Node::new(Kind::Bool,vec![]).value(u64::from(condition.is_some())),Node::new(Kind::Bool,vec![]).value(current.unwrap_or(1)),Node::optional(condition),Node::new(Kind::Link,items)])
             }
-        rule pl_do(level: usize) -> Node = kw("do") values:(pl_expression(level) ++ ("," _)) ("," _)* {?
-            crate::routine::do_statement(values)
+        rule pl_do(level: usize) -> Node = kw("do") values:(pl_expression(level) ++ ("," _)) ("," _)* {
+            Node::new(Kind::PlDo,values)
         }
         rule anonymous_statement() -> Node = start:position!() value:(pl_do(0) / pl_signal()) end:position!() {
             Node::new(Kind::PlBlock,vec![Node::new(Kind::PlDeclarations,vec![]),
@@ -2692,9 +2689,8 @@ peg::parser! {
             / kind:(kw("leave") { Kind::PlLeave } / kw("iterate") { Kind::PlIterate }) label:pl_ident() { Node::new(kind,vec![Node::name(label),Node::missing()]) }
             / kw("open") name:pl_ident() { Node::new(Kind::PlOpen,vec![Node::name(name),Node::missing(),Node::missing()]) }
             / kw("close") name:pl_ident() { Node::new(Kind::PlClose,vec![Node::name(name)]) }
-            / kw("fetch") (kw("next") kw("from") / kw("from"))? name:pl_ident() kw("into") variables:((value:pl_expression(level+1) failure:position!() {?
-                let span=crate::Span { start:value.start,end:value.end };
-                crate::routine::cursor_fetch_target(value).map_err(|message| diagnostics.record(message,span,failure))
+            / kw("fetch") (kw("next") kw("from") / kw("from"))? name:pl_ident() kw("into") variables:((value:pl_expression(level+1) {
+                crate::routine::cursor_fetch_target(value)
             }) ++ ("," _)) {
                 Node::new(Kind::PlFetch,vec![Node::name(name),Node::new(Kind::IntoVariables,vec![Node::new(Kind::PlInto,variables)])])
             }

@@ -383,8 +383,13 @@ ObGeoType ObResolverUtils::resolve_geometry_type(peg::GeometryType type)
   return ObGeoType::GEOTYPEMAX;
 }
 
-int ObResolverUtils::resolve_cast_type(const peg::Node &node, ObRawExprResType &target)
+int ObResolverUtils::resolve_cast_type(const peg::Node &node, const ObString &spelling, ObRawExprResType &target)
 {
+  if (node.kind() != peg::NodeKind::CastType) {
+    _LOG_USER_MSG(USER_ERROR, OB_NOT_SUPPORTED, "CAST target type '%.*s' is not supported",
+        spelling.length(), spelling.ptr());
+    return OB_NOT_SUPPORTED;
+  }
   const auto syntax = peg::type_syntax(node);
   target.set_type(type_object_type(syntax));
   target.set_collation_type(is_binary_type_name(syntax.name) ? CS_TYPE_BINARY : CS_TYPE_INVALID);

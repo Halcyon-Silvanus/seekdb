@@ -1939,6 +1939,7 @@ pub(crate) mod ffi {
     }
     struct PartitionElement<'a> {
         name: &'a Node,
+        engine: &'a [Node],
         values: &'a [Node],
         value_kind: PartitionValues,
         subpartitions: &'a [Node],

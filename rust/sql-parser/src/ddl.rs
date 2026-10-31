@@ -515,6 +515,7 @@ pub(crate) struct PartitionEntry {
     pub kind: Kind,
     pub name: Node,
     pub values: Node,
+    pub engine: Option<Node>,
     pub subpartitions: Option<Node>,
 }
 
@@ -524,6 +525,7 @@ impl PartitionEntry {
         if self.values.kind != Kind::Missing {
             children.push(self.values);
         }
+        children.extend(self.engine);
         children.extend(self.subpartitions);
         Node::new(self.kind, children)
     }
@@ -532,6 +534,7 @@ impl PartitionEntry {
 pub(crate) fn partition_element(node: &Node) -> PartitionElement<'_> {
     PartitionElement {
         name: child(node, Kind::Relation).unwrap(),
+        engine: list(node, Kind::Engine),
         values: list(node, Kind::ExprList),
         value_kind: if child(node, Kind::Default).is_some() {
             PartitionValues::Default

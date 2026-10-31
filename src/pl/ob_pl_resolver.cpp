@@ -7634,6 +7634,14 @@ int ObPLResolver::resolve_into(rust::Slice<const peg::Node> targets, ObPLInto &i
   if (OB_SUCC(ret)) {
     for (const auto &target : targets) {
       if (OB_FAIL(ret)) { break; }
+      if (target.kind() != peg::NodeKind::Ident && target.kind() != peg::NodeKind::Column
+          && target.kind() != peg::NodeKind::Parameter && target.kind() != peg::NodeKind::SystemVariable
+          && target.kind() != peg::NodeKind::GetUserVariable && target.kind() != peg::NodeKind::UserVariable) {
+        ret = OB_ERR_WRONG_TYPE_FOR_VAR;
+        const auto text = source(target);
+        LOG_USER_ERROR(OB_ERR_WRONG_TYPE_FOR_VAR, text.length(), text.ptr());
+        break;
+      }
       ObQualifiedName q_name;
       ObRawExpr* expr = NULL;
       if (target.kind() == peg::NodeKind::Parameter) {

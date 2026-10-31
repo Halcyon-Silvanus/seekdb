@@ -649,7 +649,7 @@ protected:
                                     share::schema::ObTableSchema &table_schema,
                                     share::schema::ObPartition *partition);
 
-  int resolve_partition_name(const peg::Node &partition_name_node,
+  int resolve_partition_element(const peg::PartitionElement &definition,
                              ObString &partition_name,
                              share::schema::ObBasePartition &partition);
 

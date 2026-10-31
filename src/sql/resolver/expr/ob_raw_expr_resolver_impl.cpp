@@ -2793,7 +2793,7 @@ int ObRawExprResolverImpl::process_json_query_node(const peg::Node &node, ObRawE
   const auto options = peg::json_options(node);
   const auto &target_node = peg::json_returning(node);
   ObRawExprResType target;
-  OZ(ObResolverUtils::resolve_cast_type(target_node, target));
+  OZ(ObResolverUtils::resolve_cast_type(target_node, source_text(target_node), target));
   ObString path;
   if (peg::is_literal(peg::json_path(node))) {
     const auto literal = peg::expression_literal(peg::json_path(node));
@@ -2870,7 +2870,7 @@ int ObRawExprResolverImpl::process_json_value_node(const peg::Node &node, ObRawE
   const auto options = peg::json_options(node);
   const auto &target_node = peg::json_returning(node);
   ObRawExprResType target;
-  OZ(ObResolverUtils::resolve_cast_type(target_node, target));
+  OZ(ObResolverUtils::resolve_cast_type(target_node, source_text(target_node), target));
   OZ(cast_accuracy_check(target, source_text(peg::json_document(node))));
   if ((options.on_empty == peg::JsonResponse::Default && peg::is_literal(peg::json_empty_default(node))
        && peg::expression_literal(peg::json_empty_default(node)).kind == peg::LiteralKind::Null)
@@ -2947,7 +2947,7 @@ int ObRawExprResolverImpl::process_cast(const peg::Node &node, ObRawExpr *&expr)
   ObSysFunRawExpr *function = nullptr;
   ObRawExprResType type;
   const auto &syntax = peg::cast_target(node);
-  OZ(ObResolverUtils::resolve_cast_type(syntax, type));
+  OZ(ObResolverUtils::resolve_cast_type(syntax, source_text(syntax), type));
   OZ(cast_accuracy_check(type, source_text(peg::cast_argument(node))));
   OZ(ctx_.expr_factory_.create_raw_expr(T_FUN_SYS, function));
   OX(function->set_func_name(N_CAST));

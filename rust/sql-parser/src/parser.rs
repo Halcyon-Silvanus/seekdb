@@ -125,10 +125,6 @@ fn parse_source(source: std::borrow::Cow<'_, str>, source_prefix: usize,
         error.expanded_sql = std::mem::take(&mut expanded_sql);
         error
     })?;
-    validate_types(&root).map_err(|mut error| {
-        error.expanded_sql = std::mem::take(&mut expanded_sql);
-        error
-    })?;
     let parameters = number_parameters(&mut root).map_err(|span| {
         let mut error = ParseFailure::at(ParseErrorKind::Syntax,
             "ordinal and named parameters cannot be combined", span);
@@ -160,26 +156,6 @@ fn statement_accepts_parameters(node: &Node) -> bool {
         Kind::CreateTable => crate::ddl::table_definition(node).select_mode != crate::TableSelectMode::None,
         _ => false,
     }
-}
-
-fn validate_types(node: &Node) -> Result<(), ParseFailure> {
-    let mut pending = vec![node];
-    while let Some(node) = pending.pop() {
-        let cast_target = match node.kind {
-            Kind::Cast => Some(crate::expression::cast_target(node)),
-            Kind::JsonQuery => Some(crate::expression::json_returning(node)),
-            _ => None,
-        };
-        if let Some(target) = cast_target.filter(|target| target.kind == Kind::DataType) {
-            let mut error = ParseFailure::at(ParseErrorKind::Syntax,
-                format!("invalid CAST target type: {}", target.text),
-                Span { start:target.start,end:target.end });
-            error.diagnostic.expected.push("a supported CAST target type".into());
-            return Err(error);
-        }
-        pending.extend(node.children.iter().rev());
-    }
-    Ok(())
 }
 
 fn number_parameters(node: &mut Node) -> Result<Parameters, Span> {

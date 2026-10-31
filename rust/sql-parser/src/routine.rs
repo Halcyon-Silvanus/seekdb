@@ -14,19 +14,6 @@
 
 use crate::node::{Kind, Node};
 
-pub(crate) fn do_statement(expressions: Vec<Node>) -> Result<Node, &'static str> {
-    for expression in &expressions {
-        let mut root = expression;
-        while root.kind == Kind::Parenthesized {
-            root = crate::expression::parenthesized_expression(root);
-        }
-        if root.kind == Kind::Column {
-            return Err("DO cannot evaluate a bare column reference");
-        }
-    }
-    Ok(Node::new(Kind::PlDo, expressions))
-}
-
 pub(crate) fn do_expressions(node: &Node) -> &[Node] {
     &node.children
 }
@@ -122,15 +109,11 @@ pub(crate) fn cursor_query(node: &Node) -> &Node {
     &node.children[3]
 }
 
-pub(crate) fn cursor_fetch_target(mut value: Node) -> Result<Node, &'static str> {
+pub(crate) fn cursor_fetch_target(mut value: Node) -> Node {
     while value.kind == Kind::Parenthesized {
         value = value.children.pop().unwrap();
     }
-    if matches!(value.kind, Kind::Select | Kind::PlSubquery) {
-        Err("FETCH target cannot be a query or contain a user variable")
-    } else {
-        Ok(value)
-    }
+    value
 }
 
 pub(crate) fn cursor_fetch_targets(node: &Node) -> &[Node] {

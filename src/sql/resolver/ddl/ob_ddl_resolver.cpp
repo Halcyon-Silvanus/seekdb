@@ -3461,7 +3461,7 @@ int ObDDLResolver::resolve_range_partition_elements(rust::Slice<const peg::Node>
       ObBasePartition &target = is_subpartition ? static_cast<ObBasePartition&>(subpartition)
                                                : static_cast<ObBasePartition&>(partition);
       ObString name;
-      OZ(resolve_partition_name(definition.name, name, target));
+      OZ(resolve_partition_element(definition, name, target));
       has_empty_name |= target.is_empty_partition_name();
       if (definition.value_kind != peg::PartitionValues::Range) {
         ret = OB_ERR_UNEXPECTED;
@@ -4908,13 +4908,22 @@ int ObDDLResolver::get_row_store_type(const ObStoreFormatType store_format,
   return ret;
 }
 
-int ObDDLResolver::resolve_partition_name(const peg::Node &partition_name_node,
+int ObDDLResolver::resolve_partition_element(const peg::PartitionElement &definition,
                                           ObString &partition_name,
                                           ObBasePartition &partition)
 {
   int ret = OB_SUCCESS;
+  if (!definition.engine.empty()) {
+    const auto spelling = definition.engine[0].text();
+    const ObString engine(spelling.size(), spelling.data());
+    if (engine.case_compare("innodb") != 0) {
+      ret = OB_NOT_SUPPORTED;
+      LOG_USER_ERROR(OB_NOT_SUPPORTED, "Partition storage engine other than InnoDB");
+    }
+  }
+  if (OB_SUCC(ret))
   {
-    const auto &name_node = peg::relation_name(partition_name_node);
+    const auto &name_node = peg::relation_name(definition.name);
     const auto name_node_text = name_node.text();
     partition_name.assign_ptr(name_node_text.data(), name_node_text.size());
     if (OB_FAIL(ObSQLUtils::check_ident_name(CS_TYPE_UTF8MB4_GENERAL_CI,
@@ -5628,7 +5637,7 @@ int ObDDLResolver::resolve_hash_partition_elements(ObPartitionedStmt *stmt,
       ObString partition_name;
       const auto definition = peg::partition_element(elements[i]);
       // 1. check partition name
-      if (OB_FAIL(resolve_partition_name(definition.name,
+      if (OB_FAIL(resolve_partition_element(definition,
                                                 partition_name, partition))) {
       }
       //add hash partition elements to table schema
@@ -5680,7 +5689,7 @@ int ObDDLResolver::resolve_hash_subpartition_elements(ObPartitionedStmt *stmt,
       const auto definition = peg::partition_element(elements[i]);
 
       // 1. check partition name
-      if (OB_FAIL(resolve_partition_name(definition.name,
+      if (OB_FAIL(resolve_partition_element(definition,
                                                 partition_name, subpartition))) {
       }
       // add hash subpartition elements to table schema or partition
@@ -5723,7 +5732,7 @@ int ObDDLResolver::resolve_range_partition_elements(ObPartitionedStmt *stmt,
       const auto definition = peg::partition_element(elements[i]);
       if (part_func_exprs.count() != definition.values.size()) {
         ret = OB_ERR_PARTITION_COLUMN_LIST_ERROR;
-      } else if (OB_FAIL(resolve_partition_name(definition.name,
+      } else if (OB_FAIL(resolve_partition_element(definition,
                                                 partition_name, partition))) {
       } else if (OB_FAIL(resolve_range_partition_value_node(peg::partition_element_values(elements[i]), partition_name,
                                                             part_type, part_func_exprs,
@@ -5781,7 +5790,7 @@ int ObDDLResolver::resolve_range_subpartition_elements(ObPartitionedStmt *stmt,
       const auto definition = peg::partition_element(elements[i]);
       if (part_func_exprs.count() != definition.values.size()) {
         ret = OB_ERR_PARTITION_COLUMN_LIST_ERROR;
-      } else if (OB_FAIL(resolve_partition_name(definition.name,
+      } else if (OB_FAIL(resolve_partition_element(definition,
                                                 partition_name, subpartition))) {
       } else if (OB_FAIL(resolve_range_partition_value_node(peg::partition_element_values(elements[i]), partition_name,
                                                             part_type, part_func_exprs,
@@ -5825,7 +5834,7 @@ int ObDDLResolver::resolve_list_partition_elements(ObPartitionedStmt *stmt,
       partition.reset();
       ObString partition_name;
       const auto definition = peg::partition_element(elements[i]);
-      if (OB_FAIL(resolve_partition_name(definition.name,
+      if (OB_FAIL(resolve_partition_element(definition,
                                                 partition_name, partition))) {
       } else if (OB_FAIL(resolve_list_partition_value_node(peg::partition_element_values(elements[i]), partition_name,
                                                            part_type, part_func_exprs,
@@ -5879,7 +5888,7 @@ int ObDDLResolver::resolve_list_subpartition_elements(ObPartitionedStmt *stmt,
       subpartition.reset();
       ObString partition_name;
       const auto definition = peg::partition_element(elements[i]);
-      if (OB_FAIL(resolve_partition_name(definition.name,
+      if (OB_FAIL(resolve_partition_element(definition,
                                                 partition_name, subpartition))) {
       } else if (OB_FAIL(resolve_list_partition_value_node(peg::partition_element_values(elements[i]), partition_name,
                                                            part_type, part_func_exprs,
