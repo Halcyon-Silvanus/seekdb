@@ -2467,6 +2467,41 @@ int ObRawExprResolverImpl::process_agg_node(const peg::Node &node, ObRawExpr *&e
   const auto arguments = peg::call_arguments(node);
   const bool distinct = peg::aggregate_quantifier(node) == peg::AggregateQuantifier::Distinct;
   const bool add_flag = !ctx_.parents_expr_info_.has_member(IS_AGG);
+  size_t min_arguments = 1;
+  size_t max_arguments = 1;
+  switch (type) {
+    case T_FUN_COUNT:
+      if (distinct) max_arguments = arguments.size();
+      break;
+    case T_FUN_APPROX_COUNT_DISTINCT:
+    case T_FUN_APPROX_COUNT_DISTINCT_SYNOPSIS:
+    case T_FUN_GROUP_CONCAT:
+      max_arguments = arguments.size();
+      break;
+    case T_FUN_TOP_FRE_HIST:
+      min_arguments = max_arguments = 4;
+      break;
+    case T_FUN_HYBRID_HIST:
+    case T_FUN_JSON_OBJECTAGG:
+      min_arguments = max_arguments = 2;
+      break;
+    case T_FUN_SYS_ST_ASMVT:
+      max_arguments = 5;
+      break;
+    default:
+      break;
+  }
+  const auto name = peg::call_name(node);
+  if (arguments.size() < min_arguments || arguments.size() > max_arguments) {
+    ret = OB_ERR_PARAM_SIZE;
+    LOG_USER_ERROR(OB_ERR_PARAM_SIZE, int(name.size()), name.data());
+  } else if ((type == T_FUN_TOP_FRE_HIST
+              && (arguments[0].kind() != peg::NodeKind::Number
+                  || arguments[2].kind() != peg::NodeKind::Int))
+      || (type == T_FUN_HYBRID_HIST && arguments[1].kind() != peg::NodeKind::Int)) {
+    ret = OB_ERR_WRONG_PARAMETERS_TO_NATIVE_FCT;
+    LOG_USER_ERROR(OB_ERR_WRONG_PARAMETERS_TO_NATIVE_FCT, int(name.size()), name.data());
+  }
   OZ(ctx_.expr_factory_.create_raw_expr(type, aggregate));
   OZ(ctx_.aggr_exprs_->push_back(aggregate));
   if (add_flag) OZ(ctx_.parents_expr_info_.add_member(IS_AGG));

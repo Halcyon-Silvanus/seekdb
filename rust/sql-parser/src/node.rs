@@ -801,9 +801,6 @@ impl Node {
                 | Kind::UtcTime
                 | Kind::Sysdate
         );
-        if kind == Kind::Grouping && arguments.len() != 1 {
-            return Err("invalid function argument count");
-        }
         if timestamp {
             name.text = match kind {
                 Kind::CurrentTimestamp => "now",
@@ -897,25 +894,6 @@ impl Node {
                 ))
         {
             return Err("invalid aggregate modifier");
-        }
-        let argument_count = match kind {
-            Kind::TopFreHist => 4,
-            Kind::HybridHist | Kind::JsonObjectAgg => 2,
-            _ => 1,
-        };
-        if aggregate
-            && !count_star
-            && (arguments.is_empty()
-                || (!(approximate || kind == Kind::Count && distinct)
-                    && arguments.len() != argument_count))
-        {
-            return Err("invalid aggregate argument count");
-        }
-        if (kind == Kind::TopFreHist
-            && (arguments[0].kind != Kind::Number || arguments[2].kind != Kind::Int))
-            || (kind == Kind::HybridHist && arguments[1].kind != Kind::Int)
-        {
-            return Err("histogram rate and bucket count must be numeric constants");
         }
         let mut function = Self::named_call(kind, Self::name(name), arguments);
         if let Some(modifier) = modifier {
