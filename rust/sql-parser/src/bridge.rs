@@ -930,6 +930,7 @@ pub(crate) mod ffi {
         PartitionExpression,
         PartitionCount,
         ViewCheckOption,
+        Definer,
     }
 
     #[derive(Clone, Copy, Debug, Default)]
@@ -1086,12 +1087,9 @@ pub(crate) mod ffi {
         locked: bool,
     }
 
-    #[derive(Default)]
-    struct AccountLimits {
-        has_connections_per_hour: bool,
-        connections_per_hour: u64,
-        has_user_connections: bool,
-        user_connections: u64,
+    struct AccountLimits<'a> {
+        connections_per_hour: &'a [Node],
+        user_connections: &'a [Node],
     }
 
     enum TlsMode {
@@ -1521,6 +1519,7 @@ pub(crate) mod ffi {
 
     struct ViewDefinition<'a> {
         relation: &'a Node,
+        definer: &'a [Node],
         columns: &'a [Node],
         query: &'a Node,
         replace: bool,
@@ -2353,7 +2352,7 @@ pub(crate) mod ffi {
         fn prepared_source(node: &Node) -> &Node;
         fn execution_arguments(node: &Node) -> &[Node];
         fn access_options(statement: &Node) -> AccessOptions;
-        fn account_limits(statement: &Node) -> AccountLimits;
+        unsafe fn account_limits<'a>(statement: &'a Node) -> AccountLimits<'a>;
         unsafe fn account_tls<'a>(statement: &'a Node) -> TlsRequirement<'a>;
         fn access_accounts(statement: &Node) -> &[Node];
         fn account_renames(statement: &Node) -> &[Node];

@@ -19,6 +19,7 @@
 #include "ob_create_routine_stmt.h"
 #include "sql/pl/ob_pl_router.h"
 #include "sql/pl/ob_pl_resolver.h"
+#include "sql/resolver/dcl/access_control_common.h"
 
 namespace oceanbase
 {
@@ -115,6 +116,9 @@ int ObCreateRoutineResolver::resolve_sp_definer(const peg::Node *parse_node,
   cur_host_name = session_info_->get_host_name();
   if (OB_NOT_NULL(parse_node)) {
     CK(peg::NodeKind::UserHost == parse_node->kind());
+    if (OB_SUCC(ret)) {
+      OZ(access_control::check_account_host(peg::account_identity(*parse_node).host));
+    }
     if (OB_SUCC(ret)) {
       const auto account = peg::account_identity(*parse_node);
       user_name = ObString(account.name.size(), account.name.data());

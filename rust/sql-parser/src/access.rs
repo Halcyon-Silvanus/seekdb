@@ -50,17 +50,15 @@ pub(crate) fn access_options(statement: &Node) -> AccessOptions {
     }
 }
 
-pub(crate) fn account_limits(statement: &Node) -> AccountLimits {
-    let mut limits = AccountLimits::default();
+pub(crate) fn account_limits(statement: &Node) -> AccountLimits<'_> {
+    let mut limits = AccountLimits { connections_per_hour: &[], user_connections: &[] };
     for option in &statement.children {
         match option.kind {
             Kind::MaxConnectionsPerHour => {
-                limits.has_connections_per_hour = true;
-                limits.connections_per_hour = option.value;
+                limits.connections_per_hour = &option.children;
             }
             Kind::MaxUserConnections => {
-                limits.has_user_connections = true;
-                limits.user_connections = option.value;
+                limits.user_connections = &option.children;
             }
             _ => {}
         }

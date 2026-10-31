@@ -19,6 +19,7 @@ use crate::{
 
 pub(crate) struct View {
     pub relation: Node,
+    pub definer: Option<Node>,
     pub columns: Vec<Node>,
     pub query: Node,
     pub replace: bool,
@@ -29,6 +30,7 @@ pub(crate) struct View {
 impl View {
     pub fn into_node(self) -> Node {
         let mut children = vec![self.relation, self.query];
+        children.extend(self.definer);
         if !self.columns.is_empty() {
             children.push(Node::new(Kind::ColumnList, self.columns));
         }
@@ -44,6 +46,7 @@ impl View {
 pub(crate) fn view_definition(node: &Node) -> ViewDefinition<'_> {
     ViewDefinition {
         relation: child(node, Kind::Relation).unwrap(),
+        definer: list(node, Kind::Definer),
         columns: list(node, Kind::ColumnList),
         query: child(node, Kind::Select).unwrap(),
         replace: child(node, Kind::Replace).is_some(),

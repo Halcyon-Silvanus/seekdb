@@ -18,6 +18,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <string_view>
 
 #include "sql/resolver/dcl/access_control_resolver.h"
 #include "sql/resolver/dcl/access_control_common.h"
@@ -48,6 +49,20 @@ int copy_text(rust::Str text, ObResolverParams &params, ObString &copy)
   return ret;
 }
 
+int check_account_host(rust::Str host)
+{
+  int ret = OB_SUCCESS;
+  const std::string_view punctuation = "_.$/%`\"'";
+  for (unsigned char ch : host) {
+    if (ch < 128 && !std::isalnum(ch) && punctuation.find(ch) == std::string_view::npos) {
+      ret = OB_INVALID_ARGUMENT;
+      LOG_USER_ERROR(OB_INVALID_ARGUMENT, "account host");
+      break;
+    }
+  }
+  return ret;
+}
+
 int resolve_account(const peg::Node &spec, ObResolverParams &params, AccountNameMode mode,
                     ObString &name, ObString &host)
 {
@@ -66,6 +81,7 @@ int resolve_account(const peg::Node &spec, ObResolverParams &params, AccountName
     OZ (copy_text(peg::account_name(spec), params, name));
     if (OB_SUCC(ret)) {
       if (peg::account_has_host(spec)) {
+        OZ (check_account_host(peg::account_host(spec)));
         OZ (copy_text(peg::account_host(spec), params, host));
       } else {
         host = ObString::make_string(OB_DEFAULT_HOST_NAME);
@@ -200,6 +216,21 @@ bool valid_encoded_password(const ObString &password)
 
 namespace
 {
+int resolve_account_limit(rust::Slice<const peg::Node> values, const char *name, uint32_t &limit)
+{
+  int ret = OB_SUCCESS;
+  limit = 0;
+  if (!values.empty()) {
+    if (values[0].kind() != peg::NodeKind::Int && values[0].kind() != peg::NodeKind::Uint) {
+      ret = OB_INVALID_ARGUMENT;
+      _LOG_USER_MSG(USER_ERROR, OB_INVALID_ARGUMENT, "%s must be a nonnegative integer", name);
+    } else {
+      limit = std::min<uint64_t>(peg::integer_literal_value(values[0]), UINT32_MAX);
+    }
+  }
+  return ret;
+}
+
 template <typename Statement>
 int resolve_tls(const peg::TlsRequirement &requirement, Statement &statement)
 {
@@ -243,8 +274,13 @@ int resolve_create_user(const peg::Node &node, ObResolverParams &params, ObStmt 
   if (OB_SUCC(ret)) {
     created->set_if_not_exists(peg::access_options(node).if_not_exists);
     const auto limits = peg::account_limits(node);
-    created->set_max_connections_per_hour(std::min<uint64_t>(limits.connections_per_hour, UINT32_MAX));
-    created->set_max_user_connections(std::min<uint64_t>(limits.user_connections, UINT32_MAX));
+    uint32_t connections_per_hour = 0, user_connections = 0;
+    OZ (resolve_account_limit(limits.connections_per_hour, "MAX_CONNECTIONS_PER_HOUR", connections_per_hour));
+    OZ (resolve_account_limit(limits.user_connections, "MAX_USER_CONNECTIONS", user_connections));
+    if (OB_SUCC(ret)) {
+      created->set_max_connections_per_hour(connections_per_hour);
+      created->set_max_user_connections(user_connections);
+    }
     for (const auto &account : peg::access_accounts(node)) {
       if (OB_FAIL(ret)) { break; }
       ObString name;
@@ -366,7 +402,10 @@ int resolve_password(const peg::Node &node, ObResolverParams &params, ObStmt *&s
   if (OB_SUCC(ret)) {
     const auto &account = peg::access_accounts(node)[0];
     const auto limits = peg::account_limits(node);
-    const bool modifying_limits = limits.has_connections_per_hour || limits.has_user_connections;
+    const bool modifying_limits = !limits.connections_per_hour.empty() || !limits.user_connections.empty();
+    uint32_t connections_per_hour = 0, user_connections = 0;
+    OZ (resolve_account_limit(limits.connections_per_hour, "MAX_CONNECTIONS_PER_HOUR", connections_per_hour));
+    OZ (resolve_account_limit(limits.user_connections, "MAX_USER_CONNECTIONS", user_connections));
     const auto tls = peg::account_tls(node);
     const bool modifying_tls = tls.mode != peg::TlsMode::Absent;
     ObString name;
@@ -389,13 +428,13 @@ int resolve_password(const peg::Node &node, ObResolverParams &params, ObStmt *&s
       }
     }
     OZ (check_reserved_account(params, name, host));
-    if (modifying_limits) {
+    if (OB_SUCC(ret) && modifying_limits) {
       changed->set_modify_max_connections(true);
-      if (limits.has_connections_per_hour) {
-        changed->set_max_connections_per_hour(std::min<uint64_t>(limits.connections_per_hour, UINT32_MAX));
+      if (!limits.connections_per_hour.empty()) {
+        changed->set_max_connections_per_hour(connections_per_hour);
       }
-      if (limits.has_user_connections) {
-        changed->set_max_user_connections(std::min<uint64_t>(limits.user_connections, UINT32_MAX));
+      if (!limits.user_connections.empty()) {
+        changed->set_max_user_connections(user_connections);
       }
     } else if (!modifying_tls) {
       OZ (copy_text(peg::account_password(account), params, password));

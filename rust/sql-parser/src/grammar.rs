@@ -1978,13 +1978,14 @@ peg::parser! {
         rule view_definition() -> Node = view_mode:(keyword("create") hint_slot() replace:(kw("or") kw("replace"))? { (false,replace.is_some()) }
                 / keyword("alter") hint_slot() { (true,false) })
             (kw("algorithm") "=" _ (kw("undefined") / kw("merge") / kw("temptable")))?
-            (kw("definer") "=" _ (kw("current_user") ("(" _ ")" _)? / account()))? (kw("sql") kw("security") kw("definer"))?
+            definer:(kw("definer") "=" _ value:(kw("current_user") ("(" _ ")" _)? { Node::new(Kind::CurrentUser,vec![]) }
+                / account()) { Node::new(Kind::Definer,vec![value]) })? (kw("sql") kw("security") kw("definer"))?
             kw("view") name:relation_name() columns:("(" _ names:(ident() ++ ("," _)) ")" _ { names })? kw("as")
             start:position!() query:select(0) end:position!()
             check:(kw("with") local:(kw("local") { true } / kw("cascaded") { false })? kw("check") kw("option") { if local==Some(true) { 1 } else { 2 } })? {?
                 Ok(ddl::View {
                     relation:Node::relation(name)?, columns:columns.unwrap_or_default().into_iter().map(Node::name).collect(),
-                    query:query.at(start,end), replace:view_mode.1, alter:view_mode.0, check:check.unwrap_or(0),
+                    query:query.at(start,end), definer, replace:view_mode.1, alter:view_mode.0, check:check.unwrap_or(0),
                 }.into_node())
             }
         rule outline_query_end(start: usize, end: usize) -> usize = #{|input: &str, pos| {
@@ -2257,13 +2258,8 @@ peg::parser! {
             / kw("set")? actions:(config_assignment() ++ ("," _)) { Node::new(Kind::SetConfig,vec![Node::new(Kind::ConfigList,actions)]) }
         ) { value }
         rule account_name() -> Node = string() / name:ident() { Node::name(name) }
-        rule account() -> Node = name:account_name() host:user_variable()? failure:position!() {?
-            if host.as_ref().is_some_and(|host| !host.text.chars().all(|ch|
-                !ch.is_ascii() || ch.is_ascii_alphanumeric() || "_.$/%`\"'".contains(ch))) {
-                let host=host.as_ref().unwrap();
-                return Err(diagnostics.record("invalid account host",crate::Span { start:host.start,end:host.end },failure));
-            }
-            Ok(Node::new(Kind::UserHost,vec![name,Node::optional(host)]))
+        rule account() -> Node = name:account_name() host:user_variable()? {
+            Node::new(Kind::UserHost,vec![name,Node::optional(host)])
         }
         rule account_principal() -> Node
             = kw("current_user") ("(" _ ")" _)? { Node::new(Kind::CurrentUser,vec![]) }
@@ -2420,9 +2416,8 @@ peg::parser! {
         }
         rule account_resource_limits() -> Vec<Node> = kw("with") limits:(
             kind:(kw("max_connections_per_hour") { Kind::MaxConnectionsPerHour }
-                / kw("max_user_connections") { Kind::MaxUserConnections }) value:number() {?
-                if !matches!(value.kind,Kind::Int | Kind::Uint) { return Err("integer account resource limit"); }
-                Ok(Node::new(kind,vec![]).value(value.value))
+                / kw("max_user_connections") { Kind::MaxUserConnections }) value:number() {
+                Node::new(kind,vec![value])
             })+ { limits }
         rule account_statement() -> Node
             = kw("create") kw("user") absent:if_not_exists()? users:(user_spec(true) ++ ("," _)) tls:account_tls()? limits:account_resource_limits()? {

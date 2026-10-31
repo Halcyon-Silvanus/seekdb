@@ -21,6 +21,7 @@
 #include "sql/pl/ob_pl_package.h"
 #include "sql/pl/ob_pl_build.h"
 #include "share/schema/ob_trigger_info.h"
+#include "sql/resolver/dcl/access_control_common.h"
 
 namespace oceanbase
 {
@@ -124,6 +125,9 @@ int ObTriggerResolver::resolve_sp_definer(const peg::Node *parse_node,
   cur_host_name = session_info_->get_host_name();
   if (OB_NOT_NULL(parse_node)) {
     CK(peg::NodeKind::UserHost == parse_node->kind());
+    if (OB_SUCC(ret)) {
+      OZ(access_control::check_account_host(peg::account_identity(*parse_node).host));
+    }
     if (OB_SUCC(ret)) {
       const auto account = peg::account_identity(*parse_node);
       {
