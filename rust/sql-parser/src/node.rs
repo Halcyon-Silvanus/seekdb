@@ -618,24 +618,25 @@ impl Node {
     pub(crate) fn call(
         mut name: Vec<Name>,
         modifier: Option<Kind>,
-        mut arguments: Vec<Self>,
+        arguments: Vec<Self>,
         window: Option<Self>,
         followed_by_over: bool,
         start: usize,
         end: usize,
     ) -> Result<Self, &'static str> {
         if name.len() > 1 {
-            if name.len() > 3 || modifier.is_some() || window.is_some() {
+            if name.len() > 3 {
                 return Err("qualified function call");
             }
-            return Self::new(
-                Kind::Function,
-                vec![
-                    Self::new(Kind::CallName, name.into_iter().map(Self::name).collect()),
-                    Self::new(Kind::CallArguments, arguments),
-                ],
-            )
-            .expression(start, end);
+            let mut call = Self::new(Kind::Function, vec![
+                Self::new(Kind::CallName, name.into_iter().map(Self::name).collect()),
+                Self::new(Kind::CallArguments, arguments),
+            ]);
+            call.children.extend(modifier.map(|kind| Self::new(kind, vec![])));
+            return match window {
+                Some(window) => Self::new(Kind::WindowFunction, vec![call, window]),
+                None => call,
+            }.expression(start, end);
         }
         let mut name = name.pop().unwrap();
         let function = if !name.quoted {
@@ -665,12 +666,6 @@ impl Node {
         }
         if matches!(
             function.as_str(),
-            "first_value" | "last_value" | "nth_value" | "lead" | "lag"
-        ) {
-            return Err("window function requires OVER");
-        }
-        if matches!(
-            function.as_str(),
             "date_add"
                 | "date_sub"
                 | "adddate"
@@ -681,51 +676,14 @@ impl Node {
         ) {
             return Err("date function syntax");
         }
-        let aliased = arguments.iter().any(|argument| argument.kind == Kind::AliasedArgument);
-        if function == "mod" {
-            if window.is_some() || modifier.is_some() || arguments.len() != 2 || aliased {
-                return Err("MOD requires two arguments");
-            }
-            return Self::binary_operands("mod".into(), arguments)
-                .expression(start, end);
-        }
-        let geometry = match function.as_str() {
-            "linestring" => Some(Kind::LineString),
-            "polygon" => Some(Kind::Polygon),
-            "multipoint" => Some(Kind::MultiPoint),
-            "multilinestring" => Some(Kind::MultiLineString),
-            "multipolygon" => Some(Kind::MultiPolygon),
-            "geometrycollection" | "geomcollection" => Some(Kind::GeometryCollection),
-            _ => None,
-        };
-        if let Some(kind) = geometry {
-            if modifier.is_some()
-                || window.is_some()
-                || aliased
-                || (kind != Kind::GeometryCollection && arguments.is_empty())
-            {
-                return Err("geometry constructor arguments");
-            }
-            return Self::named_call(kind, Self::name(name), arguments).expression(start, end);
-        }
-        if matches!(function.as_str(), "ln" | "log") {
-            if modifier.is_some()
-                || window.is_some()
-                || arguments.is_empty()
-                || arguments.len() > if function == "ln" { 1 } else { 2 }
-            {
-                return Err("logarithm arguments");
-            }
-            name.text = "log".into();
-            if arguments.len() == 1 {
-                arguments.insert(
-                    0,
-                    Self::new(Kind::HiddenDouble, vec![]).text("2.718281828459045".into()),
-                );
-            }
-        }
         let kind = match function.as_str() {
             "cast" => Kind::Cast,
+            "linestring" => Kind::LineString,
+            "polygon" => Kind::Polygon,
+            "multipoint" => Kind::MultiPoint,
+            "multilinestring" => Kind::MultiLineString,
+            "multipolygon" => Kind::MultiPolygon,
+            "geometrycollection" | "geomcollection" => Kind::GeometryCollection,
             "count" => Kind::Count,
             "sum" => Kind::Sum,
             "min" => Kind::Min,
@@ -757,6 +715,11 @@ impl Node {
             "percent_rank" => Kind::PercentRank,
             "cume_dist" => Kind::CumeDist,
             "ntile" => Kind::Ntile,
+            "first_value" => Kind::FirstValue,
+            "last_value" => Kind::LastValue,
+            "nth_value" => Kind::NthValue,
+            "lead" => Kind::Lead,
+            "lag" => Kind::Lag,
             "if" => Kind::If,
             "isnull" => Kind::IsNull,
             "now" | "current_timestamp" | "localtime" | "localtimestamp" => Kind::CurrentTimestamp,
@@ -769,14 +732,6 @@ impl Node {
             "current_user" => Kind::CurrentUser,
             _ => Kind::Function,
         };
-        if aliased
-            && (kind != Kind::Function || matches!(function.as_str(),
-                "ascii" | "date" | "day" | "year" | "time" | "month" | "quarter"
-                    | "second" | "minute" | "microsecond" | "hour" | "timestamp" | "week"
-                    | "ln" | "log"))
-        {
-            return Err("argument aliases require a generic function call");
-        }
         if matches!(function.as_str(), "substr" | "substring") {
             name.text = "substr".into();
         } else if function == "schema" {
@@ -799,46 +754,7 @@ impl Node {
                 _ => function.as_str(),
             }.into();
         }
-        if kind == Kind::Mvt {
-            if modifier.is_some() || window.is_some() || followed_by_over {
-                return Err("invalid MVT aggregate arguments");
-            }
-            return Self::named_call(kind, Self::name(name), arguments).expression(start, end);
-        }
-        let approximate = matches!(
-            kind,
-            Kind::ApproxCountDistinct | Kind::ApproxCountDistinctSynopsis
-        );
-        let histogram = matches!(kind, Kind::TopFreHist | Kind::HybridHist);
-        let non_distinct_aggregate = matches!(
-            kind,
-            Kind::Stddev
-                | Kind::StddevPop
-                | Kind::StddevSamp
-                | Kind::Variance
-                | Kind::VarPop
-                | Kind::VarSamp
-                | Kind::BitAnd
-                | Kind::BitOr
-                | Kind::BitXor
-        );
-        let aggregate = approximate
-            || histogram
-            || non_distinct_aggregate
-            || matches!(
-                kind,
-                Kind::Count
-                    | Kind::Sum
-                    | Kind::Min
-                    | Kind::Max
-                    | Kind::Avg
-                    | Kind::PercentileCont
-                    | Kind::JsonArrayAgg
-                    | Kind::JsonObjectAgg
-                    | Kind::ApproxCountDistinctSynopsisMerge
-                    | Kind::SumOpnsize
-            );
-        let ranking = matches!(
+        let window_required = matches!(
             kind,
             Kind::RowNumber
                 | Kind::Rank
@@ -846,16 +762,14 @@ impl Node {
                 | Kind::PercentRank
                 | Kind::CumeDist
                 | Kind::Ntile
+                | Kind::FirstValue
+                | Kind::LastValue
+                | Kind::NthValue
+                | Kind::Lead
+                | Kind::Lag
         );
-        let supports_window = ranking || aggregate && kind != Kind::SumOpnsize;
-        if (ranking && window.is_none())
-            || (window.is_some() && !supports_window)
-            || (window.is_none() && followed_by_over && supports_window)
-        {
-            return Err("invalid window function");
-        }
-        if modifier.is_some() && !aggregate {
-            return Err("invalid aggregate modifier");
+        if window.is_none() && (window_required || followed_by_over) {
+            return Err("OVER clause");
         }
         let mut function = Self::named_call(kind, Self::name(name), arguments);
         if let Some(modifier) = modifier {

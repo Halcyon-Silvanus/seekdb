@@ -34,6 +34,17 @@ namespace sql
 {
 
 namespace {
+int check_scalar_quantifier(const peg::Node &node)
+{
+  int ret = OB_SUCCESS;
+  if (peg::aggregate_quantifier(node) != peg::AggregateQuantifier::Default) {
+    const auto name = peg::call_name(node);
+    ret = OB_ERR_WRONG_PARAMETERS_TO_NATIVE_FCT;
+    LOG_USER_ERROR(OB_ERR_WRONG_PARAMETERS_TO_NATIVE_FCT, int(name.size()), name.data());
+  }
+  return ret;
+}
+
 ObItemType binary_expression_type(peg::BinaryOperator operation)
 {
   switch (operation) {
@@ -446,6 +457,10 @@ int ObRawExprResolverImpl::do_recursive_resolve(const peg::Node &node,
     OZ (process_datatype_or_questionmark(node, expr));
   } else {
     switch (node.kind()) {
+      case peg::NodeKind::AliasedArgument:
+        ret = OB_INVALID_ARGUMENT;
+        LOG_USER_ERROR(OB_INVALID_ARGUMENT, "argument aliases on built-in functions");
+        break;
       case peg::NodeKind::OdbcEscape:
         OZ (process_odbc_escape(node, expr));
         break;
@@ -675,7 +690,8 @@ int ObRawExprResolverImpl::process_unresolved_function(const peg::Node &node, Ob
 {
   int ret = OB_SUCCESS;
   ObQualifiedName name;
-  if (OB_ISNULL(ctx_.columns_)) {
+  if (OB_FAIL(check_scalar_quantifier(node))) {
+  } else if (OB_ISNULL(ctx_.columns_)) {
     ret = OB_INVALID_ARGUMENT;
   } else {
     const int64_t child_start = ctx_.columns_->count();
@@ -1529,6 +1545,15 @@ int ObRawExprResolverImpl::process_geo_func_node(const peg::Node &node, ObRawExp
   int ret = OB_SUCCESS;
   ObSysFunRawExpr *function = nullptr;
   const auto type = callable_expression_type(node.kind());
+  OZ(check_scalar_quantifier(node));
+  if (OB_SUCC(ret) && peg::call_arguments(node).empty()
+      && (node.kind() == peg::NodeKind::LineString || node.kind() == peg::NodeKind::Polygon
+          || node.kind() == peg::NodeKind::MultiPoint || node.kind() == peg::NodeKind::MultiLineString
+          || node.kind() == peg::NodeKind::MultiPolygon)) {
+    const auto name = peg::call_name(node);
+    ret = OB_ERR_PARAM_SIZE;
+    LOG_USER_ERROR(OB_ERR_PARAM_SIZE, int(name.size()), name.data());
+  }
   OZ(ctx_.expr_factory_.create_raw_expr(type, function));
   OZ(set_geo_func_name(function, type));
   OZ(function->init_param_exprs(peg::call_arguments(node).size()));
@@ -2508,7 +2533,8 @@ int ObRawExprResolverImpl::process_agg_node(const peg::Node &node, ObRawExpr *&e
   if (OB_SUCC(ret) && quantifier != peg::AggregateQuantifier::Default
       && (type == T_FUN_APPROX_COUNT_DISTINCT || type == T_FUN_APPROX_COUNT_DISTINCT_SYNOPSIS
           || type == T_FUN_APPROX_COUNT_DISTINCT_SYNOPSIS_MERGE || type == T_FUN_TOP_FRE_HIST
-          || type == T_FUN_HYBRID_HIST || type == T_FUN_SUM_OPNSIZE || type == T_FUN_JSON_OBJECTAGG)) {
+          || type == T_FUN_HYBRID_HIST || type == T_FUN_SUM_OPNSIZE || type == T_FUN_JSON_OBJECTAGG
+          || type == T_FUN_GROUPING || type == T_FUN_SYS_ST_ASMVT)) {
     ret = OB_ERR_WRONG_PARAMETERS_TO_NATIVE_FCT;
     LOG_USER_ERROR(OB_ERR_WRONG_PARAMETERS_TO_NATIVE_FCT, int(name.size()), name.data());
   }
@@ -2600,13 +2626,15 @@ int ObRawExprResolverImpl::process_agg_node(const peg::Node &node, ObRawExpr *&e
 int ObRawExprResolverImpl::process_timestamp_node(const peg::Node &node, ObRawExpr *&expr)
 {
   int ret = OB_SUCCESS;
+  OZ(check_scalar_quantifier(node));
   ObSysFunRawExpr *function = nullptr;
   const auto arguments = peg::call_arguments(node);
   const auto name = peg::call_name(node);
   const bool precision_allowed = node.kind() != peg::NodeKind::CurrentDate
       && node.kind() != peg::NodeKind::UtcDate && node.kind() != peg::NodeKind::CurrentUser;
   uint64_t scale = 0;
-  if (arguments.size() > (precision_allowed ? 1 : 0)) {
+  if (OB_FAIL(ret)) {
+  } else if (arguments.size() > (precision_allowed ? 1 : 0)) {
     ret = OB_ERR_PARAM_SIZE;
     LOG_USER_ERROR(OB_ERR_PARAM_SIZE, int(name.size()), name.data());
   } else if (!arguments.empty() && arguments[0].kind() != peg::NodeKind::Int
@@ -2683,10 +2711,12 @@ int ObRawExprResolverImpl::process_collation_node(const peg::Node &node, ObRawEx
 int ObRawExprResolverImpl::process_if_node(const peg::Node &node, ObRawExpr *&expr)
 {
   int ret = OB_SUCCESS;
+  OZ(check_scalar_quantifier(node));
   const auto arguments = peg::call_arguments(node);
   ObCaseOpRawExpr *result = nullptr;
   ObRawExpr *condition = nullptr, *yes = nullptr, *no = nullptr;
-  if (arguments.size() != 3) {
+  if (OB_FAIL(ret)) {
+  } else if (arguments.size() != 3) {
     ret = OB_ERR_PARAM_SIZE;
     const auto name = peg::call_name(node);
     LOG_USER_ERROR(OB_ERR_PARAM_SIZE, int(name.size()), name.data());
@@ -2708,9 +2738,11 @@ int ObRawExprResolverImpl::process_if_node(const peg::Node &node, ObRawExpr *&ex
 int ObRawExprResolverImpl::process_isnull_node(const peg::Node &node, ObRawExpr *&expr)
 {
   int ret = OB_SUCCESS;
+  OZ(check_scalar_quantifier(node));
   const auto arguments = peg::call_arguments(node);
   ObRawExpr *value = nullptr;
-  if (arguments.size() != 1) {
+  if (OB_FAIL(ret)) {
+  } else if (arguments.size() != 1) {
     ret = OB_ERR_PARAM_SIZE;
     const auto name = peg::call_name(node);
     LOG_USER_ERROR(OB_ERR_PARAM_SIZE, int(name.size()), name.data());
@@ -2996,7 +3028,29 @@ int ObRawExprResolverImpl::process_fun_sys_node(const peg::Node &node,
   int ret = OB_SUCCESS;
   ObSysFunRawExpr *function = nullptr;
   const auto spelling = peg::call_name(node);
-  const ObString name(spelling.size(), spelling.data());
+  const ObString original_name(spelling.size(), spelling.data());
+  const bool natural_log = original_name.case_compare("ln") == 0;
+  const ObString name = natural_log ? ObString::make_string("log") : original_name;
+  const auto arguments = peg::call_arguments(node);
+  OZ(check_scalar_quantifier(node));
+  if (OB_SUCC(ret) && (natural_log || name.case_compare("log") == 0)
+      && (arguments.empty() || arguments.size() > (natural_log ? 1 : 2))) {
+    ret = OB_ERR_PARAM_SIZE;
+    LOG_USER_ERROR(OB_ERR_PARAM_SIZE, original_name.length(), original_name.ptr());
+  }
+  if (name.case_compare("mod") == 0) {
+    if (OB_SUCC(ret) && arguments.size() != 2) {
+      ret = OB_ERR_PARAM_SIZE;
+      LOG_USER_ERROR(OB_ERR_PARAM_SIZE, name.length(), name.ptr());
+    }
+    ObRawExpr *left = nullptr, *right = nullptr;
+    if (OB_SUCC(ret)) {
+      OZ(SMART_CALL(recursive_resolve(arguments[0], left)));
+      OZ(SMART_CALL(recursive_resolve(arguments[1], right)));
+      OZ(ObRawExprUtils::build_common_binary_op_expr(ctx_.expr_factory_, T_OP_MOD, left, right, expr));
+    }
+    return ret;
+  }
   ObString owned_name;
   OZ(check_internal_function(name));
   if (OB_SUCC(ret) && (0 == name.case_compare("nextval")
@@ -3010,11 +3064,16 @@ int ObRawExprResolverImpl::process_fun_sys_node(const peg::Node &node,
   OZ(ob_write_string(ctx_.expr_factory_.get_allocator(), name, owned_name));
   OZ(ctx_.expr_factory_.create_raw_expr(T_FUN_SYS, function));
   OX(function->set_func_name(owned_name));
-  const auto arguments = peg::call_arguments(node);
   const int64_t column_count = ctx_.columns_->count();
-  const int64_t hidden_arguments = node.kind() == peg::NodeKind::DefaultValue ? 4 : 0;
+  const bool log_base = name.case_compare("log") == 0 && arguments.size() == 1;
+  const int64_t hidden_arguments = node.kind() == peg::NodeKind::DefaultValue ? 4 : log_base ? 1 : 0;
   const int64_t argument_count = arguments.size() + hidden_arguments;
   OZ(function->init_param_exprs(argument_count));
+  if (log_base) {
+    ObConstRawExpr *base = nullptr;
+    OZ(ObRawExprUtils::build_const_double_expr(ctx_.expr_factory_, ObDoubleType, 2.718281828459045, base));
+    OZ(function->add_param_expr(base));
+  }
   const bool mark_values = name.case_compare("values") == 0 && !ctx_.parents_expr_info_.has_member(IS_VALUES);
   if (mark_values) OZ(ctx_.parents_expr_info_.add_member(IS_VALUES));
   for (const auto &argument : arguments) {
@@ -3029,7 +3088,7 @@ int ObRawExprResolverImpl::process_fun_sys_node(const peg::Node &node,
     const int cleanup_ret = ctx_.parents_expr_info_.del_member(IS_VALUES);
     if (OB_SUCC(ret)) ret = cleanup_ret;
   }
-  for (int64_t i = 0; OB_SUCC(ret) && i < hidden_arguments; ++i) {
+  for (int64_t i = 0; OB_SUCC(ret) && !log_base && i < hidden_arguments; ++i) {
     ObRawExpr *placeholder = nullptr;
     OZ(ObRawExprUtils::build_null_expr(ctx_.expr_factory_, placeholder));
     OZ(function->add_param_expr(placeholder));
@@ -3321,21 +3380,25 @@ int ObRawExprResolverImpl::process_window_function_node(const peg::Node &node, O
   } else if (OB_SUCC(ret)) {
     const auto &function = peg::window_function(node);
     type = callable_expression_type(function.kind());
-    if (type == T_FUN_GROUP_PERCENTILE_CONT) {
+    const bool aggregate_function = IS_AGGR_FUN(type) || type == T_FUN_VARIANCE || type == T_FUN_STDDEV
+        || type == T_FUN_STDDEV_POP || type == T_FUN_STDDEV_SAMP;
+    if (type == T_FUN_GROUP_PERCENTILE_CONT || type == T_FUN_SYS_ST_ASMVT || type == T_FUN_SUM_OPNSIZE
+        || (!aggregate_function && (type < T_WIN_FUN_ROW_NUMBER || type > T_WIN_FUN_LAG))) {
       ret = OB_NOT_SUPPORTED;
-      LOG_USER_ERROR(OB_NOT_SUPPORTED, "PERCENTILE_CONT as a window function");
+      LOG_USER_ERROR(OB_NOT_SUPPORTED, "The specified function as a window function is");
     }
     const bool was_window_aggregate = ctx_.is_win_agg_;
     OZ(ctx_.parents_expr_info_.add_member(IS_WINDOW_FUNC));
-    if (IS_AGGR_FUN(type) || type == T_FUN_VARIANCE || type == T_FUN_STDDEV
-        || type == T_FUN_STDDEV_POP || type == T_FUN_STDDEV_SAMP) {
+    if (aggregate_function) {
       ctx_.is_win_agg_ = true;
       OZ(SMART_CALL(recursive_resolve(function, aggregate)));
     } else {
+      OZ(check_scalar_quantifier(function));
       const auto arguments = peg::call_arguments(function);
-      if ((type == T_WIN_FUN_LEAD || type == T_WIN_FUN_LAG) && (arguments.empty() || arguments.size() > 3)) {
-        ret = OB_INVALID_ARGUMENT;
-      } else if (((type == T_WIN_FUN_ROW_NUMBER || type == T_WIN_FUN_RANK
+      if (((type == T_WIN_FUN_LEAD || type == T_WIN_FUN_LAG) && (arguments.empty() || arguments.size() > 3))
+          || ((type == T_WIN_FUN_FIRST_VALUE || type == T_WIN_FUN_LAST_VALUE) && arguments.size() != 1)
+          || (type == T_WIN_FUN_NTH_VALUE && arguments.size() != 2)
+          || ((type == T_WIN_FUN_ROW_NUMBER || type == T_WIN_FUN_RANK
                     || type == T_WIN_FUN_DENSE_RANK || type == T_WIN_FUN_PERCENT_RANK
                     || type == T_WIN_FUN_CUME_DIST) && !arguments.empty())
           || (type == T_WIN_FUN_NTILE && arguments.size() != 1)) {

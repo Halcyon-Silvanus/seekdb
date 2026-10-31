@@ -963,20 +963,20 @@ peg::parser! {
         }
         rule null_treatment() -> Node = kind:(kw("respect") { Kind::Respect } / kw("ignore") { Kind::Ignore }) kw("nulls") { Node::new(kind,vec![]) }
         rule window_value(level: usize) -> Node
-            = kind:(kw("first_value") { Kind::FirstValue } / kw("last_value") { Kind::LastValue }) "(" _ value:expr(level)
+            = kind:(kw("first_value") { Kind::FirstValue } / kw("last_value") { Kind::LastValue }) "(" _ values:expr_list(level)?
                 nulls:(value:null_treatment() ")" _ { Some(value) } / ")" _ value:null_treatment()? { value }) {
-                let mut result=Node::callable(kind,vec![value]);result.children.extend(nulls);result
+                let mut result=Node::callable(kind,values.unwrap_or_default());result.children.extend(nulls);result
             }
-            / kind:(kw("lead") { Kind::Lead } / kw("lag") { Kind::Lag }) "(" _ first:expr(level)
-                rest:(nulls:null_treatment() rest:("," _ values:expr_list(level) { values })? ")" _ { (rest.unwrap_or_default(),Some(nulls)) }
-                    / rest:("," _ values:expr_list(level) { values })? ")" _ nulls:null_treatment()? { (rest.unwrap_or_default(),nulls) }) {
-                let mut arguments=vec![first]; arguments.extend(rest.0);
+            / kind:(kw("lead") { Kind::Lead } / kw("lag") { Kind::Lag }) "(" _ first:expr(level)?
+                rest:(enabled(first.is_some()) nulls:null_treatment() rest:("," _ values:expr_list(level) { values })? ")" _ { (rest.unwrap_or_default(),Some(nulls)) }
+                    / rest:(enabled(first.is_some()) "," _ values:expr_list(level) { values })? ")" _ nulls:null_treatment()? { (rest.unwrap_or_default(),nulls) }) {
+                let mut arguments:Vec<_>=first.into_iter().collect(); arguments.extend(rest.0);
                 let mut result=Node::callable(kind,arguments);result.children.extend(rest.1);result
             }
-            / kw("nth_value") "(" _ value:expr(level) "," _ nth:expr(level) ")" _
+            / kw("nth_value") "(" _ values:expr_list(level)? ")" _
                 from:(kw("from") kind:(kw("first") { Kind::First } / kw("last") { Kind::Last }) { Node::new(kind,vec![]) })?
                 nulls:null_treatment()? {
-                let mut result=Node::callable(Kind::NthValue,vec![value,nth]);result.children.extend(from);result.children.extend(nulls);result
+                let mut result=Node::callable(Kind::NthValue,values.unwrap_or_default());result.children.extend(from);result.children.extend(nulls);result
             }
         rule window_bound(level: usize) -> Node
             = kw("current") kw("row") { Node::new(Kind::WindowBound,vec![]).value(1) }
