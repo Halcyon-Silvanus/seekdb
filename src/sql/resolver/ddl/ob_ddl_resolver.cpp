@@ -758,7 +758,7 @@ int ObDDLResolver::resolve_json_storage(const peg::Node &node)
 int ObDDLResolver::resolve_storage_chunk(ObColumnSchemaV2 &column, const peg::Node &node)
 {
   int ret = OB_SUCCESS;
-  const auto value = peg::expression_literal(peg::storage_chunk_value(node));
+  const auto value = peg::expression_literal(peg::table_option_value(node));
   uint64_t kilobytes = value.integer;
   const uint64_t maximum = OB_MAX_LOB_CHUNK_SIZE / 1024;
   if (!column.is_json()) {
@@ -779,6 +779,8 @@ int ObDDLResolver::resolve_storage_chunk(ObColumnSchemaV2 &column, const peg::No
     if (!unit.empty() && 0 != unit.case_compare("k") && 0 != unit.case_compare("kb")) {
       ret = OB_INVALID_ARGUMENT;
     }
+  } else {
+    OZ(ObResolverUtils::resolve_unsigned_integer(peg::table_option_value(node), "CHUNK", kilobytes));
   }
   if (OB_SUCC(ret)) {
     if (kilobytes < OB_MIN_LOB_CHUNK_SIZE / 1024 || kilobytes > maximum) {
@@ -795,6 +797,10 @@ int ObDDLResolver::resolve_table_option(const peg::Node &option, const bool is_i
 {
   int ret = OB_SUCCESS;
   uint64_t database_id = OB_INVALID_ID;
+  if (option.kind() == peg::NodeKind::ProgressiveMergeNum || option.kind() == peg::NodeKind::AutoIncrementCacheSize) {
+    uint64_t value = 0;
+    if (OB_FAIL(ObResolverUtils::resolve_unsigned_integer(peg::table_option_value(option), "Table option", value))) return ret;
+  }
   if (OB_ISNULL(stmt_) || OB_ISNULL(allocator_) || OB_ISNULL(schema_checker_)) {
     ret = OB_ERR_UNEXPECTED;
   } else if (OB_FAIL(schema_checker_->get_database_id(database_name_, database_id))) {

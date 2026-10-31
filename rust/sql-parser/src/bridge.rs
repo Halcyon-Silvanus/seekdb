@@ -1814,7 +1814,7 @@ pub(crate) mod ffi {
         compression: &'a str,
         default_charset: bool,
         charset: &'a str,
-        ignore_rows: u64,
+        ignore_rows: &'a [Node],
         format_options: &'a [Node],
         input_fields: &'a [Node],
         assignments: &'a [Node],
@@ -2166,7 +2166,7 @@ pub(crate) mod ffi {
         fn foreign_key_index_name(node: &Node) -> &Node;
         fn referential_action(node: &Node) -> ReferentialAction;
         unsafe fn json_storage_definition<'a>(node: &'a Node) -> JsonStorageDefinition<'a>;
-        fn storage_chunk_value(node: &Node) -> &Node;
+        fn table_option_value(node: &Node) -> &Node;
         fn table_option_text(node: &Node) -> &str;
         fn table_option_number(node: &Node) -> u64;
         fn table_option_engine_name(node: &Node) -> &Node;
@@ -2225,7 +2225,7 @@ pub(crate) mod ffi {
         fn transaction_setting(statement: &Node) -> TransactionSetting;
         fn empty_query_has_comment(statement: &Node) -> bool;
         fn freeze_is_major(statement: &Node) -> bool;
-        fn freeze_tablet_id(statement: &Node) -> u64;
+        fn freeze_tablet_id(statement: &Node) -> &Node;
         fn cancel_task_id(statement: &Node) -> &str;
         fn cache_flush_kind(statement: &Node) -> CacheKind;
         fn cache_flush_has_namespace(statement: &Node) -> bool;
@@ -2820,7 +2820,7 @@ use crate::ddl::{
     rename_destination, rename_source, table_definition, table_definition_partition,
     table_definition_query, table_like_if_not_exists, table_like_relation, table_like_source,
     table_like_temporary, table_option_charset, table_option_engine_name, table_option_names,
-    table_option_number, json_storage_definition, storage_chunk_value,
+    table_option_number, json_storage_definition, table_option_value,
     table_option_organization, table_option_properties, table_option_row_format, table_option_text,
     truncate_relation,
 };

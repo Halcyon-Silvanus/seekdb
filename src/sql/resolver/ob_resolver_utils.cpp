@@ -383,6 +383,16 @@ ObGeoType ObResolverUtils::resolve_geometry_type(peg::GeometryType type)
   return ObGeoType::GEOTYPEMAX;
 }
 
+int ObResolverUtils::resolve_unsigned_integer(const peg::Node &node, const char *context, uint64_t &value)
+{
+  if (node.kind() != peg::NodeKind::Int && node.kind() != peg::NodeKind::Uint) {
+    _LOG_USER_MSG(USER_ERROR, OB_INVALID_ARGUMENT, "%s requires an unsigned integer", context);
+    return OB_INVALID_ARGUMENT;
+  }
+  value = peg::expression_literal(node).integer;
+  return OB_SUCCESS;
+}
+
 int ObResolverUtils::resolve_type_syntax(const peg::Node &node, peg::TypeSyntax &syntax)
 {
   syntax = peg::type_syntax(node);

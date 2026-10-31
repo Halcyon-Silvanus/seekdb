@@ -32,8 +32,10 @@ int resolve_output_size(const peg::Node &node, int64_t &size)
   int ret = OB_SUCCESS;
   size = 0;
   const auto literal = peg::expression_literal(node);
-  if (literal.kind == peg::LiteralKind::Integer) {
-    size = static_cast<int64_t>(literal.integer);
+  if (literal.kind != peg::LiteralKind::String) {
+    uint64_t integer = 0;
+    OZ(ObResolverUtils::resolve_unsigned_integer(node, "Output size", integer));
+    OX(size = static_cast<int64_t>(integer));
   } else if (literal.kind == peg::LiteralKind::String) {
     ObSqlString text;
     bool valid = false;
@@ -42,8 +44,6 @@ int resolve_output_size(const peg::Node &node, int64_t &size)
       size = ObConfigCapacityParser::get(text.ptr(), valid, false, true);
       if (!valid) { ret = OB_ERR_PARSE_SQL; }
     }
-  } else {
-    ret = OB_ERR_PARSE_SQL;
   }
   if (OB_SUCC(ret) && size < 0) {
     ret = OB_INVALID_ARGUMENT;
@@ -286,13 +286,16 @@ int ObSelectResolver::resolve_output_format_option(const peg::Node &node, ObExte
       }
       break;
     }
-    case peg::ExternalFormatKind::SkipHeader:
-      csv.skip_header_lines_ = peg::expression_literal(option.value).integer;
-      if (csv.parse_header_ && csv.skip_header_lines_ > 0) {
+    case peg::ExternalFormatKind::SkipHeader: {
+      uint64_t lines = 0;
+      OZ(ObResolverUtils::resolve_unsigned_integer(option.value, "SKIP_HEADER", lines));
+      OX(csv.skip_header_lines_ = lines);
+      if (OB_SUCC(ret) && csv.parse_header_ && csv.skip_header_lines_ > 0) {
         ret = OB_SKIP_PARSE_HEADER_CONFLICT;
         LOG_USER_ERROR(OB_SKIP_PARSE_HEADER_CONFLICT);
       }
       break;
+    }
     case peg::ExternalFormatKind::SkipBlankLines:
       csv.skip_blank_lines_ = peg::expression_literal(option.value).integer;
       break;

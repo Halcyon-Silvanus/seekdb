@@ -4291,6 +4291,12 @@ int ObDMLResolver::resolve_limit_clause(const peg::Node *node, bool disable_offs
     ObDMLStmt *stmt = get_stmt();
     const peg::Node *limit_node = &peg::limit_count(*node);
     const peg::Node *offset_node = peg::limit_has_offset(*node) ? &peg::limit_offset(*node) : nullptr;
+    for (const auto *value : {limit_node, offset_node}) {
+      if (value != nullptr && value->kind() != peg::NodeKind::Parameter && value->kind() != peg::NodeKind::Column) {
+        uint64_t integer = 0;
+        if (OB_FAIL(ObResolverUtils::resolve_unsigned_integer(*value, "LIMIT", integer))) return ret;
+      }
+    }
     const auto parameter_index = [this](const peg::Node *value) -> int64_t {
       if (value == nullptr) return -1;
       const auto *binding = params_.parameterization_ != nullptr
@@ -4317,21 +4323,10 @@ int ObDMLResolver::resolve_limit_clause(const peg::Node *node, bool disable_offs
       }
     } else {
       if (limit_node != NULL) {
-        if (limit_index < 0 && limit_node->kind() != peg::NodeKind::Int && limit_node->kind() != peg::NodeKind::Uint
-            && limit_node->kind() != peg::NodeKind::Parameter && limit_node->kind() != peg::NodeKind::Column) {
-          ret = OB_ERR_RESOLVE_SQL;
-          LOG_WARN("Wrong type of limit value");
-        } else {
-          if (OB_FAIL(ObResolverUtils::resolve_const_expr(params_, *limit_node, limit_count, NULL))) {
-          }
-        }
+        OZ(ObResolverUtils::resolve_const_expr(params_, *limit_node, limit_count, NULL));
       }
       if (ret == OB_SUCCESS && offset_node != NULL) {
-        if (offset_index < 0 && offset_node->kind() != peg::NodeKind::Int && offset_node->kind() != peg::NodeKind::Uint
-            && offset_node->kind() != peg::NodeKind::Parameter && offset_node->kind() != peg::NodeKind::Column) {
-          ret = OB_ERR_RESOLVE_SQL;
-        } else if (OB_FAIL(ObResolverUtils::resolve_const_expr(params_, *offset_node, limit_offset, NULL))) {
-        }
+        OZ(ObResolverUtils::resolve_const_expr(params_, *offset_node, limit_offset, NULL));
       }
     }
     CK(session_info_)

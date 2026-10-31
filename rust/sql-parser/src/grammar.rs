@@ -1012,13 +1012,7 @@ peg::parser! {
         rule named_window(level: usize) -> Node = name:window_name() kw("as") window:window_spec(level) {
             Node::new(Kind::NamedWindow,vec![Node::name(name),window])
         }
-        rule limit_value() -> Node = parameter() / start:position!() text:$(['0'..='9']+) !cont() end:position!() _ {?
-            let value=Node::number(text,start,end)?;
-            match value.kind {
-                Kind::Int | Kind::Uint => Ok(value),
-                _ => Err("unsigned integer"),
-            }
-        }
+        rule limit_value() -> Node = parameter() / type_size()
         rule limit_expr() -> Node = limit_value() / enabled(pl) value:column() { value }
         rule limit() -> Node = kw("limit") first:limit_expr() tail:(kw("offset") value:limit_expr() { (false, value) } / "," _ value:limit_expr() { (true, value) })? {
             match tail {
@@ -1731,9 +1725,9 @@ peg::parser! {
                 Node::new(Kind::Parallel,vec![value])
             }
             / kw("noparallel") { Node::new(Kind::Parallel,vec![Node::new(Kind::Int,vec![]).value(1)]) }
-        rule storage_chunk() -> Node = kw("chunk") value:(string() / value:type_size() {?
-                if matches!(value.kind,Kind::Int|Kind::Uint) { Ok(value) } else { Err("integer") }
-            }) { Node::new(Kind::StorageChunk,vec![value]) }
+        rule storage_chunk() -> Node = kw("chunk") value:(string() / type_size()) {
+            Node::new(Kind::StorageChunk,vec![value])
+        }
         rule json_storage() -> Node = kw("json") "(" _ column:ident() ")" _ kw("store") kw("as")
             "(" _ chunks:storage_chunk()+ ")" _ {
                 let mut children=vec![Node::name(column)];children.extend(chunks);
@@ -1747,15 +1741,12 @@ peg::parser! {
             / read_access()
             / kw("engine") ("=" _)? value:collation_name() { Node::new(Kind::Engine,vec![value]) }
             / kind:(kw("progressive_merge_num") { Kind::ProgressiveMergeNum }
-                / kw("auto_increment_cache_size") { Kind::AutoIncrementCacheSize }) ("=" _)? value:type_size() {?
-                if matches!(value.kind,Kind::Int|Kind::Uint) { Ok(Node::new(kind,vec![value])) }
-                else { Err("integer") }
+                / kw("auto_increment_cache_size") { Kind::AutoIncrementCacheSize }) ("=" _)? value:type_size() {
+                Node::new(kind,vec![value])
             }
             / kw("delay_key_write") ("=" _)? kw("all") { Node::missing() }
             / kw("pack_keys") ("=" _)? kw("default") { Node::missing() }
-            / (kw("checksum") / kw("avg_row_length") / kw("delay_key_write") / kw("pack_keys")) ("=" _)? value:type_size() {?
-                if matches!(value.kind,Kind::Int|Kind::Uint) { Ok(Node::missing()) } else { Err("nonnegative integer table option") }
-            }
+            / (kw("checksum") / kw("avg_row_length") / kw("delay_key_write") / kw("pack_keys")) ("=" _)? type_size() { Node::missing() }
             / kw("union") ("=" _)? "(" _ (relation_name() ** ("," _)) ")" _ { Node::missing() }
             / kw("micro_index_clustered") ("=" _)? value:(kw("true") { 1 } / kw("false") { 0 }) {
                 Node::new(Kind::MicroIndexClustered,vec![Node::new(Kind::Bool,vec![]).value(value)])
@@ -2761,9 +2752,7 @@ peg::parser! {
             Node::new(Kind::String,vec![]).text(decode(text,mode.no_backslash_escapes)).at(start,end)
         }
         rule load_text() -> Node = load_string() / binary_literal()
-        rule load_integer() -> Node = value:type_size() {?
-            if matches!(value.kind,Kind::Int|Kind::Uint) { Ok(value) } else { Err("integer") }
-        }
+        rule load_integer() -> Node = type_size()
         rule hint_integer() -> Node = value:type_size() {?
             if value.kind == Kind::Int { Ok(value) } else { Err("signed integer hint argument") }
         }

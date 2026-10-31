@@ -624,7 +624,7 @@ pub(crate) fn referential_action(node: &Node) -> ReferentialAction {
 pub(crate) fn json_storage_definition(node: &Node) -> JsonStorageDefinition<'_> {
     JsonStorageDefinition { column: &node.children[0], chunks: &node.children[1..] }
 }
-pub(crate) fn storage_chunk_value(node: &Node) -> &Node {
+pub(crate) fn table_option_value(node: &Node) -> &Node {
     &node.children[0]
 }
 pub(crate) fn table_option_text(node: &Node) -> &str {

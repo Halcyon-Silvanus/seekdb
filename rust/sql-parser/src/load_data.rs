@@ -93,7 +93,7 @@ pub(crate) fn load_data_definition(node: &Node) -> LoadDataDefinition<'_> {
         compression: compression.map_or("", |n| n.text.as_str()),
         default_charset: charset.is_none_or(|n| n.kind == Kind::Default),
         charset: charset.map_or("", |n| n.text.as_str()),
-        ignore_rows: child(node, Kind::LoadIgnoreRows).map_or(0, |n| n.children[0].value),
+        ignore_rows: child(node, Kind::LoadIgnoreRows).map_or(&[], |n| n.children.as_slice()),
         format_options: list(node, Kind::LoadFormats),
         input_fields: list(node, Kind::LoadFields),
         assignments: list(node, Kind::AssignList),

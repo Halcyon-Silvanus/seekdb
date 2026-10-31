@@ -94,6 +94,9 @@ int LoadDataResolver::resolve(const peg::Node &node)
   ObNameCaseMode case_mode = OB_NAME_CASE_INVALID;
   ObLoadDataStmt *statement = nullptr;
   const auto definition = peg::load_data_definition(node);
+  uint64_t ignore_rows = 0;
+  if (!definition.ignore_rows.empty()
+      && OB_FAIL(ObResolverUtils::resolve_unsigned_integer(definition.ignore_rows[0], "LOAD DATA IGNORE", ignore_rows))) return ret;
   if (OB_ISNULL(session_info_) || OB_ISNULL(allocator_) || OB_ISNULL(schema_checker_)) {
     ret = OB_INVALID_ARGUMENT;
   } else if (OB_FAIL(session_info_->get_name_case_mode(case_mode))) {
@@ -152,7 +155,7 @@ int LoadDataResolver::resolve(const peg::Node &node)
         formats.field_escaped_str_ = "";
       }
       OZ(resolve_formats(definition.format_options, formats));
-      const int64_t rows = static_cast<int64_t>(definition.ignore_rows);
+      const int64_t rows = static_cast<int64_t>(ignore_rows);
       arguments.ignore_rows_ = rows > 0 ? rows : 0;
     }
     OZ(resolve_fields(definition.input_fields, case_mode, *statement));

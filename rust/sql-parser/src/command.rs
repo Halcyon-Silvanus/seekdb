@@ -89,8 +89,8 @@ pub(crate) fn empty_query_has_comment(statement: &Node) -> bool {
 pub(crate) fn freeze_is_major(statement: &Node) -> bool {
     statement.children[0].value == 1
 }
-pub(crate) fn freeze_tablet_id(statement: &Node) -> u64 {
-    statement.children[2].value
+pub(crate) fn freeze_tablet_id(statement: &Node) -> &Node {
+    &statement.children[2]
 }
 
 pub(crate) fn cancel_task_id(statement: &Node) -> &str {

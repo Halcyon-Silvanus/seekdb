@@ -43,7 +43,12 @@ int ObFreezeResolver::resolve(const peg::Node &statement)
   else if (OB_ISNULL(stmt = create_stmt<ObFreezeStmt>())) ret = OB_ALLOCATE_MEMORY_FAILED;
   else {
     stmt->set_major_freeze(peg::freeze_is_major(statement));
-    stmt->get_tablet_id() = peg::freeze_tablet_id(statement);
+    const auto &tablet = peg::freeze_tablet_id(statement);
+    if (tablet.kind() != peg::NodeKind::Missing) {
+      uint64_t id = 0;
+      OZ(ObResolverUtils::resolve_unsigned_integer(tablet, "TABLET_ID", id));
+      OX(stmt->get_tablet_id() = id);
+    }
   }
   return ret;
 }
@@ -127,8 +132,11 @@ int ObFlushCacheResolver::resolve(const peg::Node &statement)
           if (text.size() > OB_MAX_SQL_ID_LENGTH + 1) ret = OB_INVALID_ARGUMENT;
           else OZ(ob_write_string(*allocator_, ObString(text.size(), text.data()), argument.sql_id_));
         } else {
-          argument.schema_id_ = value.kind() == peg::NodeKind::Parameter
-              ? peg::placeholder_index(value) : peg::integer_literal_value(value);
+          if (value.kind() == peg::NodeKind::Parameter) {
+            argument.schema_id_ = peg::placeholder_index(value);
+          } else {
+            OZ(ObResolverUtils::resolve_unsigned_integer(value, "SCHEMA_ID", argument.schema_id_));
+          }
         }
         OX(argument.is_fine_grained_ = true);
       }
