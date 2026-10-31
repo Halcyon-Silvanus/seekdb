@@ -383,6 +383,43 @@ ObGeoType ObResolverUtils::resolve_geometry_type(peg::GeometryType type)
   return ObGeoType::GEOTYPEMAX;
 }
 
+int ObResolverUtils::resolve_type_syntax(const peg::Node &node, peg::TypeSyntax &syntax)
+{
+  syntax = peg::type_syntax(node);
+  using T = peg::TypeName;
+  const bool character_length = syntax.name == T::Char || syntax.name == T::VarChar
+      || syntax.name == T::Binary || syntax.name == T::VarBinary
+      || syntax.name == T::Text || syntax.name == T::Blob;
+  for (size_t i = 0; i < syntax.parameters.size(); ++i) {
+    const auto &parameter = syntax.parameters[i];
+    if (parameter.kind() != peg::NodeKind::Number) continue;
+    const auto literal = peg::expression_literal(parameter);
+    const std::string_view text(literal.text.data(), literal.text.size());
+    if (!character_length && text.find('.') == std::string_view::npos) {
+      _LOG_USER_MSG(USER_ERROR, OB_INVALID_ARGUMENT, "Type parameter '%.*s' is outside the unsigned integer range",
+          static_cast<int>(text.size()), text.data());
+      return OB_INVALID_ARGUMENT;
+    }
+    uint64_t value = 0;
+    for (char digit : text) {
+      if (digit == '.') break;
+      if (value > (UINT64_MAX - (digit - '0')) / 10) {
+        value = UINT64_MAX;
+        break;
+      }
+      value = value * 10 + (digit - '0');
+    }
+    if (i == 0) {
+      if (syntax.has_length) syntax.length = value;
+      if (syntax.has_precision) syntax.precision = value;
+      if (syntax.has_scale && !syntax.has_precision) syntax.scale = value;
+    } else if (syntax.has_scale) {
+      syntax.scale = value;
+    }
+  }
+  return OB_SUCCESS;
+}
+
 int ObResolverUtils::resolve_cast_type(const peg::Node &node, const ObString &spelling, ObRawExprResType &target)
 {
   if (node.kind() != peg::NodeKind::CastType) {
@@ -390,7 +427,9 @@ int ObResolverUtils::resolve_cast_type(const peg::Node &node, const ObString &sp
         spelling.length(), spelling.ptr());
     return OB_NOT_SUPPORTED;
   }
-  const auto syntax = peg::type_syntax(node);
+  peg::TypeSyntax syntax;
+  const int ret = resolve_type_syntax(node, syntax);
+  if (ret != OB_SUCCESS) return ret;
   target.set_type(type_object_type(syntax));
   target.set_collation_type(is_binary_type_name(syntax.name) ? CS_TYPE_BINARY : CS_TYPE_INVALID);
   target.set_precision(0);
@@ -438,7 +477,8 @@ int ObResolverUtils::resolve_collection_type_info(const peg::Node &type_node, Ob
 int ObResolverUtils::resolve_basic_type_info(const peg::Node &type_node, ObStringBuffer &buf)
 {
   int ret = OB_SUCCESS;
-  const auto syntax = peg::type_syntax(type_node);
+  peg::TypeSyntax syntax;
+  if (OB_FAIL(resolve_type_syntax(type_node, syntax))) return ret;
   const ObObjType type = type_object_type(syntax);
   if (!is_collection_support_type(type)) {
     ret = OB_NOT_SUPPORTED;
@@ -481,7 +521,9 @@ int ObResolverUtils::resolve_array_type_info(const peg::Node &type_node, ObStrin
 int ObResolverUtils::resolve_vector_type_info(const peg::Node &type_node, ObStringBuffer &buf, uint8_t &depth)
 {
   int ret = OB_SUCCESS;
-  const uint64_t dimension = peg::type_syntax(type_node).length;
+  peg::TypeSyntax syntax;
+  if (OB_FAIL(resolve_type_syntax(type_node, syntax))) return ret;
+  const uint64_t dimension = syntax.length;
   if (dimension == 0 || dimension > 16000) {
     ret = OB_NOT_SUPPORTED;
     LOG_USER_ERROR(OB_NOT_SUPPORTED, "vector column dim less or equal to zero or larger than 16000 is");
@@ -4107,7 +4149,8 @@ int ObResolverUtils::resolve_data_type(const peg::Node &type_node,
 {
   int ret = OB_SUCCESS;
   ObCStringHelper identifier_text;
-  const auto syntax = peg::type_syntax(type_node);
+  peg::TypeSyntax syntax;
+  if (OB_FAIL(resolve_type_syntax(type_node, syntax))) return ret;
   const ObObjType object_type = type_object_type(syntax);
   if (OB_UNLIKELY(!ob_is_valid_obj_type(object_type))) {
     ret = OB_ERR_ILLEGAL_TYPE;

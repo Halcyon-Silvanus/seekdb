@@ -3066,7 +3066,8 @@ int ObRawExprResolverImpl::build_cast_type(const peg::Node &node,
                                           const ObRawExprResType &target, ObRawExpr *&expr)
 {
   int ret = OB_SUCCESS;
-  const auto syntax = peg::type_syntax(node);
+  peg::TypeSyntax syntax;
+  if (OB_FAIL(ObResolverUtils::resolve_type_syntax(node, syntax))) return ret;
   if (ob_is_string_tc(target.get_type()) && syntax.has_length && syntax.length > UINT32_MAX) {
     ret = OB_ERR_TOO_BIG_DISPLAYWIDTH;
     LOG_USER_ERROR(OB_ERR_TOO_BIG_DISPLAYWIDTH, "cast of char", static_cast<int64_t>(UINT32_MAX));

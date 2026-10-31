@@ -1529,14 +1529,9 @@ peg::parser! {
         rule type_size() -> Node = start:position!() text:$(['0'..='9']+) !cont() end:position!() _ {? Node::number(text, start, end) }
         rule fractional_type_size() -> Node
             = start:position!() text:$(['0'..='9']+ "." ['0'..='9']* / "." ['0'..='9']+) !cont() end:position!() _ {?
-                let whole=text.split('.').next().unwrap();
-                let value=if whole.is_empty() { 0 } else { whole.parse::<u64>().unwrap_or(u64::MAX) };
-                let kind=if value<=i64::MAX as u64 { Kind::Int } else { Kind::Uint };
-                Node::new(kind,vec![]).text(text.into()).value(value).expression(start,end)
+                Node::number(text,start,end)
             }
-        rule string_length() -> Node = fractional_type_size() / value:type_size() {
-            if value.kind==Kind::Number { value.with_kind(Kind::Uint).value(u64::MAX) } else { value }
-        }
+        rule string_length() -> Node = fractional_type_size() / type_size()
         rule charset_keyword() = kw("charset") / (kw("character") / kw("char")) kw("set")
         rule cast_target() -> Node = cast_type()
             / data_type()
@@ -1564,7 +1559,7 @@ peg::parser! {
             })? (enabled(name=="char" && charset.is_none()) kw("binary"))? end:position!() {?
                 let mut parameters=parameters.unwrap_or_default();
                 let max=match name { "signed"|"unsigned"|"double"|"json" => 0,"decimal" => 2,_ => 1 };
-                if parameters.len()>max || parameters.iter().any(|value| !matches!(value.kind,Kind::Int|Kind::Uint)) { Err("invalid cast type parameters") }
+                if parameters.len()>max { Err("invalid cast type parameters") }
                 else { parameters.extend(charset);Ok(Node::new(Kind::CastType,parameters).text(name.into()).at(start,end)) }
             }
             / !kw("geometry") value:geometry_type() { value.with_kind(Kind::CastType) }

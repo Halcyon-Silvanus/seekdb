@@ -392,7 +392,7 @@ pub(crate) fn type_parameters(target: &Node) -> &[Node] {
     let count = target
         .children
         .iter()
-        .take_while(|node| matches!(node.kind, Kind::Int | Kind::Uint | Kind::HiddenInt))
+        .take_while(|node| matches!(node.kind, Kind::Int | Kind::Uint | Kind::Number | Kind::HiddenInt))
         .count();
     &target.children[..count]
 }
@@ -483,6 +483,7 @@ pub(crate) fn type_syntax(target: &Node) -> TypeSyntax<'_> {
         name,
         spelling: &target.text,
         argument_count: parameters.len(),
+        parameters,
         has_length: !numeric && !temporal && !parameters.is_empty(),
         length: if !numeric && !temporal { first } else { 0 },
         has_precision: numeric && !parameters.is_empty(),

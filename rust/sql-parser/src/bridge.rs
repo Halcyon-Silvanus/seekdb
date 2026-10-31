@@ -1379,6 +1379,7 @@ pub(crate) mod ffi {
         name: TypeName,
         spelling: &'a str,
         argument_count: usize,
+        parameters: &'a [Node],
         has_length: bool,
         length: u64,
         has_precision: bool,

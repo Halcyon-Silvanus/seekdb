@@ -356,9 +356,6 @@ impl Node {
             1
         };
         if parameters.len() > max_parameters
-            || parameters
-                .iter()
-                .any(|parameter| !matches!(parameter.kind, Kind::Int | Kind::Uint))
             || (name == "double" && parameters.len() == 1)
             || (matches!(name, "varchar" | "varbinary") && parameters.is_empty())
             || (matches!(name, "bool" | "boolean" | "date" | "json") && !parameters.is_empty())

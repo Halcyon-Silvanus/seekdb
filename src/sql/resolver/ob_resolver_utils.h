@@ -388,6 +388,7 @@ public:
                                     bool is_strict_mode, 
                                     bool return_ret);
 
+  static int resolve_type_syntax(const peg::Node &node, peg::TypeSyntax &syntax);
   static int resolve_cast_type(const peg::Node &node, const common::ObString &spelling, ObRawExprResType &target);
   static common::ObGeoType resolve_geometry_type(peg::GeometryType type);
   static int resolve_data_type(const peg::Node &type_node,
