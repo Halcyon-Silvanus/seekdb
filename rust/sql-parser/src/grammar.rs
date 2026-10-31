@@ -485,7 +485,6 @@ peg::parser! {
                 let end=window.end;
                 Node::new(Kind::WindowFunction,vec![function,window]).expression(start,end)
             }
-            / start:position!() "*" end:position!() _ {? Node::new(Kind::Star, vec![]).expression(start, end) }
             / depth(level) start:position!() listagg:(kw("group_concat") { false } / kw("listagg") { true }) "(" _
                 modifier:((kw("distinct") / kw("unique")) { Node::new(Kind::Distinct,vec![]) })?
                 arguments:expr_list(level+1) order:(kw("order") kw("by") values:(order_item(level+1) ++ ("," _)) { values })?
@@ -529,7 +528,8 @@ peg::parser! {
             / enabled(pl) depth(level) start:position!() text:$(keyword("force") / keyword("cascade")) end:position!() _ {?
                 Node::column(vec![Name { text:text.to_owned(),quoted:false,start,end }],false,start,end)
             }
-        rule function_argument(level: usize) -> Node = value:expr(level)
+        rule star() -> Node = start:position!() "*" end:position!() _ {? Node::new(Kind::Star, vec![]).expression(start, end) }
+        rule function_argument(level: usize) -> Node = value:(star() / expr(level))
             alias:(enabled(!value.is_wildcard()) kw("as")? label:(name:ident() { Node::name(name) } / string()) { label })? {
                 match alias {
                     Some(alias) => { let (start,end)=(value.start,alias.end); Node::new(Kind::AliasedArgument,vec![value,alias]).at(start,end) },
@@ -789,7 +789,7 @@ peg::parser! {
         rule xor_expr(level: usize) -> Node = left:and_expr(level) rest:(kw("xor") right:and_expr(level) { ("xor".into(), right) })* {? chain(left, rest) }
         rule expr(level: usize) -> Node = left:xor_expr(level) rest:((kw("or") / enabled(!mode.pipes_as_concat) "||" _) right:xor_expr(level) { right })* {? boolean_chain("or", left, rest) }
         rule expr_list(level: usize) -> Vec<Node> = values:(expr(level) ++ ("," _)) { values }
-        rule item(level: usize) -> Node = expression:expr(level) alias:(enabled(!expression.is_wildcard()) (kw("as") / !implicit_alias_keyword()) value:(name:ident() { Node::name(name) } / string()) { value })? { Node::projection(expression, alias) }
+        rule item(level: usize) -> Node = expression:(star() / expr(level)) alias:(enabled(!expression.is_wildcard()) (kw("as") / !implicit_alias_keyword()) value:(name:ident() { Node::name(name) } / string()) { value })? { Node::projection(expression, alias) }
         rule json_response() -> (Node,Node) = kw("error") { (Node::new(Kind::HiddenInt,vec![]),Node::new(Kind::HiddenNull,vec![])) }
             / start:position!() kw("null") { (Node::new(Kind::NullClause,vec![]).value(1).at(start,start+4),Node::new(Kind::HiddenNull,vec![])) }
             / kw("default") value:signed_literal() { (Node::new(Kind::HiddenInt,vec![]).value(2),value) }
