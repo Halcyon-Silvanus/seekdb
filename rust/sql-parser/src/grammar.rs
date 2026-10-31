@@ -697,13 +697,13 @@ peg::parser! {
             ) ")" end:position!() _ {?
                 Node::named_call(Kind::Function,Node::new(Kind::Ident,vec![]).text(function.0.into()),function.1).expression(start,end)
             }
-        rule date_unit() -> Node = start:position!() name:$(word()) end:position!() _ {?
+        rule date_unit() -> Node = start:position!() name:$(word()) end:position!() _ failure:position!() {?
             let name=name.to_ascii_lowercase();
             if ["microsecond","second","minute","hour","day","week","month","quarter","year",
                 "second_microsecond","minute_microsecond","minute_second","hour_microsecond","hour_second","hour_minute",
                 "day_microsecond","day_second","day_minute","day_hour","year_month"].contains(&name.as_str()) {
                 Ok(Node::new(Kind::DateUnit,vec![]).text(name).at(start,end))
-            } else { Err("date unit") }
+            } else { Err(diagnostics.record("invalid date unit",crate::Span { start,end },failure)) }
         }
         rule date_function(level: usize) -> Node
             = start:position!() function:(kw("date_add") { ("date_add",false) } / kw("date_sub") { ("date_sub",false) }
@@ -1414,21 +1414,17 @@ peg::parser! {
             Node::new(Kind::ValueVector,values)
         }
         rule insert() -> Node = replace:(keyword("insert") { false } / keyword("replace") { true }) hints:hint_slot()
-            (kw("low_priority") / kw("high_priority"))? ignore:kw("ignore")? kw("into")? table:relation_name() partition:use_partition()?
+            (kw("low_priority") / kw("high_priority"))? ignore:(enabled(!replace) kw("ignore"))? kw("into")? table:relation_name() partition:use_partition()?
             columns:("(" _ columns:(insert_column() ** ("," _)) ")" _ { columns })?
             values:((kw("values") / kw("value")) rows:(row() ++ ("," _)) { Node::new(Kind::ValueList, rows) }
-                / kw("set") values:assignments() { Node::new(Kind::AssignList, values) }
+                / enabled(columns.is_none()) kw("set") values:assignments() { Node::new(Kind::AssignList, values) }
                 / select(0))
             alias:(enabled(matches!(values.kind,Kind::ValueList|Kind::AssignList)) kw("as") name:ident()
                 columns:("(" _ names:(ident() ++ ("," _)) ")" _ { names })? { (name,columns.unwrap_or_default()) })?
-            duplicate:(kw("on") kw("duplicate") kw("key") kw("update") values:assignments() { values })? {?
-                if replace && (ignore.is_some() || duplicate.is_some()) { Err("REPLACE does not accept IGNORE or ON DUPLICATE KEY UPDATE") }
-                else if values.kind == Kind::AssignList && columns.is_some() { Err("INSERT SET does not accept a column list") }
-                else {
-                    let mut children=vec![Node::relation(table)?];children.extend(partition);
-                    let table=Node::new(Kind::Table,children);
-                    Node::insert(replace, ignore.is_some(), table, columns.unwrap_or_default(), values, alias, duplicate.unwrap_or_default(), hints.unwrap_or_default())
-                }
+            duplicate:(enabled(!replace) kw("on") kw("duplicate") kw("key") kw("update") values:assignments() { values })? {?
+                let mut children=vec![Node::relation(table)?];children.extend(partition);
+                let table=Node::new(Kind::Table,children);
+                Node::insert(replace, ignore.is_some(), table, columns.unwrap_or_default(), values, alias, duplicate.unwrap_or_default(), hints.unwrap_or_default())
             }
         rule update() -> Node = with:with_clause(0)? keyword("update") hints:hint_slot() kw("low_priority")? ignore:kw("ignore")?
             tables:(table(0) ++ ("," _)) kw("set") values:assignments()
@@ -1540,6 +1536,11 @@ peg::parser! {
         }
         rule charset_keyword() = kw("charset") / (kw("character") / kw("char")) kw("set")
         rule cast_target() -> Node = cast_type()
+            / start:position!() text:$(data_type()) {
+                let text=text.trim_end();
+                let name=text.chars().take_while(|ch| ch.is_ascii_alphanumeric() || *ch=='_').collect();
+                Node::new(Kind::DataType,vec![]).text(name).at(start,start+text.len())
+            }
             / name:(ident() / name_keyword()) parameters:("(" _ values:(type_size() ++ ("," _)) ")" _ { values })? {
                 Node::new(Kind::DataType,parameters.unwrap_or_default()).text(name.text).at(name.start,name.end)
             }
@@ -1645,22 +1646,22 @@ peg::parser! {
             / kw("comment") value:string() { Node::new(Kind::ColumnComment, vec![value]) }
             / kw("srid") value:type_size() { Node::new(Kind::Srid,vec![value]) }
             / check_constraint()
+        rule current_timestamp(message: &'static str) -> Node = value:atom(0) failure:position!() {?
+            if value.kind==Kind::CurrentTimestamp { Ok(value) }
+            else { Err(diagnostics.record(message,crate::Span { start:value.start,end:value.end },failure)) }
+        }
         rule column_default_value(timestamp: bool) -> Node
             = start:position!() "(" _ value:expr(0) ")" end:position!() _ {?
                 Node::new(Kind::Parenthesized,vec![value]).expression(start,end)
             }
             / signed_literal()
-            / enabled(timestamp) value:atom(0) {?
-                if value.kind==Kind::CurrentTimestamp { Ok(value) } else { Err("current timestamp") }
-            }
+            / enabled(timestamp) value:current_timestamp("nonconstant DEFAULT expressions require parentheses") { value }
         rule column_attribute() -> Node
             = generated_column_attribute()
             / storage_chunk()
             / kw("auto_increment") { Node::new(Kind::AutoIncrement, vec![]) }
             / kw("default") value:column_default_value(true) { Node::new(Kind::ColumnDefault, vec![value]) }
-            / kw("on") kw("update") value:atom(0) {?
-                if value.kind==Kind::CurrentTimestamp { Ok(Node::new(Kind::OnUpdate,vec![value])) } else { Err("current timestamp") }
-            }
+            / kw("on") kw("update") value:current_timestamp("ON UPDATE requires CURRENT_TIMESTAMP") { Node::new(Kind::OnUpdate,vec![value]) }
             / kw("collate") value:collation_name() { value.with_kind(Kind::Collation) }
             / kw("skip_index") "(" _ kinds:(skip_index_kind() ** ("," _)) ")" _ {
                 Node::new(Kind::ColumnSkipIndex,kinds)
@@ -2621,7 +2622,7 @@ peg::parser! {
                     let end=name.end; Node::new(Kind::SystemVariable,vec![]).text(name.text).value(scope).at(start,end)
                 } / user_variable() / system_variable()
                 / start:position!() parts:compact_name() enabled(parts.len()==2) end:position!() {? Node::column(parts,false,start,end) }
-                / start:position!() first:ident() "." _ second:ident() end:position!() {? Node::column(vec![first,second],false,start,end) }
+                / &quiet!{ident() "."} start:position!() first:ident() "." _ second:ident() end:position!() {? Node::column(vec![first,second],false,start,end) }
                 / name:assignment_name(false) { Node::name(name) }) (":=" / "=" / kw("to")) _
                 value:(enabled(variable.kind!=Kind::UserVariable) keyword:setting_keyword() { keyword } / expr(level)) {?
                 let value=Node::routine_setting_value(&variable,value)?;
