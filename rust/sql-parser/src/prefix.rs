@@ -513,11 +513,12 @@ pub fn split_sql(input: &[u8], mode: SqlMode, first_only: bool, bounds: StackBou
     let mut offset = 0;
     while offset < sql.len() {
         let pl = classify_statement(sql[offset..].as_bytes(), mode).pl != PlPrefix::None;
-        let end = grammar::sql::statement_end(&sql[offset..], mode, pl, &budget).or_else(|error| {
+        let diagnostics = crate::diagnostic::Diagnostics::default();
+        let end = grammar::sql::statement_end(&sql[offset..], mode, pl, &budget, &diagnostics).or_else(|error| {
             if budget.failure().is_none() && matches!(sql, std::borrow::Cow::Owned(_)) {
                 let ignored = grammar::executable_sql(&original[offset..], mode, false)?;
                 let pl = classify_statement(ignored.as_bytes(), mode).pl != PlPrefix::None;
-                grammar::sql::statement_end(&ignored, mode, pl, &budget)
+                grammar::sql::statement_end(&ignored, mode, pl, &budget, &diagnostics)
             } else {
                 Err(error)
             }

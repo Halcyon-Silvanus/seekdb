@@ -13,6 +13,29 @@
 // limitations under the License.
 
 use crate::{budget::Budget, grammar, ParseDiagnostic, ParseErrorKind, Span, SqlMode};
+use std::cell::Cell;
+
+#[derive(Default)]
+pub(crate) struct Diagnostics(Cell<Option<SemanticFailure>>);
+
+#[derive(Clone, Copy)]
+struct SemanticFailure {
+    offset: usize,
+    span: Span,
+    message: &'static str,
+}
+
+impl Diagnostics {
+    pub(crate) fn clear(&self) { self.0.take(); }
+
+    pub(crate) fn record(&self, message: &'static str, span: Span, offset: usize) -> &'static str {
+        let failure = self.0.get();
+        if failure.as_ref().is_none_or(|previous| previous.offset < offset) {
+            self.0.set(Some(SemanticFailure { offset, span, message }));
+        }
+        message
+    }
+}
 
 #[derive(Debug)]
 pub struct ParseFailure {
@@ -37,18 +60,26 @@ impl ParseFailure {
         sql: &str,
         mode: SqlMode,
         error: peg::error::ParseError<peg::str::LineCol>,
+        diagnostics: &Diagnostics,
     ) -> Self {
         let span = grammar::sql::diagnostic_span(
-            sql, mode, false, &Budget::lexical_scan(), error.location.offset,
+            sql, mode, false, &Budget::lexical_scan(), &Diagnostics::default(), error.location.offset,
         ).expect("diagnostic tokenization accepts every character");
+        let mut diagnostic = ParseDiagnostic {
+            span,
+            expected: error.expected.tokens().map(str::to_owned).collect(),
+            detail: String::new(),
+        };
+        if let Some(failure) = diagnostics.0.get().filter(|failure|
+            failure.offset == error.location.offset
+                && error.expected.tokens().any(|expected| expected == failure.message)) {
+            diagnostic.span = failure.span;
+            diagnostic.detail = failure.message.into();
+        }
         Self {
             kind: ParseErrorKind::Syntax,
             message: error.to_string(),
-            diagnostic: ParseDiagnostic {
-                span,
-                expected: error.expected.tokens().map(str::to_owned).collect(),
-                detail: String::new(),
-            },
+            diagnostic,
             expanded_sql: String::new(),
         }
     }

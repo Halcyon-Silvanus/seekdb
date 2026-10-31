@@ -15,6 +15,7 @@
 use crate::{access, ddl, load_data, select_into, lex::decode_string as decode, node::*, SqlMode};
 use std::borrow::Cow;
 use crate::budget::Budget;
+use crate::diagnostic::Diagnostics;
 
 const WEIGHT_STRING_PAD_WITH_SPACE: u64 = 0x40;
 const WEIGHT_STRING_LEVELS: u64 = 6;
@@ -29,7 +30,7 @@ pub(crate) fn executable_sql<'sql>(
     if !sql.contains("/*!") {
         return Ok(Cow::Borrowed(sql));
     }
-    let spans = sql::executable_comments(sql, mode, false, &Budget::lexical_scan())?;
+    let spans = sql::executable_comments(sql, mode, false, &Budget::lexical_scan(), &Diagnostics::default())?;
     if spans.is_empty() {
         return Ok(Cow::Borrowed(sql));
     }
@@ -252,7 +253,7 @@ impl Tail {
 }
 
 peg::parser! {
-    pub grammar sql(mode: SqlMode, pl: bool, budget: &Budget) for str {
+    pub grammar sql(mode: SqlMode, pl: bool, budget: &Budget, diagnostics: &Diagnostics) for str {
         rule opaque_comment_token()
             = "'" ("''" / enabled(!mode.no_backslash_escapes) "\\" [_] / !"'" [_])* "'"
             / "\"" ("\"\"" / enabled(!mode.ansi_quotes && !mode.no_backslash_escapes) "\\" [_] / !"\"" [_])* "\""
@@ -514,8 +515,8 @@ peg::parser! {
                     "array_map","array_filter","array_first","array_sortby","vector_distance","vector_similarity","group_concat","listagg","get_format"].iter().any(|name| parts[0].text.eq_ignore_ascii_case(name)))
                     "(" _ modifier:((kw("distinct") / kw("unique")) { Kind::Distinct } / kw("all") { Kind::All })? args:(function_argument(level+1) ++ ("," _))? ")" close:position!() _
                     window:(kw("over") value:window(level+1) { value })? followed_by_over:(&kw("over") { true } / { false })
-                    { let end=window.as_ref().map_or(close,|value| value.end); (Some((modifier, args.unwrap_or_default(),window,followed_by_over)), end) })?
-                {? match tail {
+                    { let end=window.as_ref().map_or(close,|value| value.end); (Some((modifier, args.unwrap_or_default(),window,followed_by_over)), end) })? failure:position!()
+                {? let name_end=parts.last().unwrap().end; match tail {
                     None => {
                         let end=parts.last().unwrap().end;
                         let keyword_function=parts.len()==1 && !parts[0].quoted && keyword_function(&parts[0].text);
@@ -523,7 +524,9 @@ peg::parser! {
                         else { Node::column(parts,false,start,end) }
                     },
                     Some((None, end)) => Node::column(parts, true, start, end),
-                    Some((Some((modifier, arguments, window, followed_by_over)), end)) => Node::call(parts, modifier, arguments, window, followed_by_over, start, end),
+                    Some((Some((modifier, arguments, window, followed_by_over)), end)) =>
+                        Node::call(parts, modifier, arguments, window, followed_by_over, start, end)
+                            .map_err(|message| diagnostics.record(message,crate::Span { start,end:name_end },failure)),
                 } }
             / enabled(pl) depth(level) start:position!() text:$(keyword("force") / keyword("cascade")) end:position!() _ {?
                 Node::column(vec![Name { text:text.to_owned(),quoted:false,start,end }],false,start,end)

@@ -15,6 +15,7 @@
 use crate::{grammar, node::{Kind, Node}, prefix::{normalized_sql_length, classify_statement}, ParseMode, SqlMode};
 use crate::bridge::ffi::ParseErrorKind;
 use crate::{budget::Budget, ParseFailure, Span, StackBounds};
+use crate::diagnostic::Diagnostics;
 
 pub struct Parsed {
     root: Node,
@@ -76,16 +77,18 @@ pub fn parse(sql: &[u8], mode: SqlMode, parse_mode: ParseMode, bounds: StackBoun
 fn parse_source(source: std::borrow::Cow<'_, str>, source_prefix: usize,
                 mode: SqlMode, parse_mode: ParseMode, budget: &Budget) -> Result<Parsed, ParseFailure> {
     let sql = source.as_ref();
+    let diagnostics = &Diagnostics::default();
     let entry = |text: &str| {
+        diagnostics.clear();
         let pl = matches!(parse_mode, ParseMode::Routine | ParseMode::Trigger | ParseMode::RoutineDefinition
             | ParseMode::PlSql | ParseMode::PlExpression)
             || (parse_mode == ParseMode::Sql && classify_statement(text.as_bytes(), mode).pl != crate::bridge::ffi::PlPrefix::None);
         match parse_mode {
-        ParseMode::Routine => grammar::sql::routine_body(text, mode, pl, budget),
-        ParseMode::Trigger => grammar::sql::trigger(text, mode, pl, budget),
-        ParseMode::Statistics => grammar::sql::statistics_options(text, mode, pl, budget),
-        ParseMode::Expression | ParseMode::PlExpression => grammar::sql::expression(text, mode, pl, budget),
-        ParseMode::Sql | ParseMode::RoutineDefinition | ParseMode::PlSql => grammar::sql::query(text, mode, pl, budget),
+        ParseMode::Routine => grammar::sql::routine_body(text, mode, pl, budget, diagnostics),
+        ParseMode::Trigger => grammar::sql::trigger(text, mode, pl, budget, diagnostics),
+        ParseMode::Statistics => grammar::sql::statistics_options(text, mode, pl, budget, diagnostics),
+        ParseMode::Expression | ParseMode::PlExpression => grammar::sql::expression(text, mode, pl, budget, diagnostics),
+        ParseMode::Sql | ParseMode::RoutineDefinition | ParseMode::PlSql => grammar::sql::query(text, mode, pl, budget, diagnostics),
         _ => unreachable!("unknown parser entry point"),
         }.map(|root| (root, pl))
     };
@@ -103,7 +106,7 @@ fn parse_source(source: std::borrow::Cow<'_, str>, source_prefix: usize,
     });
     if let Some(offset) = budget.failure() { return Err(stack_failure(offset)); }
     let parsed = parsed.map_err(|error| ParseFailure::syntax(
-        if expanded_sql.is_empty() { sql } else { &expanded_sql }, mode, error,
+        if expanded_sql.is_empty() { sql } else { &expanded_sql }, mode, error, diagnostics,
     )).and_then(|(query, pl)| {
         if parse_mode == ParseMode::RoutineDefinition
             && !matches!(query.kind, Kind::CreateProcedure | Kind::CreateFunction) {
