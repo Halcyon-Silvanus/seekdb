@@ -24,6 +24,7 @@
 #include "sql/plan_cache/literal_token.h"
 #include "sql/resolver/parameterization_result.h"
 #include "lib/json/ob_json_print_utils.h"
+#include "lib/charset/ob_ctype.h"
 #include "sql/pl/ob_pl_resolver.h"
 #include "sql/resolver/dml/ob_inlist_resolver.h"
 
@@ -34,6 +35,18 @@ namespace sql
 {
 
 namespace {
+int resolve_weight_integer(const peg::Node &node, uint64_t &value)
+{
+  int ret = OB_SUCCESS;
+  if (node.kind() != peg::NodeKind::Int && node.kind() != peg::NodeKind::Uint) {
+    ret = OB_INVALID_ARGUMENT;
+    _LOG_USER_MSG(USER_ERROR, OB_INVALID_ARGUMENT, "WEIGHT_STRING requires integer length and level options");
+  } else {
+    value = peg::integer_literal_value(node);
+  }
+  return ret;
+}
+
 int check_scalar_quantifier(const peg::Node &node)
 {
   int ret = OB_SUCCESS;
@@ -3066,8 +3079,9 @@ int ObRawExprResolverImpl::process_fun_sys_node(const peg::Node &node,
   OX(function->set_func_name(owned_name));
   const int64_t column_count = ctx_.columns_->count();
   const bool log_base = name.case_compare("log") == 0 && arguments.size() == 1;
+  const bool weight_options = name.case_compare("weight_string") == 0 && arguments.size() == 1;
   const int64_t hidden_arguments = node.kind() == peg::NodeKind::DefaultValue ? 4 : log_base ? 1 : 0;
-  const int64_t argument_count = arguments.size() + hidden_arguments;
+  const int64_t argument_count = arguments.size() + hidden_arguments + (weight_options ? 4 : 0);
   OZ(function->init_param_exprs(argument_count));
   if (log_base) {
     ObConstRawExpr *base = nullptr;
@@ -3093,6 +3107,7 @@ int ObRawExprResolverImpl::process_fun_sys_node(const peg::Node &node,
     OZ(ObRawExprUtils::build_null_expr(ctx_.expr_factory_, placeholder));
     OZ(function->add_param_expr(placeholder));
   }
+  if (weight_options) OZ(resolve_weight_string_options(node, *function));
   if (OB_FAIL(ret) && function != nullptr) {
     const int original_ret = ret;
     ret = ObRawExprUtils::function_alias(ctx_.expr_factory_, function);
@@ -3106,6 +3121,50 @@ int ObRawExprResolverImpl::process_fun_sys_node(const peg::Node &node,
   return ret;
 }
 
+
+int ObRawExprResolverImpl::resolve_weight_string_options(const peg::Node &node, ObSysFunRawExpr &function)
+{
+  int ret = OB_SUCCESS;
+  const auto syntax = peg::weight_string_definition(node);
+  uint64_t weights = 0, flags = 0;
+  if (!syntax.length.empty()) {
+    OZ(resolve_weight_integer(syntax.length[0], weights));
+    if (OB_SUCC(ret) && weights == 0) {
+      ret = OB_INVALID_ARGUMENT;
+      _LOG_USER_MSG(USER_ERROR, OB_INVALID_ARGUMENT, "WEIGHT_STRING AS length must be positive");
+    }
+    flags = OB_STRXFRM_PAD_WITH_SPACE;
+  }
+  if (OB_SUCC(ret) && syntax.binary && !syntax.levels.empty()) {
+    ret = OB_INVALID_ARGUMENT;
+    _LOG_USER_MSG(USER_ERROR, OB_INVALID_ARGUMENT, "WEIGHT_STRING LEVEL requires character input");
+  }
+  for (const auto &level : syntax.levels) {
+    if (OB_FAIL(ret)) break;
+    const auto definition = peg::weight_string_level(level);
+    uint64_t first = 0, last = 0;
+    OZ(resolve_weight_integer(definition.numbers[0], first));
+    if (OB_SUCC(ret)) first = std::max<uint64_t>(1, std::min<uint64_t>(first, OB_STRXFRM_NLEVELS)) - 1;
+    if (definition.numbers.size() == 2) {
+      OZ(resolve_weight_integer(definition.numbers[1], last));
+      if (OB_SUCC(ret)) last = std::max(first, std::max<uint64_t>(1,
+          std::min<uint64_t>(last, OB_STRXFRM_NLEVELS)) - 1);
+    } else {
+      last = first;
+    }
+    uint64_t bits = 1;
+    if (definition.descending) bits |= OB_STRXFRM_DESC_LEVEL1;
+    if (definition.reverse) bits |= OB_STRXFRM_REVERSE_LEVEL1;
+    for (uint64_t position = first; OB_SUCC(ret) && position <= last; ++position) flags |= bits << position;
+  }
+  for (const uint64_t value : {uint64_t{0}, weights, flags, uint64_t(syntax.binary)}) {
+    ObRawExpr *parameter = nullptr;
+    OZ(build_implicit_literal({value > INT64_MAX ? peg::LiteralKind::Unsigned : peg::LiteralKind::Integer,
+        value, {}, {}, false, 0}, parameter));
+    OZ(function.add_param_expr(parameter));
+  }
+  return ret;
+}
 
 int ObRawExprResolverImpl::process_sys_func_params(ObSysFunRawExpr &func_expr, int current_columns_count)
 {

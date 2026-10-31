@@ -931,6 +931,9 @@ pub(crate) mod ffi {
         PartitionCount,
         ViewCheckOption,
         Definer,
+        WeightStringType,
+        WeightStringLevels,
+        WeightStringLevel,
     }
 
     #[derive(Clone, Copy, Debug, Default)]
@@ -1090,6 +1093,18 @@ pub(crate) mod ffi {
     struct AccountLimits<'a> {
         connections_per_hour: &'a [Node],
         user_connections: &'a [Node],
+    }
+
+    struct WeightStringDefinition<'a> {
+        length: &'a [Node],
+        binary: bool,
+        levels: &'a [Node],
+    }
+
+    struct WeightStringLevel<'a> {
+        numbers: &'a [Node],
+        descending: bool,
+        reverse: bool,
     }
 
     enum TlsMode {
@@ -2501,6 +2516,8 @@ pub(crate) mod ffi {
         fn call_name(call: &Node) -> &str;
         fn call_qualifiers(call: &Node) -> &[Node];
         fn call_arguments(call: &Node) -> &[Node];
+        unsafe fn weight_string_definition<'a>(call: &'a Node) -> WeightStringDefinition<'a>;
+        unsafe fn weight_string_level<'a>(level: &'a Node) -> WeightStringLevel<'a>;
         fn aggregate_quantifier(aggregate: &Node) -> AggregateQuantifier;
         fn aggregate_order(aggregate: &Node) -> &[Node];
         fn aggregate_has_separator(aggregate: &Node) -> bool;
@@ -2838,6 +2855,7 @@ use crate::statistics::{
 };
 
 use crate::ddl::partition_element_values;
+use crate::expression::{weight_string_definition, weight_string_level};
 
 use crate::ddl::{alter_index_name, alter_index_new_name, index_visible, alter_index_parallel, alter_table_options};
 use crate::inspect::syntax_literals;

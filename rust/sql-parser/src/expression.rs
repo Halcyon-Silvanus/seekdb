@@ -309,6 +309,21 @@ pub(crate) fn call_arguments(mut call: &Node) -> &[Node] {
         };
     }
 }
+pub(crate) fn weight_string_definition(call: &Node) -> crate::bridge::ffi::WeightStringDefinition<'_> {
+    let cast_type = child(call, Kind::WeightStringType);
+    crate::bridge::ffi::WeightStringDefinition {
+        length: cast_type.map_or(&[], |node| node.children.as_slice()),
+        binary: cast_type.is_some_and(|node| node.value != 0),
+        levels: list(call, Kind::WeightStringLevels),
+    }
+}
+pub(crate) fn weight_string_level(level: &Node) -> crate::bridge::ffi::WeightStringLevel<'_> {
+    crate::bridge::ffi::WeightStringLevel {
+        numbers: &level.children,
+        descending: level.value & 1 != 0,
+        reverse: level.value & 2 != 0,
+    }
+}
 pub(crate) fn aggregate_quantifier(aggregate: &Node) -> AggregateQuantifier {
     if child(aggregate, Kind::Distinct).is_some() {
         AggregateQuantifier::Distinct

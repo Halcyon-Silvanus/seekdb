@@ -389,6 +389,12 @@ impl<'a> Collector<'a> {
     fn call(&mut self, node: &'a Node, scope: Scope<'a>) -> Result<()> {
         let args = call_arguments(node);
         let name = call_name(node).to_ascii_lowercase();
+        if name == "weight_string" {
+            self.ps_eligible = false;
+            let syntax = weight_string_definition(node);
+            for length in syntax.length { self.exclude(length); }
+            for level in syntax.levels { self.exclude(level); }
+        }
         let excluded = match (name.as_str(), args.len()) {
             ("userenv" | "unix_timestamp", 1) => 0..1,
             ("substr", 3) => 1..3,

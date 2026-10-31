@@ -140,6 +140,7 @@ private:
       ObRawExpr *&expr,
       const bool is_root_expr);
   int process_sys_func_params(ObSysFunRawExpr &func_expr, int current_columns_count);
+  int resolve_weight_string_options(const peg::Node &node, ObSysFunRawExpr &function);
   int resolve_stored_function(const peg::Node &call, ObUDFInfo &udf_info);
   int process_match_against(const peg::Node &node, ObRawExpr *&expr);
   int process_match_score(ObRawExpr *&expr);
