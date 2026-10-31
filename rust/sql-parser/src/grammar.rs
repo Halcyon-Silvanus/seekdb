@@ -333,7 +333,7 @@ peg::parser! {
         rule dotted_ident() -> Name = ident() / name_keyword()
         rule compact_ident() -> Name = start:position!() text:$(cont()+) end:position!()
             { Name { text: text.to_owned(), quoted: false, start, end } }
-        rule compact_name() -> Vec<Name> = &(cont()+ ".") first:compact_ident() "." rest:(compact_ident() ++ ".") _ {?
+        rule compact_name() -> Vec<Name> = &quiet!{cont()+ "."} first:compact_ident() "." rest:(compact_ident() ++ ".") _ {?
             if first.text.bytes().all(|byte| byte.is_ascii_digit()) { return Err("identifier"); }
             let mut parts=vec![first];parts.extend(rest);Ok(parts)
         }
@@ -347,8 +347,8 @@ peg::parser! {
             / name()
         rule expression_name() -> Vec<Name>
             = name()
-            / first:name_keyword() "." _ last:name_keyword() { vec![first,last] }
-            / name:name_keyword() enabled(keyword_function(&name.text)) { vec![name] }
+            / &quiet!{word() _ "."} first:name_keyword() "." _ last:name_keyword() { vec![first,last] }
+            / quiet!{ name:name_keyword() enabled(keyword_function(&name.text)) { vec![name] } }
             / start:position!() name:(kw("database") { "database" } / kw("schema") { "schema" }
                 / kw("replace") { "replace" } / kw("insert") { "insert" }
                 / kw("left") { "left" } / kw("right") { "right" } / kw("mod") { "mod" } / kw("if") { "if" } / kw("repeat") { "repeat" }) &"("
@@ -522,6 +522,7 @@ peg::parser! {
             / depth(level) start:position!() !(['x'|'X'] "'" hex_digit()* "'") parts:expression_name() tail:("." _ "*" end:position!() _ { (None, end) }
                 / enabled(parts.len()!=1 || parts[0].quoted || !["row","match","score","point","json_query","json_value","trim","position","weight_string","char","character","array","map","array_agg",
                     "array_map","array_filter","array_first","array_sortby","vector_distance","vector_similarity","group_concat","listagg","get_format"].iter().any(|name| parts[0].text.eq_ignore_ascii_case(name)))
+                    &"(" valid_function(parts.as_slice(),start)
                     "(" _ modifier:((kw("distinct") / kw("unique")) { Kind::Distinct } / kw("all") { Kind::All })? args:(function_argument(level+1) ++ ("," _))? ")" close:position!() _
                     window:(kw("over") value:window(level+1) { value })? followed_by_over:(&kw("over") { true } / { false })
                     { let end=window.as_ref().map_or(close,|value| value.end); (Some((modifier, args.unwrap_or_default(),window,followed_by_over)), end) })? failure:position!()
@@ -540,6 +541,10 @@ peg::parser! {
             / enabled(pl) depth(level) start:position!() text:$(keyword("force") / keyword("cascade")) end:position!() _ {?
                 Node::column(vec![Name { text:text.to_owned(),quoted:false,start,end }],false,start,end)
             }
+        rule valid_function(parts: &[Name], start: usize) = failure:position!() {?
+            if parts.len()!=1 || parts[0].quoted || valid_function_name(&parts[0].text) { Ok(()) }
+            else { Err(diagnostics.record("invalid function name",crate::Span { start,end:parts[0].end },failure)) }
+        }
         rule star() -> Node = start:position!() "*" end:position!() _ {? Node::new(Kind::Star, vec![]).expression(start, end) }
         rule function_argument(level: usize) -> Node = value:(star() / expr(level))
             alias:(enabled(!value.is_wildcard()) kw("as")? label:(name:ident() { Node::name(name) } / string()) { label })? {
@@ -1618,9 +1623,13 @@ peg::parser! {
                 / values:(type_size() ++ ("," _)) { values }) ")" _ { values })?
             unsigned:(kw("unsigned") { true } / kw("signed") { false })? zerofill:kw("zerofill")? binary:kw("binary")?
             charset:(charset_keyword() !kw("default") value:charset_name() { value.with_kind(Kind::Charset) })? end:position!() {?
-                let mut value=Node::data_type(name, parameters.unwrap_or_default(), unsigned, zerofill.is_some(), start, end)?;
+                let span=crate::Span { start,end };
+                let mut value=Node::data_type(name, parameters.unwrap_or_default(), unsigned, zerofill.is_some(), start, end)
+                    .map_err(|message| diagnostics.record(message,span,end))?;
                 if binary.is_some() || charset.is_some() {
-                    if !matches!(name,"char"|"varchar"|"tinytext"|"text"|"mediumtext"|"longtext"|"string") { return Err("character type"); }
+                    if !matches!(name,"char"|"varchar"|"tinytext"|"text"|"mediumtext"|"longtext"|"string") {
+                        return Err(diagnostics.record("character type",span,end));
+                    }
                 }
                 if binary.is_some() { value.children.push(Node::new(Kind::BinaryAttribute,vec![]).value(1)); }
                 value.children.extend(charset);
@@ -2674,7 +2683,10 @@ peg::parser! {
             / kind:(kw("leave") { Kind::PlLeave } / kw("iterate") { Kind::PlIterate }) label:pl_ident() { Node::new(kind,vec![Node::name(label),Node::missing()]) }
             / kw("open") name:pl_ident() { Node::new(Kind::PlOpen,vec![Node::name(name),Node::missing(),Node::missing()]) }
             / kw("close") name:pl_ident() { Node::new(Kind::PlClose,vec![Node::name(name)]) }
-            / kw("fetch") (kw("next") kw("from") / kw("from"))? name:pl_ident() kw("into") variables:((value:pl_expression(level+1) {? crate::routine::cursor_fetch_target(value) }) ++ ("," _)) {
+            / kw("fetch") (kw("next") kw("from") / kw("from"))? name:pl_ident() kw("into") variables:((value:pl_expression(level+1) failure:position!() {?
+                let span=crate::Span { start:value.start,end:value.end };
+                crate::routine::cursor_fetch_target(value).map_err(|message| diagnostics.record(message,span,failure))
+            }) ++ ("," _)) {
                 Node::new(Kind::PlFetch,vec![Node::name(name),Node::new(Kind::IntoVariables,vec![Node::new(Kind::PlInto,variables)])])
             }
             / routine_statement(level+1) / pl_call() / pl_signal() / pl_do(level+1) / pl_setting(level+1)

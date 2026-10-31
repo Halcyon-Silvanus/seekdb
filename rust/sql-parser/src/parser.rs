@@ -172,7 +172,7 @@ fn validate_types(node: &Node, mode: ParseMode) -> Result<(), ParseFailure> {
         };
         if let Some(target) = cast_target.filter(|target| target.kind == Kind::DataType) {
             let mut error = ParseFailure::at(ParseErrorKind::Syntax,
-                format!("unsupported CAST target type: {}", target.text),
+                format!("invalid CAST target type: {}", target.text),
                 Span { start:target.start,end:target.end });
             error.diagnostic.expected.push("a supported CAST target type".into());
             return Err(error);

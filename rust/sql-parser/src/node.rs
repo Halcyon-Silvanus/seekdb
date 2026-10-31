@@ -15,6 +15,11 @@
 use crate::bridge::ffi;
 pub(crate) use ffi::NodeKind as Kind;
 
+pub(crate) fn valid_function_name(name: &str) -> bool {
+    !["any", "some", "value", "unknown", "hybrid_search"]
+        .iter().any(|invalid| name.eq_ignore_ascii_case(invalid))
+}
+
 pub struct Node {
     pub(crate) kind: Kind,
     pub(crate) children: Vec<Node>,
@@ -666,8 +671,8 @@ impl Node {
         {
             name.text.clone_from(&function);
         }
-        if matches!(function.as_str(), "any" | "some" | "value" | "unknown" | "hybrid_search") {
-            return Err("function name");
+        if !valid_function_name(&function) {
+            return Err("invalid function name");
         }
         if function == "cast" && (arguments.len() != 2
             || !matches!(arguments[1].kind, Kind::CastType | Kind::DataType)) {
