@@ -2720,10 +2720,8 @@ peg::parser! {
             / (kw("deallocate") / kw("drop")) kw("prepare") name:ident() { Node::new(Kind::Deallocate,vec![]).text(name.text) }
         rule analyze() -> Node = kw("analyze") kw("table") value:(
                 table:(names:relation_name() {? Node::relation(names) }) kw("update") kw("histogram") kw("on")
-                columns:(ident() ++ ("," _)) buckets:(kw("with") start:position!() value:type_size() end:position!() kw("buckets") failure:position!() {?
-                    if value.kind==Kind::Int && (1..=1024).contains(&value.value) {
-                        Ok(Node::new(Kind::StatsBucketCount,vec![value]))
-                    } else { Err(diagnostics.record("histogram bucket count between 1 and 1024",crate::Span { start,end },failure)) }
+                columns:(ident() ++ ("," _)) buckets:(kw("with") value:type_size() kw("buckets") {
+                    Node::new(Kind::StatsBucketCount,vec![value])
                 })? {
                     let mut children=vec![Node::new(Kind::TableList,vec![table]),
                         Node::new(Kind::ColumnList,columns.into_iter().map(Node::name).collect())];

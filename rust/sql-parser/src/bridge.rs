@@ -1817,8 +1817,7 @@ pub(crate) mod ffi {
         action: AnalyzeAction,
         relations: &'a [Node],
         columns: &'a [Node],
-        has_bucket_count: bool,
-        bucket_count: u64,
+        bucket_count: &'a [Node],
     }
 
     struct RestoreDatabaseDefinition<'a> {

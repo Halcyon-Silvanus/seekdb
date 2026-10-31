@@ -817,8 +817,7 @@ pub(crate) fn analyze_definition(node: &Node) -> AnalyzeDefinition<'_> {
         },
         relations: list(node, Kind::TableList),
         columns: list(node, Kind::ColumnList),
-        has_bucket_count: buckets.is_some(),
-        bucket_count: buckets.map_or(0, |buckets| buckets.children[0].value),
+        bucket_count: buckets.map_or(&[], |buckets| buckets.children.as_slice()),
     }
 }
 pub(crate) fn purge_relation(node: &Node) -> &Node {

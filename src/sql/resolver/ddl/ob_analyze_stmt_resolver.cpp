@@ -78,6 +78,15 @@ int ObAnalyzeStmtResolver::resolve_analyze_table(const peg::Node &statement,
 {
   int ret = OB_SUCCESS;
   const auto definition = peg::analyze_definition(statement);
+  if (!definition.bucket_count.empty()) {
+    const auto &count = definition.bucket_count[0];
+    if (count.kind() != peg::NodeKind::Int
+        || peg::integer_literal_value(count) < 1
+        || peg::integer_literal_value(count) > 1024) {
+      ret = OB_INVALID_ARGUMENT;
+      LOG_USER_ERROR(OB_INVALID_ARGUMENT, "histogram bucket count (must be between 1 and 1024)");
+    }
+  }
   for (const auto &relation : definition.relations) {
     if (OB_FAIL(ret)) { break; }
     OZ (resolve_table_info(&relation, analyze_stmt));
@@ -89,8 +98,8 @@ int ObAnalyzeStmtResolver::resolve_analyze_table(const peg::Node &statement,
     ObAnalyzeTableInfo &table_info = analyze_stmt.get_tables().at(0);
     const ObTableSchema *table_schema = nullptr;
     const bool is_drop = definition.action == peg::AnalyzeAction::DropHistogram;
-    const int64_t bucket_count = is_drop ? 0 : definition.has_bucket_count
-        ? static_cast<int64_t>(definition.bucket_count)
+    const int64_t bucket_count = is_drop ? 0 : !definition.bucket_count.empty()
+        ? static_cast<int64_t>(peg::integer_literal_value(definition.bucket_count[0]))
         : ObColumnStatParam::DEFAULT_HISTOGRAM_BUCKET_NUM;
     if (is_drop) {
       analyze_stmt.set_is_drop();
