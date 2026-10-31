@@ -454,9 +454,10 @@ peg::parser! {
             / depth(level) value:string_function(level+1) { value }
             / depth(level) value:json_function(level+1) { value }
             / depth(level) start:position!() value:(kw("cast") "(" _ value:expr(level+1) kw("as") target:cast_target() array:kw("array")? ignore:kw("ignore")? { (value,target,ignore.is_some(),array.is_some()) }
-                / kw("convert") "(" _ value:expr(level+1) "," _ target:cast_target() { (value,target,false,false) }) ")" end:position!() _ {?
-                if value.3 { value.0.cast_array(value.1,start,end) }
-                else { Ok(Node::call(vec![Name { text:"cast".into(),quoted:false,start,end:start+4 }],None,vec![value.0,value.1],None,false,start,end)?.value(u64::from(value.2))) }
+                / kw("convert") "(" _ value:expr(level+1) "," _ target:cast_target() { (value,target,false,false) }) ")" end:position!() _ failure:position!() {?
+                let result=if value.3 { value.0.cast_array(value.1,start,end) }
+                else { Node::call(vec![Name { text:"cast".into(),quoted:false,start,end:start+4 }],None,vec![value.0,value.1],None,false,start,end).map(|call| call.value(u64::from(value.2))) };
+                result.map_err(|message| diagnostics.record(message,crate::Span { start,end },failure))
             }
             / depth(level) start:position!() kw("case") operand:expr(level+1)?
                 branches:(kw("when") condition:expr(level+1) kw("then") value:expr(level+1)
@@ -874,8 +875,8 @@ peg::parser! {
         rule relation(level: usize) -> Node = json_table(level) / table_collection(level) / unnest_table(level) / hybrid_search_table() / lateral:(kw("lateral") &"(")? source:("(" _ query:select(level+1) ")" _ { query }
             / name:relation_name() {? Node::relation(name) }) partition:use_partition()? sample:sample()? snapshot:snapshot(level)?
             alias:table_alias()?
-            columns:("(" _ names:(ident() ++ ("," _)) ")" _ { names })? indexes:table_index_hint()* {?
-                if (lateral.is_some() || columns.is_some()) && source.kind!=Kind::Select { return Err("derived table"); }
+            columns:(enabled(source.kind==Kind::Select) "(" _ names:(ident() ++ ("," _)) ")" _ { names })? indexes:table_index_hint()* {?
+                if lateral.is_some() && source.kind!=Kind::Select { return Err("derived table"); }
                 if (partition.is_some() || sample.is_some() || !indexes.is_empty()) && source.kind==Kind::Select { return Err("base table"); }
                 let mut table=Node::table(source,alias)?;
                 if !indexes.is_empty() { table.children.push(Node::new(Kind::TableIndexHints,indexes)); }
@@ -2672,7 +2673,7 @@ peg::parser! {
                 Node::new(Kind::PlStatements,vec![value.at(start,end)])]).at(start,end)
         }
         rule pl_statement(level: usize) -> Node = depth(level) start:position!() value:(
-            label:pl_ident() ":" _ body:(pl_block(level+1) / pl_control(level+1)) tail:pl_ident()? {
+            label:(quiet!{ name:pl_ident() ":" _ { name } }) body:(pl_block(level+1) / pl_control(level+1)) tail:pl_ident()? {
                 Node::new(if body.kind==Kind::PlBlock { Kind::PlLabeledBlock } else { Kind::PlLabeledControl },vec![Node::name(label),body,tail.map(Node::name).unwrap_or_else(Node::missing)])
             }
             / pl_block(level+1) / pl_control(level+1)
