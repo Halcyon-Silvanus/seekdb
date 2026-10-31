@@ -337,14 +337,14 @@ peg::parser! {
         rule dotted_ident() -> Name = ident() / name_keyword()
         rule compact_ident() -> Name = start:position!() text:$(cont()+) end:position!()
             { Name { text: text.to_owned(), quoted: false, start, end } }
-        rule compact_name() -> Vec<Name> = &quiet!{cont()+ "."} first:compact_ident() "." rest:(compact_ident() ++ ".") _ {?
-            if first.text.bytes().all(|byte| byte.is_ascii_digit()) { return Err("identifier"); }
-            let mut parts=vec![first];parts.extend(rest);Ok(parts)
+        rule compact_name() -> Vec<Name> = &quiet!{cont()+ "."} !(['0'..='9']+ ".")
+            first:compact_ident() "." rest:(compact_ident() ++ ".") _ {
+            let mut parts=vec![first];parts.extend(rest);parts
         }
         rule name() -> Vec<Name>
             = head:(compact_name() / first:ident() { vec![first] })
-                rest:("." _ part:dotted_ident() { part })* {
-                let mut parts=head;parts.extend(rest);parts
+                rest:("." !['0'..='9'] _ parts:(compact_name() / part:dotted_ident() { vec![part] }) { parts })* {
+                let mut parts=head;parts.extend(rest.into_iter().flatten());parts
             }
         rule relation_name() -> Vec<Name>
             = "." !['0'..='9'] _ !(kw("true") / kw("false") / kw("null")) name:dotted_ident() { vec![name] }
