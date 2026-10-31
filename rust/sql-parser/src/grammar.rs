@@ -296,14 +296,23 @@ peg::parser! {
                 if mode.ansi_quotes { "unterminated quoted identifier" } else { "unterminated string literal" }
             }
             / "`" ("``" / !"`" [_])* ![_] { "unterminated quoted identifier" }
+        rule quoted_binary_diagnostic() -> &'static str
+            = ['x'|'X'] "'" text:$((!"'" [_])*) "'" {
+                if text.len()%2==0 && text.bytes().all(|byte| byte.is_ascii_hexdigit()) { "" }
+                else { "invalid hexadecimal literal" }
+            }
+            / ['b'|'B'] "'" text:$((!"'" [_])*) "'" {
+                if text.bytes().all(|byte| matches!(byte,b'0'|b'1')) { "" }
+                else { "invalid binary literal" }
+            }
         pub rule diagnostic_token(offset: usize) -> (crate::Span, &'static str) = tokens:(space()* span:(
             value:(temporal_literal() / number()) { (crate::Span { start:value.start,end:value.end },"") }
-            / start:position!() detail:unterminated_token() end:position!() { (crate::Span { start,end },detail) }
+            / start:position!() detail:(quoted_binary_diagnostic() / unterminated_token()) end:position!() { (crate::Span { start,end },detail) }
             / start:position!() (opaque_comment_token() / cont()+ ("." (cont()+ / opaque_comment_token()))*
                 / "<=>" / "<=" / ">=" / "<>" / "!=" / ":=" / "<<" / ">>" / "||" / "&&" / [_]) end:position!() {
                     (crate::Span { start,end },"")
                 }) { span })* space()* end:position!() {
-                tokens.into_iter().find(|(span,detail)| offset<span.end || !detail.is_empty() && offset==span.end)
+                tokens.into_iter().find(|(span,detail)| offset<span.end || !detail.is_empty() && span.start<=offset)
                     .unwrap_or((crate::Span { start:end,end },""))
             }
         rule depth(level: usize)
