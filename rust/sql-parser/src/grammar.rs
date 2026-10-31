@@ -684,7 +684,7 @@ peg::parser! {
                 / kw("weight_string") "(" _ value:expr(level)
                     args:("," _ length:type_size() "," _ weights:type_size() "," _ flags:type_size() "," _ binary:type_size() { vec![length,weights,flags,binary] }
                         / as_type:(kw("as") binary:(kw("binary") { true } / (kw("char") / kw("character")) { false })
-                            "(" _ weights:type_size() ")" _ {? if weights.value>0 { Ok((binary,weights)) } else { Err("positive weight length") } })?
+                            "(" _ start:position!() weights:type_size() end:position!() ")" _ failure:position!() {? if weights.value>0 { Ok((binary,weights)) } else { Err(diagnostics.record("WEIGHT_STRING length must be positive",crate::Span { start,end },failure)) } })?
                             levels:(start:position!() kw("level") flags:weight_levels() end:position!() {
                                 Node::new(Kind::HiddenInt,vec![]).value(flags).at(start,end)
                             })? {?
@@ -1311,10 +1311,12 @@ peg::parser! {
         rule query_expression(level: usize) -> Box<Select> = depth(level) with:with_clause(level)? first:query_term(level)
             rest:((kind:set_operator() right:query_term(level) { (kind,right) })*)
             order:(kw("order") kw("by") values:(order_item(level) ++ ("," _)) { values })?
-            approximate:((kw("approx") / kw("approximate")) { Node::new(Kind::Approximate,vec![]) })?
-            limit:limit()? parameters:(enabled(approximate.is_some()) value:vector_parameters() { value })? lock:lock()? into:select_into(level)? {?
+            approximate:(start:position!() (kw("approx") / kw("approximate")) end:position!() { Node::new(Kind::Approximate,vec![]).at(start,end) })?
+            limit:limit()? parameters:(enabled(approximate.is_some()) value:vector_parameters() { value })? lock:lock()? into:select_into(level)? failure:position!() {?
                 let value=rest.into_iter().try_fold(first,|left,(kind,right)| left.combine(kind,right))?;
-                let mut value=value.finish(order.unwrap_or_default(),limit,lock,into,approximate,parameters)?;
+                let span=approximate.as_ref().map(|value| crate::Span { start:value.start,end:value.end });
+                let mut value=value.finish(order.unwrap_or_default(),limit,lock,into,approximate,parameters).map_err(|message|
+                    span.map(|span| diagnostics.record(message,span,failure)).unwrap_or(message))?;
                 value.with=with.or(value.with);Ok(value)
             }
         rule vector_parameter_value() -> Node
@@ -1449,10 +1451,10 @@ peg::parser! {
             / kw("from") targets:(delete_target() ++ ("," _)) kw("using") tables:(table(0) ++ ("," _)) {
                 Node::new(Kind::DeleteTables,vec![Node::new(Kind::DeleteTargets,targets),Node::new(Kind::FromList,tables)])
             }
-            / kw("from") table:relation(0) {?
+            / kw("from") start:position!() table:relation(0) end:position!() {?
                 if table.kind!=Kind::Table || table.children[0].kind!=Kind::Relation
                     || table.children.iter().any(|child| child.kind==Kind::ParenthesizedTable) {
-                    return Err("base table as DELETE target");
+                    return Err(diagnostics.record("DELETE target must be a base table",crate::Span { start,end },end));
                 }
                 Ok(Node::new(Kind::DeleteTables,vec![Node::new(Kind::FromList,vec![table])]))
             }
@@ -1832,8 +1834,7 @@ peg::parser! {
                 / kw("list") columns:kw("columns")? { if columns.is_some() { Kind::ListColumnsPartition } else { Kind::ListPartition } })
             "(" _ start:position!() expressions:(enabled(kind==Kind::KeyPartition) names:(ident() ** ("," _)) { names.into_iter().map(Node::name).collect() }
                 / enabled(matches!(kind,Kind::RangeColumnsPartition|Kind::ListColumnsPartition)) names:(ident() ++ ("," _)) { names.into_iter().map(Node::name).collect() }
-                / enabled(matches!(kind,Kind::HashPartition|Kind::RangePartition|Kind::ListPartition)) value:expr(0) { vec![value] }) ")" _ {?
-                if sub && kind==Kind::KeyPartition && expressions.is_empty() { return Err("subpartition key columns"); }
+                / enabled(matches!(kind,Kind::HashPartition|Kind::RangePartition|Kind::ListPartition)) value:expr(0) { vec![value] }) enabled(!(sub && kind==Kind::KeyPartition && expressions.is_empty())) ")" _ {?
                 let end=expressions.last().map_or(start,|expression| expression.end);
                 let hash=matches!(kind,Kind::KeyPartition|Kind::HashPartition);
                 let expression=if hash {
@@ -2254,10 +2255,11 @@ peg::parser! {
             / kw("set")? actions:(config_assignment() ++ ("," _)) { Node::new(Kind::SetConfig,vec![Node::new(Kind::ConfigList,actions)]) }
         ) { value }
         rule account_name() -> Node = string() / name:ident() { Node::name(name) }
-        rule account() -> Node = name:account_name() host:user_variable()? {?
+        rule account() -> Node = name:account_name() host:user_variable()? failure:position!() {?
             if host.as_ref().is_some_and(|host| !host.text.chars().all(|ch|
                 !ch.is_ascii() || ch.is_ascii_alphanumeric() || "_.$/%`\"'".contains(ch))) {
-                return Err("account host");
+                let host=host.as_ref().unwrap();
+                return Err(diagnostics.record("invalid account host",crate::Span { start:host.start,end:host.end },failure));
             }
             Ok(Node::new(Kind::UserHost,vec![name,Node::optional(host)]))
         }
@@ -2320,8 +2322,7 @@ peg::parser! {
             / kw("write") { "write" }
             / kw("usage") { "usage" }
         rule privilege() -> Node = name:privilege_name()
-            columns:("(" _ names:(ident() ++ ("," _)) ")" _ { names })? {?
-                if columns.is_some() && !matches!(name,"select"|"insert"|"update"|"references") { return Err("column privilege"); }
+            columns:(enabled(matches!(name,"select"|"insert"|"update"|"references")) "(" _ names:(ident() ++ ("," _)) ")" _ { names })? {?
                 let children=columns.map(|names| vec![Node::new(Kind::ColumnList,names.into_iter().map(Node::name).collect())]).unwrap_or_default();
                 Ok(Node::new(Kind::Privilege,children).text(name.into()))
             }
@@ -2548,9 +2549,8 @@ peg::parser! {
             / kw("sql") kw("security") value:(kw("definer") { 0 } / kw("invoker") { 2 }) { Node::new(Kind::InvokeRights,vec![]).value(value) }
         rule routine_definition(internal: bool, level: usize) -> Node = start:position!() function:(kw("procedure") { false } / kw("function") { true })
             absent:if_not_exists()? name:routine_name() params:routine_parameters(function,internal)
-            result:(enabled(function) kw("returns") value:routine_data_type() { value })?
+            result:(enabled(function) kw("returns") value:routine_data_type() { value })? enabled(!function || result.is_some())
             clauses:routine_characteristic(false)* body:pl_statement(level) end:position!() {?
-                if function && result.is_none() { return Err("function return type"); }
                 let mut children=vec![Node::missing(),name,params];
                 if function { children.push(Node::optional(result)); }
                 children.push(Node::list(Kind::RoutineClauses,clauses.into_iter().filter(|node| node.kind!=Kind::Missing).collect()));
@@ -2711,10 +2711,10 @@ peg::parser! {
             / (kw("deallocate") / kw("drop")) kw("prepare") name:ident() { Node::new(Kind::Deallocate,vec![]).text(name.text) }
         rule analyze() -> Node = kw("analyze") kw("table") value:(
                 table:(names:relation_name() {? Node::relation(names) }) kw("update") kw("histogram") kw("on")
-                columns:(ident() ++ ("," _)) buckets:(kw("with") value:type_size() kw("buckets") {?
+                columns:(ident() ++ ("," _)) buckets:(kw("with") start:position!() value:type_size() end:position!() kw("buckets") failure:position!() {?
                     if value.kind==Kind::Int && (1..=1024).contains(&value.value) {
                         Ok(Node::new(Kind::StatsBucketCount,vec![value]))
-                    } else { Err("histogram bucket count between 1 and 1024") }
+                    } else { Err(diagnostics.record("histogram bucket count between 1 and 1024",crate::Span { start,end },failure)) }
                 })? {
                     let mut children=vec![Node::new(Kind::TableList,vec![table]),
                         Node::new(Kind::ColumnList,columns.into_iter().map(Node::name).collect())];
