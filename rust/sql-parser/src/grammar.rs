@@ -290,7 +290,7 @@ peg::parser! {
         rule hint_slot() -> Option<Vec<Node>> = hint_gap() value:hints()? !"/*+" _ { value }
         pub rule diagnostic_span(offset: usize) -> crate::Span = tokens:(space()* span:(
             value:(temporal_literal() / number()) { crate::Span { start:value.start,end:value.end } }
-            / start:position!() (opaque_comment_token() / word() ("." (word() / opaque_comment_token()))*
+            / start:position!() (opaque_comment_token() / cont()+ ("." (cont()+ / opaque_comment_token()))*
                 / "<=>" / "<=" / ">=" / "<>" / "!=" / ":=" / "<<" / ">>" / "||" / "&&" / [_]) end:position!() {
                     crate::Span { start,end }
                 }) { span })* space()* end:position!() {
