@@ -14,7 +14,7 @@
 
 use crate::{grammar, node::{Kind, Node}, prefix::{normalized_sql_length, classify_statement}, ParseMode, SqlMode};
 use crate::bridge::ffi::ParseErrorKind;
-use crate::{budget::Budget, StackBounds};
+use crate::{budget::Budget, ParseFailure, Span, StackBounds};
 
 pub struct Parsed {
     root: Node,
@@ -48,41 +48,18 @@ impl Parsed {
     pub fn named_parameters(&self) -> bool { matches!(self.parameters.style, ParameterStyle::Named) }
 }
 
-#[derive(Debug)]
-pub struct ParseFailure {
-    pub kind: ParseErrorKind,
-    pub message: String,
-    pub offset: usize,
-    pub expanded_sql: String,
-}
-
-impl std::fmt::Display for ParseFailure {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str(&self.message)
-    }
-}
-
-impl std::error::Error for ParseFailure {}
-
 fn stack_failure(offset: usize) -> ParseFailure {
-    ParseFailure {
-        kind: ParseErrorKind::StackLimit,
-        message: "parser stack limit exceeded".into(),
-        offset,
-        expanded_sql: String::new(),
-    }
+    ParseFailure::at(ParseErrorKind::StackLimit, "parser stack limit exceeded", Span { start:offset,end:offset })
 }
 
 pub fn parse(sql: &[u8], mode: SqlMode, parse_mode: ParseMode, bounds: StackBounds) -> Result<Parsed, ParseFailure> {
     let budget = &Budget::new(bounds);
     budget.checkpoint(0).map_err(|_| stack_failure(0))?;
     let sql = &sql[..normalized_sql_length(sql)];
-    let sql = std::str::from_utf8(sql).map_err(|error| ParseFailure {
-        kind: ParseErrorKind::Syntax,
-        message: error.to_string(),
-        offset: error.valid_up_to(),
-        expanded_sql: String::new(),
-    })?;
+    let sql = std::str::from_utf8(sql).map_err(|error| ParseFailure::at(
+        ParseErrorKind::Syntax, error.to_string(),
+        Span { start:error.valid_up_to(),end:error.valid_up_to()+error.error_len().unwrap_or(0) },
+    ))?;
     let source = if parse_mode == ParseMode::RoutineDefinition {
         let mut source = String::with_capacity("CREATE\n".len() + sql.len());
         source.push_str("CREATE\n");
@@ -92,6 +69,12 @@ pub fn parse(sql: &[u8], mode: SqlMode, parse_mode: ParseMode, bounds: StackBoun
         std::borrow::Cow::Borrowed(sql)
     };
     let source_prefix = source.len() - sql.len();
+    parse_source(source, source_prefix, mode, parse_mode, budget)
+        .map_err(|error| error.remove_source_prefix(source_prefix))
+}
+
+fn parse_source(source: std::borrow::Cow<'_, str>, source_prefix: usize,
+                mode: SqlMode, parse_mode: ParseMode, budget: &Budget) -> Result<Parsed, ParseFailure> {
     let sql = source.as_ref();
     let entry = |text: &str| {
         let pl = matches!(parse_mode, ParseMode::Routine | ParseMode::Trigger | ParseMode::RoutineDefinition
@@ -119,20 +102,13 @@ pub fn parse(sql: &[u8], mode: SqlMode, parse_mode: ParseMode, bounds: StackBoun
         parsed
     });
     if let Some(offset) = budget.failure() { return Err(stack_failure(offset)); }
-    let parsed = match parsed {
-        Ok(query) => Ok(query),
-        Err(error) => {
-            let offset = if error.location.offset == sql.len() {
-                grammar::sql::last_token_start(sql, mode, false, budget).unwrap()
-            } else {
-                error.location.offset
-            };
-            Err((error.to_string(), offset))
-        }
-    }.and_then(|(query, pl)| {
+    let parsed = parsed.map_err(|error| ParseFailure::syntax(
+        if expanded_sql.is_empty() { sql } else { &expanded_sql }, mode, error,
+    )).and_then(|(query, pl)| {
         if parse_mode == ParseMode::RoutineDefinition
             && !matches!(query.kind, Kind::CreateProcedure | Kind::CreateFunction) {
-            Err(("expected procedure or function definition".into(), query.start))
+            Err(ParseFailure::at(ParseErrorKind::Syntax, "expected procedure or function definition",
+                Span { start:query.start,end:query.end }))
         } else {
             Ok((query, pl))
         }
@@ -142,43 +118,33 @@ pub fn parse(sql: &[u8], mode: SqlMode, parse_mode: ParseMode, bounds: StackBoun
             expanded_sql = source;
         }
     }
-    let (mut root, pl) = parsed.map_err(|(message, offset)| ParseFailure {
-        kind: ParseErrorKind::Syntax,
-        message, offset, expanded_sql: std::mem::take(&mut expanded_sql),
+    let (mut root, pl) = parsed.map_err(|mut error| {
+        error.expanded_sql = std::mem::take(&mut expanded_sql);
+        error
     })?;
-    if parse_mode == ParseMode::PlSql {
-        if let Some(offset) = invalid_bit_width(&root) {
-            return Err(ParseFailure {
-                kind: ParseErrorKind::BitWidth,
-                message: "BIT display width exceeds 64".into(),
-                offset,
-                expanded_sql,
-            });
-        }
-    }
-    let parameters = number_parameters(&mut root).map_err(|offset| ParseFailure {
-        kind: ParseErrorKind::Syntax,
-        message: "ordinal and named parameters cannot be combined".into(),
-        offset,
-        expanded_sql: std::mem::take(&mut expanded_sql),
+    validate_types(&root, parse_mode).map_err(|mut error| {
+        error.expanded_sql = std::mem::take(&mut expanded_sql);
+        error
+    })?;
+    let parameters = number_parameters(&mut root).map_err(|span| {
+        let mut error = ParseFailure::at(ParseErrorKind::Syntax,
+            "ordinal and named parameters cannot be combined", span);
+        error.expanded_sql = std::mem::take(&mut expanded_sql);
+        error
     })?;
     if root.kind == Kind::CreateView && parameters.count != 0 && parse_mode != ParseMode::PlSql {
-        return Err(ParseFailure {
-            kind: ParseErrorKind::Syntax,
-            message: "CREATE VIEW does not accept parameter markers".into(),
-            offset: root.start,
-            expanded_sql,
-        });
+        let mut error = ParseFailure::at(ParseErrorKind::Syntax,
+            "CREATE VIEW does not accept parameter markers", Span { start:root.start,end:root.end });
+        error.expanded_sql = expanded_sql;
+        return Err(error);
     }
     if parameters.count != 0 && parse_mode == ParseMode::Sql && !pl
         && !statement_accepts_parameters(&root)
     {
-        return Err(ParseFailure {
-            kind: ParseErrorKind::Syntax,
-            message: "statement does not accept parameter markers".into(),
-            offset: root.start,
-            expanded_sql,
-        });
+        let mut error = ParseFailure::at(ParseErrorKind::Syntax,
+            "statement does not accept parameter markers", Span { start:root.start,end:root.end });
+        error.expanded_sql = expanded_sql;
+        return Err(error);
     }
     Ok(Parsed { root, expanded_sql, source_prefix, parameters })
 }
@@ -193,20 +159,33 @@ fn statement_accepts_parameters(node: &Node) -> bool {
     }
 }
 
-fn invalid_bit_width(node: &Node) -> Option<usize> {
+fn validate_types(node: &Node, mode: ParseMode) -> Result<(), ParseFailure> {
     let mut pending = vec![node];
     while let Some(node) = pending.pop() {
-        if node.kind == Kind::DataType && node.text == "bit"
+        let cast_target = match node.kind {
+            Kind::Cast => Some(crate::expression::cast_target(node)),
+            Kind::JsonQuery => Some(crate::expression::json_returning(node)),
+            _ => None,
+        };
+        if let Some(target) = cast_target.filter(|target| target.kind == Kind::DataType) {
+            let mut error = ParseFailure::at(ParseErrorKind::Syntax,
+                format!("unsupported CAST target type: {}", target.text),
+                Span { start:target.start,end:target.end });
+            error.diagnostic.expected.push("a supported CAST target type".into());
+            return Err(error);
+        }
+        if mode == ParseMode::PlSql && node.kind == Kind::DataType && node.text == "bit"
             && node.children.first().is_some_and(|width| width.value > 64)
         {
-            return Some(node.start);
+            return Err(ParseFailure::at(ParseErrorKind::BitWidth, "BIT display width exceeds 64",
+                Span { start:node.start,end:node.end }));
         }
         pending.extend(node.children.iter().rev());
     }
-    None
+    Ok(())
 }
 
-fn number_parameters(node: &mut Node) -> Result<Parameters, usize> {
+fn number_parameters(node: &mut Node) -> Result<Parameters, Span> {
     let mut bindings = Parameters { count: 0, style: ParameterStyle::Unspecified };
     let mut names: Vec<(String, usize)> = Vec::new();
     let mut parameters = Vec::new();
@@ -222,7 +201,7 @@ fn number_parameters(node: &mut Node) -> Result<Parameters, usize> {
     for node in parameters {
         if node.text.is_empty() {
             if matches!(bindings.style, ParameterStyle::Named) {
-                return Err(node.start);
+                return Err(Span { start:node.start,end:node.end });
             }
             bindings.style = ParameterStyle::Ordinal;
             node.value = bindings.count as u64;
@@ -230,7 +209,7 @@ fn number_parameters(node: &mut Node) -> Result<Parameters, usize> {
         } else {
             if !node.text.as_bytes()[1].is_ascii_digit() {
                 if matches!(bindings.style, ParameterStyle::Ordinal) {
-                    return Err(node.start);
+                    return Err(Span { start:node.start,end:node.end });
                 }
                 bindings.style = ParameterStyle::Named;
             }

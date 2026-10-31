@@ -669,7 +669,8 @@ impl Node {
         if matches!(function.as_str(), "any" | "some" | "value" | "unknown" | "hybrid_search") {
             return Err("function name");
         }
-        if function == "cast" && (arguments.len() != 2 || arguments[1].kind != Kind::CastType) {
+        if function == "cast" && (arguments.len() != 2
+            || !matches!(arguments[1].kind, Kind::CastType | Kind::DataType)) {
             return Err("CAST requires an expression and AS type");
         }
         if matches!(function.as_str(), "substr" | "substring") {

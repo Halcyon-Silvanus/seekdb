@@ -28,7 +28,7 @@ pub(crate) fn inspect_expression(sql: &[u8], mode: SqlMode, bounds: StackBounds)
             qualified_function: false,
             columns: Vec::new(),
             error: error.message,
-            error_offset: error.offset,
+            diagnostic: error.diagnostic,
             error_kind: error.kind,
         },
     };
@@ -48,7 +48,7 @@ pub(crate) fn inspect_expression(sql: &[u8], mode: SqlMode, bounds: StackBounds)
         qualified_function: !crate::expression::call_qualifiers(root).is_empty(),
         columns,
         error: String::new(),
-        error_offset: 0,
+        diagnostic: Default::default(),
         error_kind: ParseErrorKind::Syntax,
     }
 }

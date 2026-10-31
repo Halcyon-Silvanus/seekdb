@@ -288,20 +288,23 @@ peg::parser! {
             }} !cont() !("." cont())} / expected!(word)
         rule kw(word: &'static str) -> () = keyword(word) _
         rule hint_slot() -> Option<Vec<Node>> = hint_gap() value:hints()? !"/*+" _ { value }
-        pub rule last_token_start() -> usize = tokens:(space()* start:position!()
-            (temporal_literal() / opaque_comment_token() / word() / number()
-                / "<=>" / "<=" / ">=" / "<>" / "!=" / ":=" / "<<" / ">>" / "||" / "&&" / [_]) { start })* space()* {
-                tokens.last().copied().unwrap_or(0)
+        pub rule diagnostic_span(offset: usize) -> crate::Span = tokens:(space()* span:(
+            value:(temporal_literal() / number()) { crate::Span { start:value.start,end:value.end } }
+            / start:position!() (opaque_comment_token() / word() ("." (word() / opaque_comment_token()))*
+                / "<=>" / "<=" / ">=" / "<>" / "!=" / ":=" / "<<" / ">>" / "||" / "&&" / [_]) end:position!() {
+                    crate::Span { start,end }
+                }) { span })* space()* end:position!() {
+                tokens.into_iter().find(|span| offset<span.end).unwrap_or(crate::Span { start:end,end })
             }
         rule depth(level: usize)
             = offset:position!() {?
                 budget.checkpoint(offset)?;
                 if level < MAX_DEPTH { Ok(()) } else { Err("SQL nesting below 1024 levels") }
             }
-        rule enabled(value: bool) = {? if value { Ok(()) } else { Err("SQL mode") } }
+        rule enabled(value: bool) = quiet!{ {? if value { Ok(()) } else { Err("SQL mode") } } }
         rule reserved_word() = text:$(word()) {? if reserved(text) { Ok(()) } else { Err("reserved keyword") } }
         rule ident() -> Name
-            = start:position!() text:$("`" ("``" / !"`" [_])* "`") end:position!() _
+            = quiet!{ start:position!() text:$("`" ("``" / !"`" [_])* "`") end:position!() _
                 { Name { text: text[1..text.len()-1].replace("``", "`"), quoted: true, start, end } }
             / enabled(mode.ansi_quotes) start:position!() text:$("\"" ("\"\"" / !"\"" [_])* "\"") end:position!() _
                 { Name { text: text[1..text.len()-1].replace("\"\"", "\""), quoted: true, start, end } }
@@ -310,6 +313,7 @@ peg::parser! {
             / !(number() / binary_literal() / ("0X" hex_digit()+ / "0B" ['0'|'1']+) !cont())
                 start:position!() text:$(['0'..='9']+ word()) end:position!() _
                 { Name { text: text.to_owned(), quoted: false, start, end } }
+            } / expected!("identifier")
         rule name_keyword() -> Name
             = &reserved_word() !(kw("all") / kw("distinct") / kw("from") / kw("select")
                 / kw("straight_join") / kw("unique") / kw("when") / kw("both") / kw("leading") / kw("trailing")
@@ -414,11 +418,11 @@ peg::parser! {
                 / "0b" text:$(['0'|'1']+) !cont() { text }) end:position!() _ {?
                 Node::new(Kind::BitString,vec![]).text(text.into()).expression(start,end)
             }
-        rule scope() -> u64 = value:$(word()) _ {?
+        rule scope() -> u64 = quiet!{ value:$(word()) _ {?
             if value.eq_ignore_ascii_case("global") { Ok(1) }
             else if value.eq_ignore_ascii_case("session") || value.eq_ignore_ascii_case("local") { Ok(2) }
             else { Err("variable scope") }
-        }
+        }} / expected!("GLOBAL, SESSION or LOCAL")
         rule system_variable() -> Node = start:position!() "@@" scope:(value:scope() "." _ { value })? name:ident() {
             let end=name.end;
             Node::new(Kind::SystemVariable, vec![]).text(name.text).value(scope.unwrap_or(0)).at(start,end)
@@ -439,8 +443,8 @@ peg::parser! {
             / depth(level) value:date_function(level+1) { value }
             / depth(level) value:string_function(level+1) { value }
             / depth(level) value:json_function(level+1) { value }
-            / depth(level) start:position!() value:(kw("cast") "(" _ value:expr(level+1) kw("as") target:cast_type() array:kw("array")? ignore:kw("ignore")? { (value,target,ignore.is_some(),array.is_some()) }
-                / kw("convert") "(" _ value:expr(level+1) "," _ target:cast_type() { (value,target,false,false) }) ")" end:position!() _ {?
+            / depth(level) start:position!() value:(kw("cast") "(" _ value:expr(level+1) kw("as") target:cast_target() array:kw("array")? ignore:kw("ignore")? { (value,target,ignore.is_some(),array.is_some()) }
+                / kw("convert") "(" _ value:expr(level+1) "," _ target:cast_target() { (value,target,false,false) }) ")" end:position!() _ {?
                 if value.3 { value.0.cast_array(value.1,start,end) }
                 else { Ok(Node::call(vec![Name { text:"cast".into(),quoted:false,start,end:start+4 }],None,vec![value.0,value.1],None,false,start,end)?.value(u64::from(value.2))) }
             }
@@ -1518,6 +1522,10 @@ peg::parser! {
             if value.kind==Kind::Number { value.with_kind(Kind::Uint).value(u64::MAX) } else { value }
         }
         rule charset_keyword() = kw("charset") / (kw("character") / kw("char")) kw("set")
+        rule cast_target() -> Node = cast_type()
+            / name:(ident() / name_keyword()) parameters:("(" _ values:(type_size() ++ ("," _)) ")" _ { values })? {
+                Node::new(Kind::DataType,parameters.unwrap_or_default()).text(name.text).at(name.start,name.end)
+            }
         rule cast_type() -> Node
             = start:position!() (kw("nchar") / kw("national") (kw("char") / kw("character")))
                 parameters:("(" _ value:string_length() ")" _ { vec![value] })? end:position!() {?

@@ -932,10 +932,17 @@ pub(crate) mod ffi {
         ViewCheckOption,
     }
 
-    #[derive(Clone, Copy)]
+    #[derive(Clone, Copy, Debug, Default)]
     struct Span {
         start: usize,
         end: usize,
+    }
+
+    #[derive(Clone, Debug, Default)]
+    struct ParseDiagnostic {
+        span: Span,
+        expected: Vec<String>,
+        detail: String,
     }
 
     enum TransactionAccess {
@@ -966,7 +973,7 @@ pub(crate) mod ffi {
         qualified_function: bool,
         columns: Vec<ColumnReference>,
         error: String,
-        error_offset: usize,
+        diagnostic: ParseDiagnostic,
         error_kind: ParseErrorKind,
     }
 
@@ -1995,7 +2002,7 @@ pub(crate) mod ffi {
         fn original_span(self: &ParseTree, node: &Node) -> Span;
         fn error(self: &ParseTree) -> &str;
         fn error_kind(self: &ParseTree) -> ParseErrorKind;
-        fn error_offset(self: &ParseTree) -> usize;
+        fn diagnostic(self: &ParseTree) -> ParseDiagnostic;
         fn parameters(self: &ParseTree) -> usize;
         fn has_ordinal_parameters(self: &ParseTree) -> bool;
         fn named_parameters(self: &ParseTree) -> bool;
@@ -2643,7 +2650,7 @@ use crate::fts::{parse_search_query, SearchNode, SearchTree};
 use crate::inspect::inspect_expression;
 use crate::scan::{begin_scan, finish_scan, Scanner};
 
-pub struct ParseTree(Result<crate::parser::Parsed, crate::parser::ParseFailure>);
+pub struct ParseTree(Result<crate::parser::Parsed, crate::ParseFailure>);
 
 impl ParseTree {
     fn parsed(&self) -> &crate::parser::Parsed {
@@ -2663,8 +2670,8 @@ impl ParseTree {
     pub fn error_kind(&self) -> ffi::ParseErrorKind {
         match &self.0 { Ok(_) => ffi::ParseErrorKind::Syntax, Err(error) => error.kind }
     }
-    pub fn error_offset(&self) -> usize {
-        match &self.0 { Ok(_) => 0, Err(error) => error.offset }
+    pub fn diagnostic(&self) -> ffi::ParseDiagnostic {
+        self.0.as_ref().err().expect("parse failed").diagnostic.clone()
     }
     pub fn parameters(&self) -> usize { self.parsed().parameters() }
     pub fn has_ordinal_parameters(&self) -> bool { self.parsed().has_ordinal_parameters() }

@@ -227,8 +227,9 @@ peg::SqlMode parser_mode(ObSQLMode mode)
 }
 }
 
-int report_parse_error(const common::ObString &sql, size_t offset)
+int report_parse_error(const common::ObString &sql, const peg::ParseDiagnostic &diagnostic)
 {
+  const size_t offset = diagnostic.span.start;
   int line = 1;
   for (size_t i = 0; i < offset; ++i) line += sql.ptr()[i] == '\n';
   size_t length = std::min<size_t>(80, sql.length() - offset);
@@ -236,7 +237,13 @@ int report_parse_error(const common::ObString &sql, size_t offset)
          && (static_cast<unsigned char>(sql.ptr()[offset + length]) & 0xc0) == 0x80) {
     --length;
   }
-  LOG_USER_ERROR(OB_ERR_PARSE_SQL, ob_errpkt_strerror(OB_ERR_PARSER_SYNTAX),
+  std::string description = ob_errpkt_strerror(OB_ERR_PARSER_SYNTAX);
+  if (offset == static_cast<size_t>(sql.length())) description += "; unexpected end of input";
+  if (!diagnostic.detail.empty()) {
+    description += "; ";
+    description.append(diagnostic.detail.data(), diagnostic.detail.size());
+  }
+  LOG_USER_ERROR(OB_ERR_PARSE_SQL, description.c_str(),
                  static_cast<int>(length), sql.ptr() + offset, line);
   return common::OB_ERR_PARSE_SQL;
 }
@@ -265,7 +272,7 @@ int ObParser::parse_entry(const ObString &query, ParsedSql &owner, peg::ParseMod
         LOG_USER_ERROR(OB_ERR_TOO_BIG_DISPLAYWIDTH, statement_text.convert(source), OB_MAX_BIT_LENGTH);
         return OB_ERR_TOO_BIG_DISPLAYWIDTH;
       }
-      return report_parse_error(source, parsed->error_offset());
+      return report_parse_error(source, parsed->diagnostic());
     }
     ParseResult &result = owner.metadata_;
     result.input_sql_ = sql.ptr();

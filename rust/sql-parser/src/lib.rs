@@ -23,6 +23,7 @@ mod load_data;
 mod select_into;
 mod ddl;
 mod defaults;
+mod diagnostic;
 mod embedded_sql;
 pub mod expression;
 mod fts;
@@ -39,7 +40,7 @@ mod statistics;
 
 pub use bridge::ffi::{
     DefaultExpression, DefaultForm, SqlMode, ScanOptions, LiteralKind, Literal, ValuesPosition,
-    ScanResult, NodeKind, Span, TransactionAccess, TransactionOptions,
+    ScanResult, NodeKind, Span, ParseDiagnostic, TransactionAccess, TransactionOptions,
     ColumnReference, ExpressionInfo, StatementSplits, StackBounds, ParseMode, ParseErrorKind, SearchOccurrence,
     AccountKind, AccountNameForm, AccountIdentity,
     AuthenticationKind, RoleSelection, PrivilegeScope, PrivilegeObject, AccessOptions,
@@ -68,7 +69,8 @@ pub use bridge::ffi::{
     ShowFilter, LiteralReference, StatisticsScope, StatisticsSizeKind, StatisticsColumnKind,
 };
 pub use node::Node;
-pub use parser::{parse, Parsed, ParseFailure};
+pub use parser::{parse, Parsed};
+pub use diagnostic::ParseFailure;
 pub use inspect::syntax_literals;
 pub use batch::{compress_insert, compress_values, restore_parameter_sql};
 pub use prefix::{classify_statement, explain_body_offset, normalized_sql_length, is_single_statement, split_sql, fast_parameterization_allowed, transaction_command, insert_outline_hint};

@@ -52,7 +52,7 @@ struct ParseResult {
 
 struct ObSqlTraits;
 int statement_type(const peg::Node &statement, stmt::StmtType &type);
-int report_parse_error(const common::ObString &sql, size_t offset);
+int report_parse_error(const common::ObString &sql, const peg::ParseDiagnostic &diagnostic);
 
 class ParsedSql {
 public:

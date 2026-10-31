@@ -3607,7 +3607,7 @@ int ObResolverUtils::resolve_generated_column_info(const ObString &expr_str,
   root_function_type = T_INVALID;
   if (OB_FAIL(ret)) {
   } else if (!info.error.empty()) {
-    ret = report_parse_error(expr_str, info.error_offset);
+    ret = report_parse_error(expr_str, info.diagnostic);
   } else {
     for (const auto &column : info.columns) {
       if (column.parts.size() > 1 || (column.wildcard && !column.parts.empty())) {
