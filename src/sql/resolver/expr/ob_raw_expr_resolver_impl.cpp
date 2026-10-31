@@ -1119,6 +1119,9 @@ int ObRawExprResolverImpl::process_odbc_escape(const peg::Node &node, ObRawExpr 
 
 int ObRawExprResolverImpl::process_datatype_or_questionmark(const peg::Node &node, ObRawExpr *&expr)
 {
+  if (node.kind() == peg::NodeKind::Parameter && !ctx_.is_variable_allowed_) {
+    return OB_ERR_VIEW_SELECT_CONTAIN_QUESTIONMARK;
+  }
   int ret = OB_SUCCESS;
   ObObjParam val;
   ObConstRawExpr *c_expr = NULL;

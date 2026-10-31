@@ -42,6 +42,7 @@ int scan(const ObString &stmt, const FPContext &context, ObIAllocator &allocator
   } while (!finished);
   auto scanned = peg::finish_scan(std::move(scanner));
   if (!scanned.error.empty()) return OB_ERR_PARSER_SYNTAX;
+  if (scanned.ordinal_parameters != 0 && !scanned.parameter_names.empty()) return OB_NOT_SUPPORTED;
   auto copy = [&](const char *text, size_t size) -> char * {
     char *owned = static_cast<char *>(allocator.alloc(size + 1));
     if (owned != nullptr) { MEMCPY(owned, text, size); owned[size] = '\0'; }

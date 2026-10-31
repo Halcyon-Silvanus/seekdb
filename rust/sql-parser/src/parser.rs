@@ -22,17 +22,13 @@ pub struct Parsed {
     expanded_sql: String,
     source_prefix: usize,
     parameters: Parameters,
-}
-
-enum ParameterStyle {
-    Unspecified,
-    Ordinal,
-    Named,
+    pl: bool,
 }
 
 struct Parameters {
     count: usize,
-    style: ParameterStyle,
+    ordinal: bool,
+    named: bool,
 }
 
 impl Parsed {
@@ -45,8 +41,9 @@ impl Parsed {
         }
     }
     pub fn parameters(&self) -> usize { self.parameters.count }
-    pub fn has_ordinal_parameters(&self) -> bool { matches!(self.parameters.style, ParameterStyle::Ordinal) }
-    pub fn named_parameters(&self) -> bool { matches!(self.parameters.style, ParameterStyle::Named) }
+    pub fn has_ordinal_parameters(&self) -> bool { self.parameters.ordinal }
+    pub fn named_parameters(&self) -> bool { self.parameters.named }
+    pub fn is_pl(&self) -> bool { self.pl }
 }
 
 fn stack_failure(offset: usize) -> ParseFailure {
@@ -125,41 +122,12 @@ fn parse_source(source: std::borrow::Cow<'_, str>, source_prefix: usize,
         error.expanded_sql = std::mem::take(&mut expanded_sql);
         error
     })?;
-    let parameters = number_parameters(&mut root).map_err(|span| {
-        let mut error = ParseFailure::at(ParseErrorKind::Syntax,
-            "ordinal and named parameters cannot be combined", span);
-        error.expanded_sql = std::mem::take(&mut expanded_sql);
-        error
-    })?;
-    if root.kind == Kind::CreateView && parameters.count != 0 && parse_mode != ParseMode::PlSql {
-        let mut error = ParseFailure::at(ParseErrorKind::Syntax,
-            "CREATE VIEW does not accept parameter markers", Span { start:root.start,end:root.end });
-        error.expanded_sql = expanded_sql;
-        return Err(error);
-    }
-    if parameters.count != 0 && parse_mode == ParseMode::Sql && !pl
-        && !statement_accepts_parameters(&root)
-    {
-        let mut error = ParseFailure::at(ParseErrorKind::Syntax,
-            "statement does not accept parameter markers", Span { start:root.start,end:root.end });
-        error.expanded_sql = expanded_sql;
-        return Err(error);
-    }
-    Ok(Parsed { root, expanded_sql, source_prefix, parameters })
+    let parameters = number_parameters(&mut root);
+    Ok(Parsed { root, expanded_sql, source_prefix, parameters, pl })
 }
 
-fn statement_accepts_parameters(node: &Node) -> bool {
-    match node.kind {
-        Kind::Select | Kind::Insert | Kind::Update | Kind::Delete | Kind::Explain
-        | Kind::CreateOutline | Kind::AlterOutline | Kind::Prepare | Kind::VariableSet
-        | Kind::Kill | Kind::Diagnostics => true,
-        Kind::CreateTable => crate::ddl::table_definition(node).select_mode != crate::TableSelectMode::None,
-        _ => false,
-    }
-}
-
-fn number_parameters(node: &mut Node) -> Result<Parameters, Span> {
-    let mut bindings = Parameters { count: 0, style: ParameterStyle::Unspecified };
+fn number_parameters(node: &mut Node) -> Parameters {
+    let mut bindings = Parameters { count: 0, ordinal: false, named: false };
     let mut names: Vec<(String, usize)> = Vec::new();
     let mut parameters = Vec::new();
     let mut pending = vec![node];
@@ -173,18 +141,12 @@ fn number_parameters(node: &mut Node) -> Result<Parameters, Span> {
     parameters.sort_by_key(|parameter| parameter.start);
     for node in parameters {
         if node.text.is_empty() {
-            if matches!(bindings.style, ParameterStyle::Named) {
-                return Err(Span { start:node.start,end:node.end });
-            }
-            bindings.style = ParameterStyle::Ordinal;
+            bindings.ordinal = true;
             node.value = bindings.count as u64;
             bindings.count += 1;
         } else {
             if !node.text.as_bytes()[1].is_ascii_digit() {
-                if matches!(bindings.style, ParameterStyle::Ordinal) {
-                    return Err(Span { start:node.start,end:node.end });
-                }
-                bindings.style = ParameterStyle::Named;
+                bindings.named = true;
             }
             let index = names
                 .iter()
@@ -198,6 +160,6 @@ fn number_parameters(node: &mut Node) -> Result<Parameters, Span> {
             }) as u64;
         }
     }
-    Ok(bindings)
+    bindings
 }
 

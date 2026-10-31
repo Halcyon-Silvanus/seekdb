@@ -44,6 +44,8 @@ struct ParseResult {
   const char *input_sql_ = nullptr;
   int input_sql_len_ = 0;
   ObQuestionMarkCtx question_mark_ctx_;
+  peg::ParseMode parse_mode_ = peg::ParseMode::Sql;
+  bool pl_context_ = false;
   bool contain_sensitive_data_ = false;
   bool is_dynamic_sql_ = false;
   char *no_param_sql_ = nullptr;

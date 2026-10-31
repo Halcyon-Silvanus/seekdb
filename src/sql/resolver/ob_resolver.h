@@ -44,6 +44,7 @@ private:
 
   template <typename SelectResolverType>
   int select_stmt_resolver_func(ObResolverParams &params, const peg::Node &parse_tree, ObStmt *&stmt);
+  int check_parameters(const ParsedSql &parsed);
   int finish_resolution(ObStmt *stmt);
 private:
   // data members

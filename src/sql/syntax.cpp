@@ -281,6 +281,8 @@ int ObParser::parse_entry(const ObString &query, ParsedSql &owner, peg::ParseMod
     result.question_mark_ctx_.count_ = parameters;
     result.question_mark_ctx_.by_ordinal_ = parsed->has_ordinal_parameters();
     result.question_mark_ctx_.by_name_ = parsed->named_parameters();
+    result.parse_mode_ = mode;
+    result.pl_context_ = parsed->is_pl();
     if (dynamic_sql) {
       ObString owned;
       const int ret = ob_write_string(allocator_, sql, owned, true);

@@ -345,9 +345,6 @@ impl Scanner<'_> {
 
     fn placeholder(&mut self, start: usize) -> Result<(), usize> {
         let value = if self.byte(start) == b'?' {
-            if !self.result.parameter_names.is_empty() {
-                return Err(start);
-            }
             self.pos += 1;
             let index = self.result.ordinal_parameters;
             self.result.ordinal_parameters += 1;
@@ -362,9 +359,6 @@ impl Scanner<'_> {
                     .parse::<u64>()
                     .map_err(|_| start)?
             } else {
-                if self.result.ordinal_parameters != 0 {
-                    return Err(start);
-                }
                 self.pos = self.word_end(self.pos);
                 let name = &self.sql[start..self.pos];
                 let names = &mut self.result.parameter_names;

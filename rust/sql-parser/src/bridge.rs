@@ -2021,6 +2021,7 @@ pub(crate) mod ffi {
         fn parameters(self: &ParseTree) -> usize;
         fn has_ordinal_parameters(self: &ParseTree) -> bool;
         fn named_parameters(self: &ParseTree) -> bool;
+        fn is_pl(self: &ParseTree) -> bool;
 
         fn transaction_command(sql: &[u8]) -> TransactionCommand;
         fn insert_outline_hint(sql: &[u8], hint: &[u8], mode: SqlMode) -> Vec<u8>;
@@ -2695,6 +2696,7 @@ impl ParseTree {
     pub fn parameters(&self) -> usize { self.parsed().parameters() }
     pub fn has_ordinal_parameters(&self) -> bool { self.parsed().has_ordinal_parameters() }
     pub fn named_parameters(&self) -> bool { self.parsed().named_parameters() }
+    pub fn is_pl(&self) -> bool { self.parsed().is_pl() }
 }
 
 fn parse_sql(sql: &[u8], mode: SqlMode, parse_mode: ffi::ParseMode, bounds: ffi::StackBounds) -> Box<ParseTree> {

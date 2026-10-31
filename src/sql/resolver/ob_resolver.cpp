@@ -110,15 +110,47 @@ int ObResolver::select_stmt_resolver_func(ObResolverParams &params, const peg::N
   return ret;
 }
 
+int ObResolver::check_parameters(const ParsedSql &parsed)
+{
+  const auto &metadata = parsed.metadata();
+  const auto &parameters = metadata.question_mark_ctx_;
+  if (parameters.by_ordinal_ && parameters.by_name_) {
+    _LOG_USER_MSG(USER_ERROR, OB_INVALID_ARGUMENT, "Ordinal and named parameters cannot be combined");
+    return OB_INVALID_ARGUMENT;
+  }
+  if (parameters.count_ == 0 || metadata.parse_mode_ != peg::ParseMode::Sql || metadata.pl_context_) {
+    return OB_SUCCESS;
+  }
+  using Kind = peg::NodeKind;
+  switch (parsed.statement()->kind()) {
+    case Kind::Select: case Kind::Insert: case Kind::Update: case Kind::Delete:
+    case Kind::Explain: case Kind::CreateOutline: case Kind::AlterOutline:
+    case Kind::Prepare: case Kind::VariableSet: case Kind::Kill: case Kind::Diagnostics:
+    case Kind::CreateView:
+      return OB_SUCCESS;
+    case Kind::CreateTable:
+      if (peg::table_definition(*parsed.statement()).select_mode != peg::TableSelectMode::None) return OB_SUCCESS;
+      break;
+    default:
+      break;
+  }
+  _LOG_USER_MSG(USER_ERROR, OB_INVALID_ARGUMENT, "Statement does not accept parameter markers");
+  return OB_INVALID_ARGUMENT;
+}
+
 int ObResolver::resolve(const ParsedSql &parsed, ObStmt *&stmt)
 {
   if (parsed.statement() == nullptr) { return OB_ERR_UNEXPECTED; }
+  const int ret = check_parameters(parsed);
+  if (ret != OB_SUCCESS) return ret;
   params_.syntax_ = &parsed;
   return resolve(*parsed.statement(), stmt);
 }
 
 int ObResolver::resolve_anonymous(const ParsedSql &parsed, ObStmt *&stmt)
 {
+  const int checked = check_parameters(parsed);
+  if (checked != OB_SUCCESS) return checked;
   params_.resolver_scope_stmt_type_ = T_SP_ANONYMOUS_BLOCK;
   params_.session_info_->set_stmt_type(stmt::T_ANONYMOUS_BLOCK);
   params_.syntax_ = &parsed;
