@@ -646,7 +646,6 @@ impl Node {
             .expression(start, end);
         }
         let mut name = name.pop().unwrap();
-        let distinct = modifier == Some(Kind::Distinct);
         let function = if !name.quoted {
             name.text.to_ascii_lowercase()
         } else {
@@ -821,8 +820,7 @@ impl Node {
             return call.expression(start, end);
         }
         if kind == Kind::Mvt {
-            if !(1..=5).contains(&arguments.len()) || arguments[0].kind != Kind::Column
-                || modifier.is_some() || window.is_some() || followed_by_over {
+            if modifier.is_some() || window.is_some() || followed_by_over {
                 return Err("invalid MVT aggregate arguments");
             }
             return Self::named_call(kind, Self::name(name), arguments).expression(start, end);
@@ -869,30 +867,13 @@ impl Node {
                 | Kind::Ntile
         );
         let supports_window = ranking || aggregate && kind != Kind::SumOpnsize;
-        if (ranking && (window.is_none() || arguments.len() != usize::from(kind == Kind::Ntile)))
+        if (ranking && window.is_none())
             || (window.is_some() && !supports_window)
             || (window.is_none() && followed_by_over && supports_window)
         {
             return Err("invalid window function");
         }
-        let star = arguments.iter().any(|arg| arg.kind == Kind::Star);
-        let count_star = kind == Kind::Count
-            && !distinct
-            && arguments.len() == 1
-            && arguments[0].kind == Kind::Star;
-        if star && !count_star {
-            return Err("only COUNT(*) accepts a wildcard argument");
-        }
-        if modifier.is_some()
-            && (!aggregate
-                || approximate
-                || histogram
-                || distinct && non_distinct_aggregate
-                || matches!(
-                    kind,
-                    Kind::ApproxCountDistinctSynopsisMerge | Kind::SumOpnsize | Kind::JsonObjectAgg
-                ))
-        {
+        if modifier.is_some() && !aggregate {
             return Err("invalid aggregate modifier");
         }
         let mut function = Self::named_call(kind, Self::name(name), arguments);

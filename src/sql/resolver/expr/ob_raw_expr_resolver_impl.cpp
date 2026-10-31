@@ -2465,7 +2465,8 @@ int ObRawExprResolverImpl::process_agg_node(const peg::Node &node, ObRawExpr *&e
   ObAggFunRawExpr *aggregate = nullptr;
   const auto type = callable_expression_type(node.kind());
   const auto arguments = peg::call_arguments(node);
-  const bool distinct = peg::aggregate_quantifier(node) == peg::AggregateQuantifier::Distinct;
+  const auto quantifier = peg::aggregate_quantifier(node);
+  const bool distinct = quantifier == peg::AggregateQuantifier::Distinct;
   const bool add_flag = !ctx_.parents_expr_info_.has_member(IS_AGG);
   size_t min_arguments = 1;
   size_t max_arguments = 1;
@@ -2498,15 +2499,32 @@ int ObRawExprResolverImpl::process_agg_node(const peg::Node &node, ObRawExpr *&e
   } else if ((type == T_FUN_TOP_FRE_HIST
               && (arguments[0].kind() != peg::NodeKind::Number
                   || arguments[2].kind() != peg::NodeKind::Int))
-      || (type == T_FUN_HYBRID_HIST && arguments[1].kind() != peg::NodeKind::Int)) {
+      || (type == T_FUN_HYBRID_HIST && arguments[1].kind() != peg::NodeKind::Int)
+      || (type == T_FUN_SYS_ST_ASMVT && arguments[0].kind() != peg::NodeKind::Column)) {
     ret = OB_ERR_WRONG_PARAMETERS_TO_NATIVE_FCT;
     LOG_USER_ERROR(OB_ERR_WRONG_PARAMETERS_TO_NATIVE_FCT, int(name.size()), name.data());
+  }
+  if (OB_SUCC(ret) && quantifier != peg::AggregateQuantifier::Default
+      && (type == T_FUN_APPROX_COUNT_DISTINCT || type == T_FUN_APPROX_COUNT_DISTINCT_SYNOPSIS
+          || type == T_FUN_APPROX_COUNT_DISTINCT_SYNOPSIS_MERGE || type == T_FUN_TOP_FRE_HIST
+          || type == T_FUN_HYBRID_HIST || type == T_FUN_SUM_OPNSIZE || type == T_FUN_JSON_OBJECTAGG)) {
+    ret = OB_ERR_WRONG_PARAMETERS_TO_NATIVE_FCT;
+    LOG_USER_ERROR(OB_ERR_WRONG_PARAMETERS_TO_NATIVE_FCT, int(name.size()), name.data());
+  }
+  for (const auto &argument : arguments) {
+    if (OB_SUCC(ret) && argument.kind() == peg::NodeKind::Star
+        && (type != T_FUN_COUNT || distinct || arguments.size() != 1)) {
+      ret = OB_ERR_WRONG_PARAMETERS_TO_NATIVE_FCT;
+      LOG_USER_ERROR(OB_ERR_WRONG_PARAMETERS_TO_NATIVE_FCT, int(name.size()), name.data());
+    }
   }
   OZ(ctx_.expr_factory_.create_raw_expr(type, aggregate));
   OZ(ctx_.aggr_exprs_->push_back(aggregate));
   if (add_flag) OZ(ctx_.parents_expr_info_.add_member(IS_AGG));
   if (OB_SUCC(ret) && distinct && (type == T_FUN_VAR_POP || type == T_FUN_VAR_SAMP
-      || type == T_FUN_STDDEV_POP || type == T_FUN_STDDEV_SAMP || type == T_FUN_JSON_ARRAYAGG)) {
+      || type == T_FUN_STDDEV_POP || type == T_FUN_STDDEV_SAMP || type == T_FUN_JSON_ARRAYAGG
+      || type == T_FUN_STDDEV || type == T_FUN_VARIANCE || type == T_FUN_SYS_BIT_AND
+      || type == T_FUN_SYS_BIT_OR || type == T_FUN_SYS_BIT_XOR)) {
     ret = OB_DISTINCT_NOT_ALLOWED;
   }
   for (size_t i = 0; OB_SUCC(ret) && i < arguments.size(); ++i) {
@@ -3312,6 +3330,13 @@ int ObRawExprResolverImpl::process_window_function_node(const peg::Node &node, O
       const auto arguments = peg::call_arguments(function);
       if ((type == T_WIN_FUN_LEAD || type == T_WIN_FUN_LAG) && (arguments.empty() || arguments.size() > 3)) {
         ret = OB_INVALID_ARGUMENT;
+      } else if (((type == T_WIN_FUN_ROW_NUMBER || type == T_WIN_FUN_RANK
+                    || type == T_WIN_FUN_DENSE_RANK || type == T_WIN_FUN_PERCENT_RANK
+                    || type == T_WIN_FUN_CUME_DIST) && !arguments.empty())
+          || (type == T_WIN_FUN_NTILE && arguments.size() != 1)) {
+        ret = OB_ERR_PARAM_SIZE;
+        const auto name = peg::call_name(function);
+        LOG_USER_ERROR(OB_ERR_PARAM_SIZE, int(name.size()), name.data());
       }
       for (const auto &argument : arguments) {
         ObRawExpr *value = nullptr;
