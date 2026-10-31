@@ -2484,6 +2484,7 @@ int ObRawExprResolverImpl::process_agg_node(const peg::Node &node, ObRawExpr *&e
       break;
     case T_FUN_HYBRID_HIST:
     case T_FUN_JSON_OBJECTAGG:
+    case T_FUN_GROUP_PERCENTILE_CONT:
       min_arguments = max_arguments = 2;
       break;
     case T_FUN_SYS_ST_ASMVT:
@@ -2549,11 +2550,11 @@ int ObRawExprResolverImpl::process_agg_node(const peg::Node &node, ObRawExpr *&e
         OX(value = ceiling);
       }
     }
-    OZ(aggregate->add_real_param_expr(value));
-    if (OB_SUCC(ret) && type == T_FUN_GROUP_PERCENTILE_CONT && aggregate->get_real_param_count() > 1) {
-      ret = OB_ERR_PARAM_SIZE;
+    if (type != T_FUN_GROUP_PERCENTILE_CONT || i != 0) {
+      OZ(aggregate->add_real_param_expr(value));
     }
-    if (OB_SUCC(ret) && i == 0 && (type == T_FUN_HYBRID_HIST || type == T_FUN_JSON_OBJECTAGG)) {
+    if (OB_SUCC(ret) && i == 0 && (type == T_FUN_HYBRID_HIST
+        || type == T_FUN_JSON_OBJECTAGG || type == T_FUN_GROUP_PERCENTILE_CONT)) {
       OrderItem order;
       order.expr_ = value;
       order.order_type_ = NULLS_FIRST_ASC;
@@ -3320,6 +3321,10 @@ int ObRawExprResolverImpl::process_window_function_node(const peg::Node &node, O
   } else if (OB_SUCC(ret)) {
     const auto &function = peg::window_function(node);
     type = callable_expression_type(function.kind());
+    if (type == T_FUN_GROUP_PERCENTILE_CONT) {
+      ret = OB_NOT_SUPPORTED;
+      LOG_USER_ERROR(OB_NOT_SUPPORTED, "PERCENTILE_CONT as a window function");
+    }
     const bool was_window_aggregate = ctx_.is_win_agg_;
     OZ(ctx_.parents_expr_info_.add_member(IS_WINDOW_FUNC));
     if (IS_AGGR_FUN(type) || type == T_FUN_VARIANCE || type == T_FUN_STDDEV

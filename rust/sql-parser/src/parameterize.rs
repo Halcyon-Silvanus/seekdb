@@ -435,7 +435,8 @@ impl<'a> Collector<'a> {
             self.collect(
                 argument,
                 Scope {
-                    excluded: scope.excluded || excluded.contains(&i) || time_precision,
+                    excluded: scope.excluded || excluded.contains(&i) || time_precision
+                        || node.kind == Kind::PercentileCont && i == 0,
                     ignore_scale: node.kind == Kind::Point || name == "st_point",
                     ..scope
                 },

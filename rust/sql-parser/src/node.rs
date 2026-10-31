@@ -807,18 +807,6 @@ impl Node {
                 _ => function.as_str(),
             }.into();
         }
-        if kind == Kind::PercentileCont {
-            if arguments.len() < 2 || window.is_some() || arguments.iter().any(Self::is_wildcard) {
-                return Err("PERCENTILE_CONT requires a value and percentile");
-            }
-            let value = arguments.remove(0);
-            let order = Self::new(Kind::Order, vec![Self::new(Kind::SortKey,
-                vec![value, Self::new(Kind::Asc, vec![])])]);
-            let mut call = Self::named_call(kind, Self::name(name), arguments);
-            call.children.push(order);
-            call.children.extend(modifier.map(|kind| Self::new(kind, vec![])));
-            return call.expression(start, end);
-        }
         if kind == Kind::Mvt {
             if modifier.is_some() || window.is_some() || followed_by_over {
                 return Err("invalid MVT aggregate arguments");
@@ -852,6 +840,7 @@ impl Node {
                     | Kind::Min
                     | Kind::Max
                     | Kind::Avg
+                    | Kind::PercentileCont
                     | Kind::JsonArrayAgg
                     | Kind::JsonObjectAgg
                     | Kind::ApproxCountDistinctSynopsisMerge
