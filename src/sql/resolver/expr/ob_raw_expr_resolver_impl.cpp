@@ -2485,6 +2485,19 @@ int ObRawExprResolverImpl::process_case_node(const peg::Node &node, ObRawExpr *&
 
 int ObRawExprResolverImpl::process_sub_query_node(const peg::Node &node, ObRawExpr *&expr)
 {
+  if (lambda_parameters_ != nullptr) {
+    const rust::Str sql(ctx_.syntax_source_.ptr(), ctx_.syntax_source_.length());
+    for (const auto &symbol : peg::embedded_sql_symbols(node, sql)) {
+      if (symbol.node.kind() != peg::NodeKind::Column) continue;
+      const ObString name(symbol.name.size(), symbol.name.data());
+      for (int64_t i = 0; i < lambda_parameters_->count(); ++i) {
+        if (lambda_parameters_->at(i) == name) {
+          LOG_USER_ERROR(OB_NOT_SUPPORTED, "expr in lambda function");
+          return OB_NOT_SUPPORTED;
+        }
+      }
+    }
+  }
   int ret = OB_SUCCESS;
   ObQueryRefRawExpr *reference = nullptr;
   CK (OB_NOT_NULL(ctx_.sub_query_info_), OB_NOT_NULL(ctx_.session_info_));

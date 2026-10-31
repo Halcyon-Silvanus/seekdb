@@ -357,7 +357,10 @@ int16_t type_precision(const peg::TypeSyntax &syntax)
   if (syntax.has_precision) return static_cast<int16_t>(std::min<uint64_t>(syntax.precision, INT16_MAX));
   if (syntax.name == peg::TypeName::Decimal) return 10;
   if (syntax.name == peg::TypeName::Boolean) return 1;
-  if (syntax.has_length) return static_cast<int16_t>(std::min<uint64_t>(syntax.length, INT16_MAX));
+  if (syntax.has_length) {
+    return ob_is_integer_type(type_object_type(syntax)) ? static_cast<int16_t>(syntax.length)
+        : static_cast<int16_t>(std::min<uint64_t>(syntax.length, INT16_MAX));
+  }
   return syntax.name == peg::TypeName::Bit ? 1 : -1;
 }
 
