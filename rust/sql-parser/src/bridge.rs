@@ -997,7 +997,6 @@ pub(crate) mod ffi {
     #[derive(Debug)]
     enum ParseErrorKind {
         Syntax,
-        BitWidth,
         StackLimit,
     }
 

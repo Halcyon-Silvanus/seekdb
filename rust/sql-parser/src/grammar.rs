@@ -1745,9 +1745,8 @@ peg::parser! {
             = kw("first") { Node::new(Kind::ColumnFirst,vec![]) }
             / kind:(kw("before") { Kind::ColumnBefore } / kw("after") { Kind::ColumnAfter }) name:ident() { Node::new(kind,vec![Node::name(name)]) }
         rule parallel_option() -> Node
-            = kw("parallel") ("=" _)? value:type_size() {?
-                if value.kind==Kind::Int && value.value>0 { Ok(Node::new(Kind::Parallel,vec![value])) }
-                else { Err("positive signed integer parallel degree") }
+            = kw("parallel") ("=" _)? value:type_size() {
+                Node::new(Kind::Parallel,vec![value])
             }
             / kw("noparallel") { Node::new(Kind::Parallel,vec![Node::new(Kind::Int,vec![]).value(1)]) }
         rule storage_chunk() -> Node = kw("chunk") value:(string() / value:type_size() {?
@@ -2139,10 +2138,9 @@ peg::parser! {
             }
             / kw("set") assignments:(variable_assignment() ++ ("," _)) { Node::new(Kind::VariableSet,assignments) }
         rule show_condition() -> Node
-            = kw("like") value:string() escape:(kw("escape") value:string() { value })? {?
+            = kw("like") value:string() escape:(kw("escape") value:string() { value })? {
                 let escape=escape.unwrap_or_else(|| Node::new(Kind::String,vec![]).text("\\".into()));
-                if escape.text.len()!=1 { Err("one-byte ESCAPE character") }
-                else { Ok(Node::new(Kind::LikeClause,vec![value,escape])) }
+                Node::new(Kind::LikeClause,vec![value,escape])
             }
             / kw("where") value:expr(0) { Node::new(Kind::Where,vec![value]) }
         rule show_database() -> Node = (kw("from") / kw("in")) name:ident() { Node::new(Kind::FromList,vec![Node::name(name)]) }

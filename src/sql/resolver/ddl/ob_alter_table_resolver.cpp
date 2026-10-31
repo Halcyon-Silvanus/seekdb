@@ -1883,6 +1883,11 @@ int ObAlterTableResolver::resolve_index_visibility(const peg::Node &node)
 int ObAlterTableResolver::resolve_index_parallel(const peg::Node &node)
 {
   int ret = OB_SUCCESS;
+  const uint64_t degree = peg::alter_index_parallel(node);
+  if (degree == 0 || degree > INT64_MAX) {
+    ret = OB_INVALID_ARGUMENT;
+    LOG_USER_ERROR(OB_INVALID_ARGUMENT, "positive parallel degree");
+  }
   const auto text = peg::alter_index_name(node).text();
   ObString index_name;
   ObAlterIndexParallelArg *argument = nullptr;
@@ -1894,7 +1899,7 @@ int ObAlterTableResolver::resolve_index_parallel(const peg::Node &node)
     } else {
       argument = new (buffer) ObAlterIndexParallelArg();
       argument->index_name_ = index_name;
-      argument->new_parallel_ = peg::alter_index_parallel(node);
+      argument->new_parallel_ = static_cast<int64_t>(degree);
     }
   }
   OZ(get_alter_table_stmt()->add_index_arg(argument));

@@ -855,12 +855,19 @@ int ObDDLResolver::resolve_table_option(const peg::Node &option, const bool is_i
         }
         break;
       }
-      case peg::NodeKind::Parallel:
-        table_dop_ = peg::table_option_number(option);
-        if (stmt::T_ALTER_TABLE == stmt_->get_stmt_type()) {
+      case peg::NodeKind::Parallel: {
+        const uint64_t degree = peg::table_option_number(option);
+        if (degree == 0 || degree > INT64_MAX) {
+          ret = OB_INVALID_ARGUMENT;
+          LOG_USER_ERROR(OB_INVALID_ARGUMENT, "positive parallel degree");
+        } else {
+          table_dop_ = static_cast<int64_t>(degree);
+        }
+        if (OB_SUCC(ret) && stmt::T_ALTER_TABLE == stmt_->get_stmt_type()) {
           OZ(alter_table_bitset_.add_member(ObAlterTableArg::TABLE_DOP));
         }
         break;
+      }
       case peg::NodeKind::Engine: {
         const auto &name = peg::table_option_engine_name(option);
         const auto text = name.text();

@@ -267,11 +267,6 @@ int ObParser::parse_entry(const ObString &query, ParsedSql &owner, peg::ParseMod
       const auto expanded_sql = parsed->expanded_sql();
       const ObString source = expanded_sql.empty() ? sql
           : ObString(expanded_sql.size(), expanded_sql.data());
-      if (parsed->error_kind() == peg::ParseErrorKind::BitWidth) {
-        ObCStringHelper statement_text;
-        LOG_USER_ERROR(OB_ERR_TOO_BIG_DISPLAYWIDTH, statement_text.convert(source), OB_MAX_BIT_LENGTH);
-        return OB_ERR_TOO_BIG_DISPLAYWIDTH;
-      }
       return report_parse_error(source, parsed->diagnostic());
     }
     ParseResult &result = owner.metadata_;

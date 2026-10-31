@@ -125,7 +125,7 @@ fn parse_source(source: std::borrow::Cow<'_, str>, source_prefix: usize,
         error.expanded_sql = std::mem::take(&mut expanded_sql);
         error
     })?;
-    validate_types(&root, parse_mode).map_err(|mut error| {
+    validate_types(&root).map_err(|mut error| {
         error.expanded_sql = std::mem::take(&mut expanded_sql);
         error
     })?;
@@ -162,7 +162,7 @@ fn statement_accepts_parameters(node: &Node) -> bool {
     }
 }
 
-fn validate_types(node: &Node, mode: ParseMode) -> Result<(), ParseFailure> {
+fn validate_types(node: &Node) -> Result<(), ParseFailure> {
     let mut pending = vec![node];
     while let Some(node) = pending.pop() {
         let cast_target = match node.kind {
@@ -176,12 +176,6 @@ fn validate_types(node: &Node, mode: ParseMode) -> Result<(), ParseFailure> {
                 Span { start:target.start,end:target.end });
             error.diagnostic.expected.push("a supported CAST target type".into());
             return Err(error);
-        }
-        if mode == ParseMode::PlSql && node.kind == Kind::DataType && node.text == "bit"
-            && node.children.first().is_some_and(|width| width.value > 64)
-        {
-            return Err(ParseFailure::at(ParseErrorKind::BitWidth, "BIT display width exceeds 64",
-                Span { start:node.start,end:node.end }));
         }
         pending.extend(node.children.iter().rev());
     }

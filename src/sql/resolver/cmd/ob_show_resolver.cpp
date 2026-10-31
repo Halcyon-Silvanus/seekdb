@@ -912,7 +912,10 @@ int ObShowResolver::resolve_like_or_where_clause(ObShowResolverContext &context)
   } else if (filter == peg::ShowFilter::Like) {
     const auto pattern = peg::expression_literal(peg::show_like_pattern(statement)).text;
     const auto escape = peg::expression_literal(peg::show_like_escape(statement)).text;
-    if (!pattern.empty()) {
+    if (escape.size() != 1) {
+      ret = OB_ERR_INVALID_ESCAPE_CHAR_LENGTH;
+      LOG_USER_ERROR(OB_ERR_INVALID_ESCAPE_CHAR_LENGTH);
+    } else if (!pattern.empty()) {
       ObString owned_pattern, owned_escape;
       OZ(ob_write_string(*allocator_, ObString(pattern.size(), pattern.data()), owned_pattern));
       OZ(ob_write_string(*allocator_, ObString(escape.size(), escape.data()), owned_escape));
