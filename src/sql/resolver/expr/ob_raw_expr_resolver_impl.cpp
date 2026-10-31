@@ -2548,10 +2548,23 @@ int ObRawExprResolverImpl::process_timestamp_node(const peg::Node &node, ObRawEx
   int ret = OB_SUCCESS;
   ObSysFunRawExpr *function = nullptr;
   const auto arguments = peg::call_arguments(node);
-  const uint64_t scale = arguments.empty() ? 0 : peg::integer_literal_value(arguments[0]);
-  if (scale > OB_MAX_DATETIME_PRECISION) {
+  const auto name = peg::call_name(node);
+  const bool precision_allowed = node.kind() != peg::NodeKind::CurrentDate
+      && node.kind() != peg::NodeKind::UtcDate && node.kind() != peg::NodeKind::CurrentUser;
+  uint64_t scale = 0;
+  if (arguments.size() > (precision_allowed ? 1 : 0)) {
+    ret = OB_ERR_PARAM_SIZE;
+    LOG_USER_ERROR(OB_ERR_PARAM_SIZE, int(name.size()), name.data());
+  } else if (!arguments.empty() && arguments[0].kind() != peg::NodeKind::Int
+      && arguments[0].kind() != peg::NodeKind::Uint) {
+    ret = OB_ERR_WRONG_PARAMETERS_TO_NATIVE_FCT;
+    LOG_USER_ERROR(OB_ERR_WRONG_PARAMETERS_TO_NATIVE_FCT, int(name.size()), name.data());
+  } else if (!arguments.empty()) {
+    scale = peg::integer_literal_value(arguments[0]);
+  }
+  if (OB_FAIL(ret)) {
+  } else if (scale > OB_MAX_DATETIME_PRECISION) {
     ret = OB_ERR_TOO_BIG_PRECISION;
-    const auto name = peg::call_name(node);
     _LOG_USER_MSG(USER_ERROR, OB_ERR_TOO_BIG_PRECISION,
         "Too big precision %" PRIu64 " specified for column '%.*s'. Maximum is %ld.",
         scale, static_cast<int>(name.size()), name.data(), OB_MAX_DATETIME_PRECISION);
@@ -2620,7 +2633,9 @@ int ObRawExprResolverImpl::process_if_node(const peg::Node &node, ObRawExpr *&ex
   ObCaseOpRawExpr *result = nullptr;
   ObRawExpr *condition = nullptr, *yes = nullptr, *no = nullptr;
   if (arguments.size() != 3) {
-    ret = OB_ERR_UNEXPECTED;
+    ret = OB_ERR_PARAM_SIZE;
+    const auto name = peg::call_name(node);
+    LOG_USER_ERROR(OB_ERR_PARAM_SIZE, int(name.size()), name.data());
   } else {
     OZ(ctx_.expr_factory_.create_raw_expr(T_OP_CASE, result));
     OZ(SMART_CALL(recursive_resolve(arguments[0], condition)));
@@ -2641,8 +2656,10 @@ int ObRawExprResolverImpl::process_isnull_node(const peg::Node &node, ObRawExpr 
   int ret = OB_SUCCESS;
   const auto arguments = peg::call_arguments(node);
   ObRawExpr *value = nullptr;
-  if (arguments.empty()) {
-    ret = OB_ERR_PARSER_SYNTAX;
+  if (arguments.size() != 1) {
+    ret = OB_ERR_PARAM_SIZE;
+    const auto name = peg::call_name(node);
+    LOG_USER_ERROR(OB_ERR_PARAM_SIZE, int(name.size()), name.data());
   } else {
     OZ(SMART_CALL(recursive_resolve(arguments[0], value)));
     OZ(ObRawExprUtils::build_is_not_null_expr(ctx_.expr_factory_, value, false, expr));

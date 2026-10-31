@@ -652,15 +652,6 @@ impl Node {
         } else {
             String::new()
         };
-        let valid_arity = match function.as_str() {
-            "ascii" | "date" | "day" | "year" | "time" | "month" | "quarter"
-                | "second" | "minute" | "microsecond" | "hour" => arguments.len() == 1,
-            "timestamp" | "week" => matches!(arguments.len(), 1 | 2),
-            _ => true,
-        };
-        if !valid_arity {
-            return Err("invalid function argument count");
-        }
         if matches!(function.as_str(),
             "ascii" | "date" | "day" | "year" | "time" | "month" | "quarter"
                 | "second" | "minute" | "microsecond" | "hour" | "timestamp" | "week"
@@ -810,20 +801,8 @@ impl Node {
                 | Kind::UtcTime
                 | Kind::Sysdate
         );
-        let no_arguments = matches!(kind, Kind::CurrentDate | Kind::UtcDate | Kind::CurrentUser);
-        if (kind == Kind::If && arguments.len() != 3)
-            || (matches!(kind, Kind::IsNull | Kind::Grouping) && arguments.len() != 1)
-            || (no_arguments && !arguments.is_empty())
-        {
+        if kind == Kind::Grouping && arguments.len() != 1 {
             return Err("invalid function argument count");
-        }
-        if timestamp
-            && (arguments.len() > 1
-                || arguments.first().is_some_and(|arg| {
-                    !matches!(arg.kind, Kind::Int | Kind::Uint)
-                }))
-        {
-            return Err("time precision must be an integer");
         }
         if timestamp {
             name.text = match kind {
