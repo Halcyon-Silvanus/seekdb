@@ -2400,6 +2400,7 @@ pub(crate) mod ffi {
         fn query_into_position(query: &Node) -> IntoPosition;
         fn query_into_variables(query: &Node) -> &[Node];
         fn query_approximate(query: &Node) -> bool;
+        fn query_parenthesized(query: &Node) -> bool;
         fn query_vector_parameters(query: &Node) -> &[Node];
         fn vector_parameter_name(parameter: &Node) -> &str;
         fn vector_parameter_value(parameter: &Node) -> &Node;
@@ -2707,7 +2708,7 @@ use crate::query::{
     query_filter, query_grouping, query_has_filter, query_has_grouping, query_has_having,
     query_has_limit, query_has_lock, query_having, query_hints, query_ignore, query_into_position,
     query_into_variables, query_limit, query_lock, query_options, query_order, query_projection,
-    query_recursive, query_set_operands, query_set_operator, query_sources,
+    query_parenthesized, query_recursive, query_set_operands, query_set_operator, query_sources,
     query_vector_parameters, query_windows, relation_database, relation_has_database,
     relation_name, relation_references, row_elements, sample_has_seed, sample_method,
     sample_percent, sample_scope, sample_seed, sort_direction, sort_expression, sort_null_placement, table_alias,

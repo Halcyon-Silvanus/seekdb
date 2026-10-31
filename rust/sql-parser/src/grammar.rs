@@ -1322,11 +1322,9 @@ peg::parser! {
             rest:((kind:set_operator() right:query_term(level) { (kind,right) })*)
             order:(kw("order") kw("by") values:(order_item(level) ++ ("," _)) { values })?
             approximate:(start:position!() (kw("approx") / kw("approximate")) end:position!() { Node::new(Kind::Approximate,vec![]).at(start,end) })?
-            limit:limit()? parameters:(enabled(approximate.is_some()) value:vector_parameters() { value })? lock:lock()? into:select_into(level)? failure:position!() {?
+            limit:limit()? parameters:(enabled(approximate.is_some()) value:vector_parameters() { value })? lock:lock()? into:select_into(level)? {?
                 let value=rest.into_iter().try_fold(first,|left,(kind,right)| left.combine(kind,right))?;
-                let span=approximate.as_ref().map(|value| crate::Span { start:value.start,end:value.end });
-                let mut value=value.finish(order.unwrap_or_default(),limit,lock,into,approximate,parameters).map_err(|message|
-                    span.map(|span| diagnostics.record(message,span,failure)).unwrap_or(message))?;
+                let mut value=value.finish(order.unwrap_or_default(),limit,lock,into,approximate,parameters)?;
                 value.with=with.or(value.with);Ok(value)
             }
         rule vector_parameter_value() -> Node

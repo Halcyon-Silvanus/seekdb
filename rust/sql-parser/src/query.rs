@@ -255,6 +255,9 @@ pub(crate) fn query_into_variables(query: &Node) -> &[Node] {
 pub(crate) fn query_approximate(query: &Node) -> bool {
     child(query, Kind::Approximate).is_some()
 }
+pub(crate) fn query_parenthesized(query: &Node) -> bool {
+    query.value != 0
+}
 pub(crate) fn query_vector_parameters(query: &Node) -> &[Node] {
     list(query, Kind::VectorParameters)
 }

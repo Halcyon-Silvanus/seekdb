@@ -135,18 +135,10 @@ impl Select {
         approximate: Option<Node>,
         vector_parameters: Option<Node>,
     ) -> Result<Box<Self>, &'static str> {
-        if approximate.is_some()
-            && (order.is_empty()
-                || limit.is_none()
-                || self.from.is_empty()
-                || self.parenthesized
-                || self.set.is_some())
-        {
-            return Err("APPROX requires a simple table query with ORDER BY and LIMIT");
-        }
         if self.parenthesized && (!order.is_empty() || limit.is_some()) {
             let table = Node::table(Node::select(self)?, None)?;
             self = Box::<Self>::default();
+            self.parenthesized = true;
             self.projection = vec![Node::new(
                 Kind::Projection,
                 vec![Node::new(Kind::Star, vec![])],
@@ -982,6 +974,6 @@ impl Node {
         children.extend(query.approximate);
         children.extend(query.vector_parameters);
         children.extend(query.with);
-        Self::new(Kind::Select, children).expression(0, 0)
+        Self::new(Kind::Select, children).value(u64::from(query.parenthesized)).expression(0, 0)
     }
 }

@@ -967,6 +967,12 @@ int ObSelectResolver::resolve(const peg::Node &parse_tree)
   bool is_stack_overflow = false;
   const int64_t check_try_times = 32;
   if (OB_UNLIKELY((OB_SUCCESS != (ret = TRY_CHECK_MEM_STATUS(check_try_times))))) {
+  } else if (peg::query_approximate(parse_tree)
+      && (peg::query_order(parse_tree).empty() || !peg::query_has_limit(parse_tree)
+          || peg::query_sources(parse_tree).empty() || peg::query_parenthesized(parse_tree)
+          || peg::query_set_operator(parse_tree) != peg::SetOperator::None)) {
+    ret = OB_INVALID_ARGUMENT;
+    LOG_USER_ERROR(OB_INVALID_ARGUMENT, "APPROX requires a simple table query with ORDER BY and LIMIT");
   } else if (NULL == (select_stmt = create_stmt<ObSelectStmt>())) {
     ret = OB_SQL_RESOLVER_NO_MEMORY;
     LOG_WARN("failed to create select stmt");
