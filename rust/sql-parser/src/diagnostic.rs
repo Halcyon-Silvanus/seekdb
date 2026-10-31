@@ -62,13 +62,13 @@ impl ParseFailure {
         error: peg::error::ParseError<peg::str::LineCol>,
         diagnostics: &Diagnostics,
     ) -> Self {
-        let span = grammar::sql::diagnostic_span(
+        let (span, detail) = grammar::sql::diagnostic_token(
             sql, mode, false, &Budget::lexical_scan(), &Diagnostics::default(), error.location.offset,
         ).expect("diagnostic tokenization accepts every character");
         let mut diagnostic = ParseDiagnostic {
             span,
             expected: error.expected.tokens().map(str::to_owned).collect(),
-            detail: String::new(),
+            detail: detail.into(),
         };
         if let Some(failure) = diagnostics.0.get().filter(|failure|
             failure.offset == error.location.offset

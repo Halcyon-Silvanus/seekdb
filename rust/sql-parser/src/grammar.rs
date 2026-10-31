@@ -289,13 +289,22 @@ peg::parser! {
             }} !cont() !("." cont())} / expected!(word)
         rule kw(word: &'static str) -> () = keyword(word) _
         rule hint_slot() -> Option<Vec<Node>> = hint_gap() value:hints()? !"/*+" _ { value }
-        pub rule diagnostic_span(offset: usize) -> crate::Span = tokens:(space()* span:(
-            value:(temporal_literal() / number()) { crate::Span { start:value.start,end:value.end } }
+        rule unterminated_token() -> &'static str
+            = "/*" (!"*/" [_])* ![_] { "unterminated block comment" }
+            / "'" ("''" / enabled(!mode.no_backslash_escapes) "\\" [_] / !"'" [_])* ![_] { "unterminated string literal" }
+            / "\"" ("\"\"" / enabled(!mode.ansi_quotes && !mode.no_backslash_escapes) "\\" [_] / !"\"" [_])* ![_] {
+                if mode.ansi_quotes { "unterminated quoted identifier" } else { "unterminated string literal" }
+            }
+            / "`" ("``" / !"`" [_])* ![_] { "unterminated quoted identifier" }
+        pub rule diagnostic_token(offset: usize) -> (crate::Span, &'static str) = tokens:(space()* span:(
+            value:(temporal_literal() / number()) { (crate::Span { start:value.start,end:value.end },"") }
+            / start:position!() detail:unterminated_token() end:position!() { (crate::Span { start,end },detail) }
             / start:position!() (opaque_comment_token() / cont()+ ("." (cont()+ / opaque_comment_token()))*
                 / "<=>" / "<=" / ">=" / "<>" / "!=" / ":=" / "<<" / ">>" / "||" / "&&" / [_]) end:position!() {
-                    crate::Span { start,end }
+                    (crate::Span { start,end },"")
                 }) { span })* space()* end:position!() {
-                tokens.into_iter().find(|span| offset<span.end).unwrap_or(crate::Span { start:end,end })
+                tokens.into_iter().find(|(span,detail)| offset<span.end || !detail.is_empty() && offset==span.end)
+                    .unwrap_or((crate::Span { start:end,end },""))
             }
         rule depth(level: usize)
             = offset:position!() {?
@@ -408,8 +417,8 @@ peg::parser! {
             }
         rule hex_digit() = ['0'..='9' | 'a'..='f' | 'A'..='F']
         rule binary_literal() -> Node
-            = start:position!() ['x'|'X'] "'" text:$(hex_digit()*) "'" end:position!() _ {?
-                if text.len()%2!=0 { Err("even number of hexadecimal digits") }
+            = start:position!() ['x'|'X'] "'" text:$(hex_digit()*) "'" end:position!() _ failure:position!() {?
+                if text.len()%2!=0 { Err(diagnostics.record("even number of hexadecimal digits",crate::Span { start,end },failure)) }
                 else { Node::new(Kind::HexString,vec![]).text(text.into()).expression(start,end) }
             }
             / start:position!() "0x" text:$(hex_digit()+) !cont() end:position!() _ {?
