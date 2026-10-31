@@ -973,6 +973,7 @@ pub(crate) mod ffi {
 
     struct ExpressionInfo {
         root_kind: NodeKind,
+        cast_array: bool,
         function_name: String,
         qualified_function: bool,
         columns: Vec<ColumnReference>,
@@ -2532,6 +2533,7 @@ pub(crate) mod ffi {
         fn cast_argument(cast: &Node) -> &Node;
         fn cast_target(cast: &Node) -> &Node;
         fn cast_ignore(cast: &Node) -> bool;
+        fn cast_array(cast: &Node) -> bool;
         fn type_name(target: &Node) -> &str;
         fn type_parameters(target: &Node) -> &[Node];
         fn type_charset(target: &Node) -> &str;
@@ -2855,7 +2857,7 @@ use crate::statistics::{
 };
 
 use crate::ddl::partition_element_values;
-use crate::expression::{weight_string_definition, weight_string_level};
+use crate::expression::{cast_array, weight_string_definition, weight_string_level};
 
 use crate::ddl::{alter_index_name, alter_index_new_name, index_visible, alter_index_parallel, alter_table_options};
 use crate::inspect::syntax_literals;

@@ -562,59 +562,6 @@ impl Node {
                     .is_some_and(|child| child.kind == Kind::Star))
     }
 
-    pub(crate) fn cast_array(
-        mut self,
-        target: Self,
-        start: usize,
-        end: usize,
-    ) -> Result<Self, &'static str> {
-        while self.kind == Kind::Parenthesized {
-            self = self.children.pop().unwrap();
-        }
-        let unquoted = self.kind == Kind::Function
-            && crate::expression::call_qualifiers(&self).is_empty()
-            && crate::expression::call_name(&self).eq_ignore_ascii_case("json_unquote")
-            && crate::expression::call_arguments(&self).len() == 1;
-        if unquoted {
-            self = self
-                .into_children()
-                .into_iter()
-                .find(|child| child.kind == Kind::CallArguments)
-                .unwrap()
-                .children
-                .pop()
-                .unwrap();
-            while self.kind == Kind::Parenthesized {
-                self = self.children.pop().unwrap();
-            }
-        }
-        let mut children = if self.kind == Kind::Column && !unquoted {
-            vec![self, Self::new(Kind::HiddenString, vec![])]
-        } else if self.kind == Kind::JsonValue {
-            self.into_children().into_iter().take(2).collect()
-        } else if self.kind == Kind::Function
-            && crate::expression::call_qualifiers(&self).is_empty()
-            && crate::expression::call_name(&self).eq_ignore_ascii_case("json_extract")
-            && crate::expression::call_arguments(&self).len() == 2
-        {
-            self.into_children()
-                .into_iter()
-                .find(|child| child.kind == Kind::CallArguments)
-                .unwrap()
-                .into_children()
-        } else {
-            return Err("CAST ARRAY requires a JSON column or extracted path");
-        };
-        children.push(target);
-        // JSON_QUERY: truncate, scalars, pretty, ascii, wrapper, asis, error, empty, mismatch, multivalue.
-        children.extend(
-            [0, 2, 0, 0, 1, 1, 0, 1, 1, 0]
-                .into_iter()
-                .map(|value| Self::new(Kind::HiddenInt, vec![]).value(value)),
-        );
-        Self::new(Kind::JsonQuery, children).expression(start, end)
-    }
-
     pub(crate) fn call(
         mut name: Vec<Name>,
         modifier: Option<Kind>,

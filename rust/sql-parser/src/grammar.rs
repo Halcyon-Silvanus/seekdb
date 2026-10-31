@@ -459,9 +459,8 @@ peg::parser! {
             / depth(level) value:json_function(level+1) { value }
             / depth(level) start:position!() value:(kw("cast") "(" _ value:expr(level+1) kw("as") target:cast_target() array:kw("array")? ignore:kw("ignore")? { (value,target,ignore.is_some(),array.is_some()) }
                 / kw("convert") "(" _ value:expr(level+1) "," _ target:cast_target() { (value,target,false,false) }) ")" end:position!() _ failure:position!() {?
-                let result=if value.3 { value.0.cast_array(value.1,start,end) }
-                else { Node::named_call(Kind::Cast,Node::new(Kind::Ident,vec![]).text("cast".into()).at(start,start+4),vec![value.0,value.1])
-                    .value(u64::from(value.2)).expression(start,end) };
+                let result=Node::named_call(Kind::Cast,Node::new(Kind::Ident,vec![]).text("cast".into()).at(start,start+4),vec![value.0,value.1])
+                    .value(u64::from(value.2) | (u64::from(value.3) << 1)).expression(start,end);
                 result.map_err(|message| diagnostics.record(message,crate::Span { start,end },failure))
             }
             / depth(level) start:position!() kw("case") operand:expr(level+1)?

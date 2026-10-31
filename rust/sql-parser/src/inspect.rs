@@ -24,6 +24,7 @@ pub(crate) fn inspect_expression(sql: &[u8], mode: SqlMode, bounds: StackBounds)
         Ok(parsed) => parsed,
         Err(error) => return ExpressionInfo {
             root_kind: Kind::Missing,
+            cast_array: false,
             function_name: String::new(),
             qualified_function: false,
             columns: Vec::new(),
@@ -44,6 +45,7 @@ pub(crate) fn inspect_expression(sql: &[u8], mode: SqlMode, bounds: StackBounds)
     collect_columns(root, &mut columns);
     ExpressionInfo {
         root_kind: root.kind,
+        cast_array: root.kind == Kind::Cast && crate::expression::cast_array(root),
         function_name,
         qualified_function: !crate::expression::call_qualifiers(root).is_empty(),
         columns,

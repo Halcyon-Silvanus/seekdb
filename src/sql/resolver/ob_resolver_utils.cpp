@@ -3633,8 +3633,13 @@ int ObResolverUtils::resolve_generated_column_info(const ObString &expr_str,
         case peg::NodeKind::JsonQuery:
           root_function_type = T_FUN_SYS_JSON_QUERY;
           break;
-        case peg::NodeKind::Function:
         case peg::NodeKind::Cast:
+          if (info.cast_array) {
+            root_function_type = T_FUN_SYS_JSON_QUERY;
+            break;
+          }
+          [[fallthrough]];
+        case peg::NodeKind::Function:
         case peg::NodeKind::StringConcat:
           if (!info.qualified_function) {
             root_function_type = ObExprOperatorFactory::get_type_by_name(

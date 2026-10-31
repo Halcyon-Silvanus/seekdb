@@ -370,7 +370,10 @@ pub(crate) fn cast_target(cast: &Node) -> &Node {
     &call_arguments(cast)[1]
 }
 pub(crate) fn cast_ignore(cast: &Node) -> bool {
-    cast.value != 0
+    cast.value & 1 != 0
+}
+pub(crate) fn cast_array(cast: &Node) -> bool {
+    cast.value & 2 != 0
 }
 pub(crate) fn collation_argument(expression: &Node) -> &Node {
     &call_arguments(expression)[0]

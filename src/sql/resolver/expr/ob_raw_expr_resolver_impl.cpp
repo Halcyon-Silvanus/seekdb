@@ -2835,13 +2835,58 @@ int ObRawExprResolverImpl::process_json_query_node(const peg::Node &node, ObRawE
 {
   int ret = OB_SUCCESS;
   ObSysFunRawExpr *function = nullptr;
-  const auto options = peg::json_options(node);
-  const auto &target_node = peg::json_returning(node);
+  const bool array_cast = node.kind() == peg::NodeKind::Cast;
+  peg::JsonOptions options{};
+  const peg::Node *document_node = nullptr, *path_node = nullptr;
+  const auto &target_node = array_cast ? peg::cast_target(node) : peg::json_returning(node);
+  if (!array_cast) {
+    options = peg::json_options(node);
+    document_node = &peg::json_document(node);
+    path_node = &peg::json_path(node);
+  } else {
+    options.asis = true;
+    options.scalars = peg::JsonScalars::Unspecified;
+    options.wrapper = peg::JsonWrapper::WithoutArray;
+    options.on_error = peg::JsonResponse::Error;
+    options.on_empty = peg::JsonResponse::Null;
+    options.on_mismatch = peg::JsonResponse::Null;
+    const peg::Node *operand = &peg::cast_argument(node);
+    const auto unwrap = [](const peg::Node *value) {
+      while (value->kind() == peg::NodeKind::Parenthesized) value = &peg::parenthesized_expression(*value);
+      return value;
+    };
+    operand = unwrap(operand);
+    const auto named_call = [](const peg::Node &value, const char *name, size_t count) {
+      return value.kind() == peg::NodeKind::Function && peg::call_qualifiers(value).empty()
+          && ObString(peg::call_name(value).size(), peg::call_name(value).data()).case_compare(name) == 0
+          && peg::call_arguments(value).size() == count;
+    };
+    const bool unquoted = named_call(*operand, "json_unquote", 1);
+    if (unquoted) {
+      OZ(check_scalar_quantifier(*operand));
+      operand = unwrap(&peg::call_arguments(*operand)[0]);
+    }
+    if (operand->kind() == peg::NodeKind::Column && !unquoted) {
+      document_node = operand;
+    } else if (operand->kind() == peg::NodeKind::JsonValue) {
+      document_node = &peg::json_document(*operand);
+      path_node = &peg::json_path(*operand);
+    } else if (named_call(*operand, "json_extract", 2)) {
+      OZ(check_scalar_quantifier(*operand));
+      const auto arguments = peg::call_arguments(*operand);
+      document_node = &arguments[0];
+      path_node = &arguments[1];
+    } else {
+      ret = OB_INVALID_ARGUMENT;
+      _LOG_USER_MSG(USER_ERROR, OB_INVALID_ARGUMENT, "CAST ARRAY requires a JSON column or extracted path");
+    }
+    if (OB_FAIL(ret)) return ret;
+  }
   ObRawExprResType target;
   OZ(ObResolverUtils::resolve_cast_type(target_node, source_text(target_node), target));
   ObString path;
-  if (peg::is_literal(peg::json_path(node))) {
-    const auto literal = peg::expression_literal(peg::json_path(node));
+  if (path_node != nullptr && peg::is_literal(*path_node)) {
+    const auto literal = peg::expression_literal(*path_node);
     path.assign_ptr(literal.text.data(), literal.text.size());
   }
   ObJsonPath json_path(path, &ctx_.expr_factory_.get_allocator());
@@ -2849,7 +2894,7 @@ int ObRawExprResolverImpl::process_json_query_node(const peg::Node &node, ObRawE
     ret = OB_ERR_JSON_PATH_EXPRESSION_SYNTAX_ERROR;
     LOG_USER_ERROR(OB_ERR_JSON_PATH_EXPRESSION_SYNTAX_ERROR, path.length(), path.ptr());
   }
-  OZ(cast_accuracy_check(target, source_text(peg::json_document(node))));
+  OZ(cast_accuracy_check(target, source_text(*document_node)));
   if (OB_SUCC(ret) && target.get_type() == ObJsonType) {
     bool inferred = false;
     ObRawExprResType inferred_type;
@@ -2865,9 +2910,13 @@ int ObRawExprResolverImpl::process_json_query_node(const peg::Node &node, ObRawE
   OX(function->set_func_name(ObString::make_string("json_query")));
   OZ(function->init_param_exprs(13));
   ObRawExpr *document = nullptr, *path_expr = nullptr, *returning = nullptr;
-  OZ(check_first_node(peg::json_document(node)));
-  OZ(SMART_CALL(recursive_resolve(peg::json_document(node), document)));
-  OZ(SMART_CALL(recursive_resolve(peg::json_path(node), path_expr)));
+  OZ(check_first_node(*document_node));
+  OZ(SMART_CALL(recursive_resolve(*document_node, document)));
+  if (path_node != nullptr) {
+    OZ(SMART_CALL(recursive_resolve(*path_node, path_expr)));
+  } else {
+    OZ(build_implicit_literal({peg::LiteralKind::String, 0, {}, {}, false, 0}, path_expr));
+  }
   OZ(build_cast_type(target_node, target, returning));
   OZ(function->add_param_expr(document));
   OZ(function->add_param_expr(path_expr));
@@ -2987,6 +3036,7 @@ int ObRawExprResolverImpl::cast_accuracy_check(const ObRawExprResType &target, c
 
 int ObRawExprResolverImpl::process_cast(const peg::Node &node, ObRawExpr *&expr)
 {
+  if (peg::cast_array(node)) return process_json_query_node(node, expr);
   int ret = OB_SUCCESS;
   ObRawExpr *value = nullptr, *target = nullptr;
   ObSysFunRawExpr *function = nullptr;
