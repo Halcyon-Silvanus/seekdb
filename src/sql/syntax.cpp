@@ -276,7 +276,10 @@ int report_parse_error(const common::ObString &sql, const peg::ParseDiagnostic &
   }
   if (offset < static_cast<size_t>(sql.length())) {
     description += " near '";
-    description.append(sql.ptr() + offset, length);
+    for (size_t i = 0; i < length; ++i) {
+      if (sql.ptr()[offset + i] == '\0') description += "\\0";
+      else description.push_back(sql.ptr()[offset + i]);
+    }
     if (length < diagnostic.span.end - offset) description += "...";
     description += "'";
   }
