@@ -3163,6 +3163,11 @@ int ObSql::parser_and_check(const ObString &outlined_stmt,
     ObParser parser(allocator, session->get_sql_mode());
     pc_ctx.parameterization_.reset();
     if (OB_FAIL(parser.parse(outlined_stmt, parsed))) {
+      if (ret == OB_ERR_PARSE_SQL && outlined_stmt != pc_ctx.raw_sql_) {
+        // Report locations in the client's SQL, before internal rewriting.
+        ParsedSql diagnostic;
+        (void)parser.parse(pc_ctx.raw_sql_, diagnostic);
+      }
     } else if ((PC_PS_MODE == pc_ctx.mode_ || PC_PL_MODE == pc_ctx.mode_)
       && OB_FAIL(construct_param_store_from_parameterized_params(
                     pc_ctx, pctx->get_param_store_for_update()))) {
