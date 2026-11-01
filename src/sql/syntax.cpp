@@ -231,8 +231,16 @@ int report_parse_error(const common::ObString &sql, const peg::ParseDiagnostic &
 {
   const size_t offset = diagnostic.span.start;
   int line = 1;
-  for (size_t i = 0; i < offset; ++i) line += sql.ptr()[i] == '\n';
-  size_t length = std::min<size_t>(80, sql.length() - offset);
+  int column = 1;
+  for (size_t i = 0; i < offset; ++i) {
+    if (sql.ptr()[i] == '\n') {
+      ++line;
+      column = 1;
+    } else if ((static_cast<unsigned char>(sql.ptr()[i]) & 0xc0) != 0x80) {
+      ++column;
+    }
+  }
+  size_t length = std::min<size_t>(80, diagnostic.span.end - offset);
   while (length > 0 && offset + length < sql.length()
          && (static_cast<unsigned char>(sql.ptr()[offset + length]) & 0xc0) == 0x80) {
     --length;
@@ -242,9 +250,39 @@ int report_parse_error(const common::ObString &sql, const peg::ParseDiagnostic &
   if (!diagnostic.detail.empty()) {
     description += "; ";
     description.append(diagnostic.detail.data(), diagnostic.detail.size());
+  } else if (!diagnostic.expected.empty() && diagnostic.expected.size() <= 3) {
+    std::string expected;
+    for (size_t i = 0; i < diagnostic.expected.size(); ++i) {
+      const auto &candidate = diagnostic.expected[i];
+      std::string text(candidate.data(), candidate.size());
+      if (text == "EOF") {
+        text = "end of input";
+      } else if (text.size() >= 2 && text.front() == '"' && text.back() == '"'
+                 && text.find('\\') == std::string::npos) {
+        text = "'" + text.substr(1, text.size() - 2) + "'";
+      } else if (text != "identifier" && text != "string literal" && text != "user variable") {
+        if (!text.empty() && std::all_of(text.begin(), text.end(),
+              [](char c) { return c >= 'a' && c <= 'z'; })) {
+          for (char &c : text) c -= 'a' - 'A';
+        } else {
+          expected.clear();
+          break;
+        }
+      }
+      if (i != 0) expected += i + 1 == diagnostic.expected.size() ? " or " : ", ";
+      expected += text;
+    }
+    if (!expected.empty()) description += "; expected " + expected;
   }
-  LOG_USER_ERROR(OB_ERR_PARSE_SQL, description.c_str(),
-                 static_cast<int>(length), sql.ptr() + offset, line);
+  if (offset < static_cast<size_t>(sql.length())) {
+    description += " near '";
+    description.append(sql.ptr() + offset, length);
+    if (length < diagnostic.span.end - offset) description += "...";
+    description += "'";
+  }
+  description += " at line " + std::to_string(line) + ", column " + std::to_string(column);
+  common::log_user_message(common::USER_ERROR, OB_ERR_PARSE_SQL, "%s", description.c_str());
+  LOG_WARN_RET(OB_ERR_PARSE_SQL, "SQL syntax error", "description", description.c_str());
   return common::OB_ERR_PARSE_SQL;
 }
 

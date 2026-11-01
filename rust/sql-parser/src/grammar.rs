@@ -381,7 +381,8 @@ peg::parser! {
                 for part in &parts[1..] { text.push_str(&decode(part,mode.no_backslash_escapes)); }
                 Node::new(Kind::String,children).text(text).expression(start,end)
             }
-        rule string() -> Node = string_token(<"'">) / enabled(!mode.ansi_quotes) value:string_token(<"\"">) { value }
+        rule string() -> Node = quiet!{string_token(<"'">)
+            / enabled(!mode.ansi_quotes) value:string_token(<"\"">) { value }} / expected!("string literal")
         rule string_expression() -> Node
             = &("n'" / "N'") start:position!() ['n'|'N'] value:string_token(<"'">) {
                 let end=value.end;value.with_kind(Kind::NationalString).at(start,end)
@@ -441,12 +442,12 @@ peg::parser! {
             let end=name.end;
             Node::new(Kind::SystemVariable, vec![]).text(name.text).value(scope.unwrap_or(0)).at(start,end)
         }
-        rule user_variable() -> Node = start:position!() "@" !"@" name:(string()
+        rule user_variable() -> Node = quiet!{start:position!() "@" !"@" name:(string()
             / start:position!() text:$((cont() / ".")+) end:position!() _ { Node::new(Kind::Ident,vec![]).text(text.into()).at(start,end) }
             / name:ident() { Node::name(name) })? _ {
             let (text,end)=name.map_or_else(|| (String::new(),start+1),|mut name| (std::mem::take(&mut name.text),name.end));
             Node::new(Kind::UserVariable, vec![]).text(text).at(start,end)
-        }
+        }} / expected!("user variable")
         rule atom(level: usize) -> Node
             = depth(level) start:position!() "{" _
                 !(temporal_kind() (space()+ / "--" ['\n'|'\r'])? ['\''|'"'])
