@@ -656,8 +656,8 @@
           "FILE:@@//rust/sql-nio/Cargo.toml f2777c1417ceedc2f99dd728a3dc80770c93a6acc4ede8d0f10d87a489414841",
           "FILE:@@//rust/sql-parser/Cargo.toml dccab06a8046f4114db170517acd663c51870692996fa57dc16a79f6377cbe98",
           "FILE:@@//rust/uuid-generator/Cargo.toml 103e0399d33b028e5dd74b556be6c6c2efb954113468b5a06556f01402e58f6b",
-          "FILE:@@//build/external/+cxxbridge_repository+cxxbridge_source/Cargo.lock 051ae4d78c8864487f3d49cf50000cd54926b21ca898941ec141e4aa064f3bc2",
-          "FILE:@@//build/external/+cxxbridge_repository+cxxbridge_source/Cargo.toml fc22614b5738a85940088e56d7d2211208151ac69af7cb03e31500c88b1493cf",
+          "FILE:@@+cxxbridge_repository+cxxbridge_source//Cargo.lock 051ae4d78c8864487f3d49cf50000cd54926b21ca898941ec141e4aa064f3bc2",
+          "FILE:@@+cxxbridge_repository+cxxbridge_source//Cargo.toml fc22614b5738a85940088e56d7d2211208151ac69af7cb03e31500c88b1493cf",
           "FILE:@@//deps/external/Cargo.lock fb3e38704d5174886b047a059ab64b46fc4ba54c8155d6661f654192c9413443",
           "FILE:@@//deps/external/Cargo.toml 81977fb71d5d1229d69a00057c511da0a81865ef2b3df173c201b277647e8749"
         ],
