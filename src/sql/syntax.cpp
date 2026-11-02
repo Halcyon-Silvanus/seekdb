@@ -421,7 +421,7 @@ int ObParser::pre_parse(const ObString &stmt, PreParseResult &res)
   if (info.trace_end > info.trace_start) {
     const size_t length = std::min(info.trace_end - info.trace_start,
                                   static_cast<size_t>(OB_MAX_TRACE_ID_BUFFER_SIZE));
-    res.trace_id_.assign_ptr(stmt.ptr() + info.trace_start, length);
+    res.trace_id_.assign_ptr(stmt.ptr() + info.trace_start, static_cast<int64_t>(length));
   }
   return OB_SUCCESS;
 }

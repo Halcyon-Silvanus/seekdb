@@ -1076,9 +1076,9 @@ int ObRawExprResolverImpl::process_odbc_escape(const peg::Node &node, ObRawExpr 
       converted = true;
       if (literal.kind == peg::LiteralKind::Binary) {
         decoded = peg::decode_binary_literal(literal.text, literal.binary_notation);
-        text.assign_ptr(reinterpret_cast<const char *>(decoded.data()), decoded.size());
+        text.assign_ptr(reinterpret_cast<const char *>(decoded.data()), static_cast<int64_t>(decoded.size()));
       } else {
-        text.assign_ptr(literal.text.data(), literal.text.size());
+        text.assign_ptr(literal.text.data(), static_cast<int64_t>(literal.text.size()));
       }
     } else if (OB_ISNULL(ctx_.param_list_)) {
       ret = OB_ERR_UNEXPECTED;
@@ -2903,7 +2903,7 @@ int ObRawExprResolverImpl::process_json_query_node(const peg::Node &node, ObRawE
   ObString path;
   if (path_node != nullptr && peg::is_literal(*path_node)) {
     const auto literal = peg::expression_literal(*path_node);
-    path.assign_ptr(literal.text.data(), literal.text.size());
+    path.assign_ptr(literal.text.data(), static_cast<int64_t>(literal.text.size()));
   }
   ObJsonPath json_path(path, &ctx_.expr_factory_.get_allocator());
   if (OB_SUCC(ret) && !path.empty() && OB_FAIL(json_path.parse_path())) {

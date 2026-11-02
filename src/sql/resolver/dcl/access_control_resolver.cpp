@@ -259,7 +259,7 @@ int resolve_tls(const peg::TlsRequirement &requirement, Statement &statement)
       LOG_USER_ERROR(OB_ERR_DUP_ARGUMENT, get_ssl_spec_type_str(field));
     } else {
       seen[index] = true;
-      values[index].assign_ptr(option.value.data(), option.value.size());
+      values[index].assign_ptr(option.value.data(), static_cast<int64_t>(option.value.size()));
     }
   }
   OZ (statement.add_ssl_info(get_ssl_type_string(type), values[0], values[1], values[2]));

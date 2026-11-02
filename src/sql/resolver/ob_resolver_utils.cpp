@@ -2071,7 +2071,7 @@ int ObResolverUtils::resolve_literal(const LiteralToken &literal,
                        reinterpret_cast<const char *>(spelling.compact_text.data())), numeric.text);
         } else if (spelling.text_offset != 0) {
           numeric.text.assign_ptr(literal.text.ptr() + spelling.text_offset,
-                                  literal.text.length() - spelling.text_offset);
+                                  literal.text.length() - static_cast<int64_t>(spelling.text_offset));
         }
         if (OB_SUCC(ret)) {
           ret = resolve_numeric_literal(numeric, options.numeric, allocator, val, literal_prefix);

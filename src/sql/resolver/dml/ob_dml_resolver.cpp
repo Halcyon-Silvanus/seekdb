@@ -2625,7 +2625,7 @@ int ObDMLResolver::resolve_hybrid_search_item(const peg::Node &table_node, Table
     } else if (node.kind() == peg::NodeKind::Int || node.kind() == peg::NodeKind::Uint
                || node.kind() == peg::NodeKind::Number || node.kind() == peg::NodeKind::Double) {
       const auto literal = peg::expression_literal(node);
-      text.assign_ptr(literal.text.data(), literal.text.size());
+      text.assign_ptr(literal.text.data(), static_cast<int64_t>(literal.text.size()));
       return ret;
     } else {
       OZ(ObResolverUtils::resolve_const_expr(params_, node, expression, nullptr));

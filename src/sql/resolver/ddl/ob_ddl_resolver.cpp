@@ -4291,7 +4291,7 @@ int ObDDLResolver::resolve_check_constraint_node(
   if (!generated) {
     const auto &syntax_name = peg::check_constraint_name(node);
     const auto syntax_name_text = syntax_name.text();
-    name.assign_ptr(syntax_name_text.data(), syntax_name_text.size());
+    name.assign_ptr(syntax_name_text.data(), static_cast<int64_t>(syntax_name_text.size()));
     if (name.empty()) {
       ret = OB_ERR_ZERO_LENGTH_IDENTIFIER;
     }
@@ -4931,7 +4931,7 @@ int ObDDLResolver::resolve_partition_element(const peg::PartitionElement &defini
   {
     const auto &name_node = peg::relation_name(definition.name);
     const auto name_node_text = name_node.text();
-    partition_name.assign_ptr(name_node_text.data(), name_node_text.size());
+    partition_name.assign_ptr(name_node_text.data(), static_cast<int64_t>(name_node_text.size()));
     if (OB_FAIL(ObSQLUtils::check_ident_name(CS_TYPE_UTF8MB4_GENERAL_CI,
                                              partition_name,
                                              false, //check_for_path_chars

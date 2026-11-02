@@ -459,7 +459,7 @@ int ObValuesTableCompression::parser_values_row_str(ObIAllocator &allocator,
   char *buffer = static_cast<char *>(allocator.alloc(result.sql.size()));
   if (buffer == nullptr) return OB_ALLOCATE_MEMORY_FAILED;
   MEMCPY(buffer, result.sql.data(), result.sql.size());
-  new_no_param_sql.assign_ptr(buffer, result.sql.size());
+  new_no_param_sql.assign_ptr(buffer, static_cast<int64_t>(result.sql.size()));
   old_pos = result.source_end + removed_length;
   new_pos = result.output_end;
   row_count = result.rows;

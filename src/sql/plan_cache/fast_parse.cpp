@@ -50,7 +50,7 @@ int scan(const ObString &stmt, const FPContext &context, ObIAllocator &allocator
   };
   char *sql = copy(scanned.sql.data(), scanned.sql.size());
   if (sql == nullptr) return OB_ALLOCATE_MEMORY_FAILED;
-  result.pc_key_.name_.assign_ptr(sql, scanned.sql.size());
+  result.pc_key_.name_.assign_ptr(sql, static_cast<int64_t>(scanned.sql.size()));
   result.values_token_pos_ = scanned.insert_values_offset;
   const int64_t count = context.parameterize_ ? scanned.literals.size() : 0;
   result.raw_params_.reset();
@@ -73,7 +73,8 @@ int scan(const ObString &stmt, const FPContext &context, ObIAllocator &allocator
       if (token->is_numeric()) {
         token->text = token->source;
       } else if (literal.content_start != literal.content_end) {
-        token->text.assign_ptr(text + literal.content_start, literal.content_end - literal.content_start);
+        token->text.assign_ptr(text + literal.content_start,
+                               static_cast<int64_t>(literal.content_end - literal.content_start));
       }
       auto *param = new (params + i) ObPCParam();
       param->literal_ = token;
@@ -128,7 +129,7 @@ int ObFastParser::compress_insert(common::ObIAllocator &allocator,
   char *buffer = static_cast<char *>(allocator.alloc(result.sql.size()));
   if (buffer == nullptr) return OB_ALLOCATE_MEMORY_FAILED;
   MEMCPY(buffer, result.sql.data(), result.sql.size());
-  new_truncated_sql.assign_ptr(buffer, result.sql.size());
+  new_truncated_sql.assign_ptr(buffer, static_cast<int64_t>(result.sql.size()));
   params_count = result.row_parameters;
   upd_params_count = result.suffix_parameters;
   length_delta = result.removed_length;

@@ -482,7 +482,7 @@ int ObAlterTableResolver::resolve_action_list(rust::Slice<const peg::Node> actio
 
             const auto &name = peg::alter_constraint_name(*action_node);
             const auto name_text = name.text();
-            constraint_name.assign_ptr(name_text.data(), name_text.size());
+            constraint_name.assign_ptr(name_text.data(), static_cast<int64_t>(name_text.size()));
             if (constraint_name.empty()) { ret = OB_ERR_UNEXPECTED; }
             if (OB_SUCC(ret)) {
               if (!table_schema_->is_mysql_tmp_table()) {

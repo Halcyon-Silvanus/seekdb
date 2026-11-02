@@ -2892,7 +2892,7 @@ int ObVectorIndexUtil::check_index_param(
     for (const auto &parameter : parameters) {
       if (OB_FAIL(ret)) { break; }
       const auto key = sql::peg::vector_parameter_name(parameter);
-      key_parser_name.assign_ptr(key.data(), key.size());
+      key_parser_name.assign_ptr(key.data(), static_cast<int64_t>(key.size()));
       new_variable_name = key_parser_name;
       if (OB_FAIL(ob_simple_low_to_up(allocator, key_parser_name, new_variable_name))) {
       } else if (new_variable_name != "DISTANCE" &&
@@ -2931,7 +2931,7 @@ int ObVectorIndexUtil::check_index_param(
       const auto &value = sql::peg::vector_parameter_value(parameter);
       parser_value = sql::peg::is_literal(value) ? sql::peg::expression_literal(value).integer : 0;
       const auto value_text = value.text();
-      data_parser_name.assign_ptr(value_text.data(), value_text.size());
+      data_parser_name.assign_ptr(value_text.data(), static_cast<int64_t>(value_text.size()));
       new_parser_name = data_parser_name;
       if (OB_SUCC(ret) && value.kind() != sql::peg::NodeKind::Number) {
         OZ (ob_simple_low_to_up(allocator, data_parser_name, new_parser_name));
