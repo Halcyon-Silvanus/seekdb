@@ -2028,6 +2028,9 @@ peg::parser! {
             / kw("fork") kw("database") source:ident() kw("to") destination:ident() {
                 Node::new(Kind::ForkDatabase,vec![Node::name(destination),Node::name(source)])
             }
+            / kw("diff") kw("table") incoming:relation_name() kw("against") current:relation_name() {?
+                Ok(Node::new(Kind::DiffTable,vec![Node::relation(incoming)?,Node::relation(current)?]))
+            }
             / kw("merge") kw("table") incoming:relation_name() kw("into") current:relation_name()
                 strategy:(kw("strategy") value:(kw("fail") { 0 } / kw("theirs") { 1 } / kw("ours") { 2 }) { value })? {?
                 Ok(Node::new(Kind::MergeTable,vec![Node::relation(incoming)?,Node::relation(current)?]).value(strategy.unwrap_or(0)))
@@ -2152,6 +2155,10 @@ peg::parser! {
                     Node::new(Kind::ShowGrants,vec![Node::optional(user),Node::new(Kind::Roles,roles.unwrap_or_default())])
                 }
             / kw("parameters") condition:show_condition()? { Node::new(Kind::ShowParameters,vec![Node::optional(condition),Node::missing()]) }
+            / kw("trace") format:(kw("format") "=" _ value:string() { value })? condition:show_condition()? {
+                let format=format.unwrap_or_else(|| Node::new(Kind::String,vec![]).text("ROW".into()));
+                Node::new(Kind::ShowTrace,vec![Node::optional(condition),format])
+            }
             / full:kw("full")? kw("processlist") { Node::new(Kind::ShowProcesslist,vec![Node::new(Kind::HiddenInt,vec![]).value(u64::from(full.is_some()))]) }
             / kind:(charset_keyword() { Kind::ShowCharset } / kw("collation") { Kind::ShowCollation })
                 condition:show_condition()? { Node::new(kind,vec![Node::optional(condition)]) }

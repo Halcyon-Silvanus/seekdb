@@ -140,6 +140,7 @@ std::optional<NativeStatementTraits> native_statement_traits(Kind kind)
     case Kind::ForkTable: return NativeStatementTraits{stmt::T_FORK_TABLE, false, false};
     case Kind::ForkDatabase: return NativeStatementTraits{stmt::T_FORK_DATABASE, false, false};
     case Kind::MergeTable: return NativeStatementTraits{stmt::T_MERGE_TABLE, false, false};
+    case Kind::DiffTable: return NativeStatementTraits{stmt::T_DIFF_TABLE, true, false};
     case Kind::Freeze: return NativeStatementTraits{stmt::T_FREEZE, false, false};
     case Kind::SuspendMerge:
     case Kind::ResumeMerge: return NativeStatementTraits{stmt::T_ADMIN_MERGE, false, false};
@@ -186,6 +187,7 @@ std::optional<NativeStatementTraits> native_statement_traits(Kind kind)
     case Kind::ShowCreateProcedure: return NativeStatementTraits{stmt::T_SHOW_CREATE_PROCEDURE, true, false};
     case Kind::ShowCreateFunction: return NativeStatementTraits{stmt::T_SHOW_CREATE_FUNCTION, true, false};
     case Kind::ShowParameters: return NativeStatementTraits{stmt::T_SHOW_PARAMETERS, true, false};
+    case Kind::ShowTrace: return NativeStatementTraits{stmt::T_SHOW_TRACE, true, false};
     case Kind::ShowIndexes: return NativeStatementTraits{stmt::T_SHOW_INDEXES, true, false};
     case Kind::ShowProcesslist: return NativeStatementTraits{stmt::T_SHOW_PROCESSLIST, true, false};
     case Kind::ShowWarnings: return NativeStatementTraits{stmt::T_SHOW_WARNINGS, true, false};

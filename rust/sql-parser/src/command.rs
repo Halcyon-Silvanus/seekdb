@@ -216,7 +216,7 @@ fn show_condition(statement: &Node) -> Option<&Node> {
         }
         Kind::ShowColumns => &statement.children[3],
         Kind::ShowIndexes => &statement.children[2],
-        Kind::ShowParameters | Kind::ShowCharset | Kind::ShowCollation | Kind::ShowDatabases => {
+        Kind::ShowParameters | Kind::ShowCharset | Kind::ShowCollation | Kind::ShowDatabases | Kind::ShowTrace => {
             &statement.children[0]
         }
         _ => return None,
@@ -234,6 +234,9 @@ pub(crate) fn show_filter(statement: &Node) -> ShowFilter {
         Some(Kind::LikeClause) => ShowFilter::Like,
         _ => unreachable!(),
     }
+}
+pub(crate) fn show_trace_format(statement: &Node) -> &str {
+    &statement.children[1].text
 }
 pub(crate) fn show_filter_expression(statement: &Node) -> &Node {
     &show_condition(statement).unwrap().children[0]

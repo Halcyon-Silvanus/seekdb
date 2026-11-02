@@ -719,6 +719,12 @@ pub(crate) fn merge_table_definition(node: &Node) -> crate::bridge::ffi::MergeTa
         },
     }
 }
+pub(crate) fn diff_table_definition(node: &Node) -> crate::bridge::ffi::DiffTableDefinition<'_> {
+    crate::bridge::ffi::DiffTableDefinition {
+        incoming: &node.children[0],
+        current: &node.children[1],
+    }
+}
 pub(crate) fn rename_actions(node: &Node) -> &[Node] {
     &node.children
 }

@@ -32,6 +32,7 @@
 #include "sql/resolver/ddl/ob_fork_table_resolver.h"
 #include "sql/resolver/ddl/ob_fork_database_resolver.h"
 #include "sql/resolver/cmd/merge_table_resolver.h"
+#include "sql/resolver/cmd/diff_table_resolver.h"
 #include "sql/resolver/ddl/ob_create_table_like_resolver.h"
 #include "sql/resolver/ddl/ob_alter_table_resolver.h"
 #include "sql/resolver/ddl/alter_database_resolver.h"
@@ -276,6 +277,10 @@ int ObResolver::resolve(const peg::Node &statement, ObStmt *&stmt)
         params_.resolver_scope_stmt_type_ = T_FORK_DATABASE;
         ret = stmt_resolver_func<ObForkDatabaseResolver>(params_, statement, stmt);
         break;
+      case peg::NodeKind::DiffTable:
+        params_.resolver_scope_stmt_type_ = T_DIFF_TABLE;
+        ret = select_stmt_resolver_func<DiffTableResolver>(params_, statement, stmt);
+        break;
       case peg::NodeKind::MergeTable:
         params_.resolver_scope_stmt_type_ = T_MERGE_TABLE;
         ret = stmt_resolver_func<MergeTableResolver>(params_, statement, stmt);
@@ -439,6 +444,10 @@ int ObResolver::resolve(const peg::Node &statement, ObStmt *&stmt)
         break;
       case peg::NodeKind::ShowParameters:
         params_.resolver_scope_stmt_type_ = T_SHOW_PARAMETERS;
+        ret = stmt_resolver_func<ObShowResolver>(params_, statement, stmt);
+        break;
+      case peg::NodeKind::ShowTrace:
+        params_.resolver_scope_stmt_type_ = T_SHOW_TRACE;
         ret = stmt_resolver_func<ObShowResolver>(params_, statement, stmt);
         break;
       case peg::NodeKind::ShowIndexes:

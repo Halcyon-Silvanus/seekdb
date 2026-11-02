@@ -934,6 +934,8 @@ pub(crate) mod ffi {
         WeightStringLevels,
         WeightStringLevel,
         MergeTable,
+        DiffTable,
+        ShowTrace,
     }
 
     #[derive(Clone, Copy, Debug, Default)]
@@ -1933,6 +1935,10 @@ pub(crate) mod ffi {
         current: &'a Node,
         strategy: MergeStrategy,
     }
+    struct DiffTableDefinition<'a> {
+        incoming: &'a Node,
+        current: &'a Node,
+    }
     struct ColumnSkipIndexSyntax {
         min_max: bool,
         sum: bool,
@@ -2130,6 +2136,7 @@ pub(crate) mod ffi {
         fn show_object(statement: &Node) -> &Node;
         fn check_tables(statement: &Node) -> &[Node];
         fn show_filter(statement: &Node) -> ShowFilter;
+        fn show_trace_format(statement: &Node) -> &str;
         fn show_filter_expression(statement: &Node) -> &Node;
         fn show_like_pattern(statement: &Node) -> &Node;
         fn show_like_escape(statement: &Node) -> &Node;
@@ -2197,6 +2204,7 @@ pub(crate) mod ffi {
         fn fork_source(node: &Node) -> &Node;
         fn fork_destination(node: &Node) -> &Node;
         unsafe fn merge_table_definition<'a>(node: &'a Node) -> MergeTableDefinition<'a>;
+        unsafe fn diff_table_definition<'a>(node: &'a Node) -> DiffTableDefinition<'a>;
         fn rename_actions(node: &Node) -> &[Node];
         fn rename_source(node: &Node) -> &Node;
         fn rename_destination(node: &Node) -> &Node;
@@ -2824,7 +2832,7 @@ use crate::ddl::{
     database_if_not_exists,
     database_name, database_has_name, database_options, drop_if_exists, drop_index_name, drop_index_relation,
     drop_relations, drop_temporary, foreign_key_definition, foreign_key_index_name,
-    foreign_key_name, fork_destination, fork_source, merge_table_definition, index_column_descending,
+    foreign_key_name, fork_destination, fork_source, merge_table_definition, diff_table_definition, index_column_descending,
     index_column_expression, index_column_has_prefix, index_column_prefix, index_definition,
     index_definition_name, index_definition_partition, index_definition_table, index_option_global,
     partition_definition, partition_element, partition_subpartition, primary_key_columns,
@@ -2841,7 +2849,7 @@ use crate::command::{
     show_account_has_host, show_account_host, show_account_name, show_database, show_database_status, show_count, show_extended,
     show_filter, show_filter_expression, show_full, show_global, show_has_account,
     show_has_database, show_has_limit, show_if_not_exists, show_like_escape, show_like_pattern,
-    show_limit_count, show_limit_offset, show_object, check_tables,
+    show_limit_count, show_limit_offset, show_object, show_trace_format, check_tables,
 };
 
 use crate::routine::{

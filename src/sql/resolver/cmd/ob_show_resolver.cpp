@@ -565,6 +565,29 @@ int ObShowResolver::resolve(const peg::Node &statement)
         OX(sql_gen.assign_sql_str(select_sql));
       }
       break;
+    case peg::NodeKind::ShowTrace: {
+      const auto format = peg::show_trace_format(statement);
+      const ObString format_name(format.size(), format.data());
+      const bool row_format = format_name.case_compare("ROW") == 0;
+      if (!session_info_->is_use_trace_log()) {
+        ret = OB_NOT_SUPPORTED;
+        LOG_USER_ERROR(OB_NOT_SUPPORTED, "If show trace is not enabled, show trace is");
+      } else if (!row_format && format_name.case_compare("JSON") != 0) {
+        ret = OB_NOT_SUPPORTED;
+        LOG_USER_ERROR(OB_NOT_SUPPORTED, "show format only support json/row, other type is ");
+      } else {
+        show_resv_ctx.stmt_type_ = stmt::T_SHOW_TRACE;
+        session_info_->set_is_row_traceformat(row_format);
+        if (row_format) {
+          GEN_SQL_STEP_1(ObShowSqlSet::SHOW_TRACE);
+          GEN_SQL_STEP_2(ObShowSqlSet::SHOW_TRACE, OB_SYS_DATABASE_NAME, OB_ALL_VIRTUAL_SHOW_TRACE_TNAME);
+        } else {
+          GEN_SQL_STEP_1(ObShowSqlSet::SHOW_TRACE_JSON);
+          GEN_SQL_STEP_2(ObShowSqlSet::SHOW_TRACE_JSON, OB_SYS_DATABASE_NAME, OB_ALL_VIRTUAL_SHOW_TRACE_TNAME);
+        }
+      }
+      break;
+    }
     case peg::NodeKind::ShowParameters:
       show_resv_ctx.stmt_type_ = stmt::T_SHOW_PARAMETERS;
       GEN_SQL_STEP_1(ObShowSqlSet::SHOW_PARAMETERS_WITH_DEFAULT_VALUE);
