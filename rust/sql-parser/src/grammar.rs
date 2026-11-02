@@ -442,11 +442,15 @@ peg::parser! {
             let end=name.end;
             Node::new(Kind::SystemVariable, vec![]).text(name.text).value(scope.unwrap_or(0)).at(start,end)
         }
-        rule user_variable() -> Node = quiet!{start:position!() "@" !"@" name:(string()
-            / start:position!() text:$((cont() / ".")+) end:position!() _ { Node::new(Kind::Ident,vec![]).text(text.into()).at(start,end) }
-            / name:ident() { Node::name(name) })? _ {
-            let (text,end)=name.map_or_else(|| (String::new(),start+1),|mut name| (std::mem::take(&mut name.text),name.end));
-            Node::new(Kind::UserVariable, vec![]).text(text).at(start,end)
+        rule quoted_variable(quote: rule<()>) -> (String,usize)
+            = text:$(quote() (quote() quote() / !quote() (cont() / "." / "/" / "%" / "'" / "\"" / "`"))* quote())
+                end:position!() _ { (decode(text,true),end) }
+        rule user_variable() -> Node = quiet!{start:position!() "@" !"@" name:(
+                quoted_variable(<"'">) / quoted_variable(<"\"">) / quoted_variable(<"`">)
+                / text:$((cont() / ".")+) end:position!() { (text.into(),end) }
+                / end:position!() !['\''|'"'|'`'] { (String::new(),end) }
+            ) _ {
+                Node::new(Kind::UserVariable,vec![]).text(name.0).at(start,name.1)
         }} / expected!("user variable")
         rule atom(level: usize) -> Node
             = charset_literal() / temporal_literal() / binary_literal() / number() / string_expression() / bool_null() / parameter()
@@ -459,8 +463,8 @@ peg::parser! {
             / depth(level) value:date_function(level+1) { value }
             / depth(level) value:string_function(level+1) { value }
             / depth(level) value:json_function(level+1) { value }
-            / depth(level) start:position!() value:(kw("cast") "(" _ value:expr(level+1) kw("as") target:cast_target() array:kw("array")? ignore:kw("ignore")? { (value,target,ignore.is_some(),array.is_some()) }
-                / kw("convert") "(" _ value:expr(level+1) "," _ target:cast_target() { (value,target,false,false) }) ")" end:position!() _ failure:position!() {?
+            / depth(level) start:position!() value:(kw("cast") "(" _ value:expr(level+1) kw("as") target:cast_type() array:kw("array")? ignore:kw("ignore")? { (value,target,ignore.is_some(),array.is_some()) }
+                / kw("convert") "(" _ value:expr(level+1) "," _ target:cast_type() { (value,target,false,false) }) ")" end:position!() _ failure:position!() {?
                 let result=Node::named_call(Kind::Cast,Node::new(Kind::Ident,vec![]).text("cast".into()).at(start,start+4),vec![value.0,value.1])
                     .value(u64::from(value.2) | (u64::from(value.3) << 1)).expression(start,end);
                 result.map_err(|message| diagnostics.record(message,crate::Span { start,end },failure))
@@ -527,11 +531,15 @@ peg::parser! {
             }
             / depth(level) start:position!() !(['x'|'X'] "'" hex_digit()* "'") parts:expression_name() tail:("." _ "*" end:position!() _ { (None, end) }
                 / enabled(parts.len()!=1 || parts[0].quoted || !["row","match","score","point","json_query","json_value","trim","position","weight_string","char","character","array","map","array_agg",
-                    "array_map","array_filter","array_first","array_sortby","vector_distance","vector_similarity","group_concat","listagg","get_format"].iter().any(|name| parts[0].text.eq_ignore_ascii_case(name)))
+                    "array_map","array_filter","array_first","array_sortby","vector_distance","vector_similarity","group_concat","listagg","get_format","cast","convert"]
+                    .iter().any(|name| parts[0].text.eq_ignore_ascii_case(name)))
                     &"(" valid_function(parts.as_slice(),start)
-                    "(" _ modifier:((kw("distinct") / kw("unique")) { Kind::Distinct } / kw("all") { Kind::All })? args:(function_argument(level+1) ++ ("," _))? ")" close:position!() _
+                    "(" _ modifier:((kw("distinct") / kw("unique")) { Kind::Distinct } / kw("all") { Kind::All })?
+                    args:(enabled(parts.len()==1 && !parts[0].quoted && parts[0].text.eq_ignore_ascii_case("count")
+                            && modifier!=Some(Kind::Distinct)) value:star() { vec![value] }
+                        / values:(function_argument(level+1) ++ ("," _))? { values.unwrap_or_default() }) ")" close:position!() _
                     window:(kw("over") value:window(level+1) { value })? followed_by_over:(&kw("over") { true } / { false })
-                    { let end=window.as_ref().map_or(close,|value| value.end); (Some((modifier, args.unwrap_or_default(),window,followed_by_over)), end) })? failure:position!()
+                    { let end=window.as_ref().map_or(close,|value| value.end); (Some((modifier, args,window,followed_by_over)), end) })? failure:position!()
                 {? let name_end=parts.last().unwrap().end; match tail {
                     None => {
                         let end=parts.last().unwrap().end;
@@ -552,7 +560,7 @@ peg::parser! {
             else { Err(diagnostics.record("invalid function name",crate::Span { start,end:parts[0].end },failure)) }
         }
         rule star() -> Node = start:position!() "*" end:position!() _ {? Node::new(Kind::Star, vec![]).expression(start, end) }
-        rule function_argument(level: usize) -> Node = value:(star() / expr(level))
+        rule function_argument(level: usize) -> Node = value:expr(level)
             alias:(enabled(!value.is_wildcard()) kw("as")? label:(name:ident() { Node::name(name) } / string()) { label })? {
                 match alias {
                     Some(alias) => { let (start,end)=(value.start,alias.end); Node::new(Kind::AliasedArgument,vec![value,alias]).at(start,end) },
@@ -1526,11 +1534,6 @@ peg::parser! {
             }
         rule string_length() -> Node = fractional_type_size() / type_size()
         rule charset_keyword() = kw("charset") / (kw("character") / kw("char")) kw("set")
-        rule cast_target() -> Node = cast_type()
-            / data_type()
-            / name:(ident() / name_keyword()) parameters:("(" _ values:(type_size() ++ ("," _)) ")" _ { values })? end:position!() {
-                Node::new(Kind::DataType,parameters.unwrap_or_default()).text(name.text).at(name.start,end)
-            }
         rule cast_type() -> Node
             = start:position!() (kw("nchar") / kw("national") (kw("char") / kw("character")))
                 parameters:("(" _ value:string_length() ")" _ { vec![value] })? end:position!() {?

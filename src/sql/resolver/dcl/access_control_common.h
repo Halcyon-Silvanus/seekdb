@@ -26,7 +26,6 @@ namespace oceanbase::sql::access_control
 enum class AccountNameMode { Schema, Verbatim };
 
 int copy_text(rust::Str text, ObResolverParams &params, common::ObString &copy);
-int check_account_host(rust::Str host);
 int resolve_account(const peg::Node &spec, ObResolverParams &params, AccountNameMode mode,
                     common::ObString &name, common::ObString &host);
 int resolve_role_account(const peg::Node &spec, ObResolverParams &params,

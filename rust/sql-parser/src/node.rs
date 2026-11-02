@@ -677,6 +677,15 @@ impl Node {
             "current_user" => Kind::CurrentUser,
             _ => Kind::Function,
         };
+        if modifier.is_some() && (arguments.is_empty() || !matches!(kind,
+            Kind::Count | Kind::Sum | Kind::Min | Kind::Max | Kind::Avg | Kind::JsonArrayAgg
+                | Kind::JsonObjectAgg | Kind::Stddev | Kind::StddevPop | Kind::StddevSamp
+                | Kind::Variance | Kind::VarPop | Kind::VarSamp | Kind::BitAnd | Kind::BitOr
+                | Kind::BitXor | Kind::Grouping | Kind::ApproxCountDistinct
+                | Kind::ApproxCountDistinctSynopsis | Kind::ApproxCountDistinctSynopsisMerge
+                | Kind::SumOpnsize | Kind::Mvt | Kind::TopFreHist | Kind::HybridHist)) {
+            return Err("aggregate modifier requires an aggregate expression");
+        }
         if matches!(function.as_str(), "substr" | "substring") {
             name.text = "substr".into();
         } else if function == "schema" {

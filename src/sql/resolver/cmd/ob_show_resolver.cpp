@@ -495,7 +495,6 @@ int ObShowResolver::resolve(const peg::Node &statement)
         user.assign_ptr(name.data(), static_cast<int64_t>(name.size()));
         if (peg::show_account_has_host(statement)) {
           const auto hostname = peg::show_account_host(statement);
-          OZ(access_control::check_account_host(hostname));
           host.assign_ptr(hostname.data(), static_cast<int64_t>(hostname.size()));
         } else host = ObString::make_string(OB_DEFAULT_HOST_NAME);
         OZ(schema_checker_->get_user_id(user, host, user_id));

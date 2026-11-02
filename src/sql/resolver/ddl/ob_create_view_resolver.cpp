@@ -19,7 +19,6 @@
 #include "sql/resolver/ddl/ob_create_view_resolver.h"
 #include "sql/syntax.h"
 #include "sql/printer/ob_select_stmt_printer.h"
-#include "sql/resolver/dcl/access_control_common.h"
 
 namespace oceanbase
 {
@@ -44,8 +43,6 @@ int ObCreateViewResolver::resolve(const peg::Node &statement)
   const auto view = peg::view_definition(statement);
   if (OB_ISNULL(allocator_) || OB_ISNULL(session_info_) || OB_ISNULL(params_.query_ctx_)) {
     ret = OB_ERR_UNEXPECTED;
-  } else if (!view.definer.empty() && view.definer[0].kind() == peg::NodeKind::UserHost
-      && OB_FAIL(access_control::check_account_host(peg::account_identity(view.definer[0]).host))) {
   } else if (OB_UNLIKELY(NULL == (stmt = create_stmt<ObCreateTableStmt>()))) {
     ret = OB_ALLOCATE_MEMORY_FAILED;
     LOG_ERROR("create view stmt failed", K(ret));

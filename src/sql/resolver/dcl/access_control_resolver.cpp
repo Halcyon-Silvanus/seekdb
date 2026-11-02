@@ -17,8 +17,6 @@
 #define USING_LOG_PREFIX SQL_RESV
 
 #include <algorithm>
-#include <cctype>
-#include <string_view>
 
 #include "sql/resolver/dcl/access_control_resolver.h"
 #include "sql/resolver/dcl/access_control_common.h"
@@ -49,20 +47,6 @@ int copy_text(rust::Str text, ObResolverParams &params, ObString &copy)
   return ret;
 }
 
-int check_account_host(rust::Str host)
-{
-  int ret = OB_SUCCESS;
-  const std::string_view punctuation = "_.$/%`\"'";
-  for (unsigned char ch : host) {
-    if (ch < 128 && !std::isalnum(ch) && punctuation.find(ch) == std::string_view::npos) {
-      ret = OB_INVALID_ARGUMENT;
-      LOG_USER_ERROR(OB_INVALID_ARGUMENT, "account host");
-      break;
-    }
-  }
-  return ret;
-}
-
 int resolve_account(const peg::Node &spec, ObResolverParams &params, AccountNameMode mode,
                     ObString &name, ObString &host)
 {
@@ -81,7 +65,6 @@ int resolve_account(const peg::Node &spec, ObResolverParams &params, AccountName
     OZ (copy_text(peg::account_name(spec), params, name));
     if (OB_SUCC(ret)) {
       if (peg::account_has_host(spec)) {
-        OZ (check_account_host(peg::account_host(spec)));
         OZ (copy_text(peg::account_host(spec), params, host));
       } else {
         host = ObString::make_string(OB_DEFAULT_HOST_NAME);
