@@ -37,7 +37,6 @@ namespace sql
 DEF_SIMPLE_CMD_RESOLVER(ObFreezeResolver);
 DEF_SIMPLE_CMD_RESOLVER(MergeControlResolver);
 DEF_SIMPLE_CMD_RESOLVER(ClearMergeErrorResolver);
-DEF_SIMPLE_CMD_RESOLVER(RefreshMemoryStatResolver);
 DEF_SIMPLE_CMD_RESOLVER(CancelTaskResolver);
 DEF_SIMPLE_CMD_RESOLVER(ObFlushCacheResolver);
 DEF_SIMPLE_CMD_RESOLVER(ObFlushKVCacheResolver);

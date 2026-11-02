@@ -27,6 +27,8 @@ mod diagnostic;
 mod embedded_sql;
 pub mod expression;
 mod fts;
+// PEG adds framework arguments to rules with explicit parsing state.
+#[allow(clippy::too_many_arguments)]
 mod grammar;
 mod inspect;
 mod lex;

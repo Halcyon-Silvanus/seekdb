@@ -1041,9 +1041,8 @@ pub fn rewrite_parameter_sql(
                         return Err(ParameterError::Unsupported);
                     }
                     result.push(b'-');
-                    for _ in text.take_while(u8::is_ascii_whitespace) {
-                        result.push(b' ');
-                    }
+                    let spaces = text.take_while(u8::is_ascii_whitespace).count();
+                    result.resize(result.len() + spaces, b' ');
                     result.push(b'?');
                 }
                 _ => return Err(ParameterError::InvalidArgument),

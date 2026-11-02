@@ -254,6 +254,7 @@ impl Node {
         Self::optional(value.map(|value| Self::new(Kind::Where, vec![value])))
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn insert(
         replace: bool,
         ignore: bool,

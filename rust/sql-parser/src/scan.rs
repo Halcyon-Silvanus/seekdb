@@ -257,7 +257,7 @@ impl Scanner<'_> {
         if !quoted && (end == begin || hex && identifier(self.byte(end))) {
             return Ok(false);
         }
-        if quoted && hex && (end - begin) % 2 != 0
+        if quoted && hex && !(end - begin).is_multiple_of(2)
             || !quoted && matches!(self.byte(start + 1), b'X' | b'B')
         {
             return Err(start);

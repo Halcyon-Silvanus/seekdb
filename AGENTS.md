@@ -5,8 +5,9 @@
 - Add the repository's standard OceanBase copyright and Apache 2.0 license header to every new database source file, including C/C++ headers and Rust sources.
 - Scripts and build files, including Bazel files, do not require license headers.
 
-## C++ Type Naming
+## Naming
 
+- Do not add project-name prefixes (`Seekdb`, `SeekDB`, or `seekdb_`) to new type or function names. Use namespaces or modules to distinguish names.
 - New C++ classes, including interface classes, do not need the legacy `Ob` prefix.
 - Keep the `I` prefix for interface classes. For example, use `ICacheMemoryGetter` instead of `ObICacheMemoryGetter`.
 - Do not rename existing types only to remove the `Ob` prefix unless the task explicitly requires it.
@@ -17,6 +18,7 @@
 
 ## Rust–C++ Interoperability
 
+- Before designing, implementing, or reviewing a Rust migration or refactor, read and follow [Rust refactoring guidelines](docs/developer-guide/en/rust-refactoring.md). This includes changes to C++ callers, CXX bridges, and build integration within that task.
 - Use CXX (`#[cxx::bridge]`) for Rust–C++ interoperability in both directions.
 - Extend the repository's existing CXX bridges and build integration; do not add handwritten C ABI bridges or another FFI framework for Rust–C++ calls.
 

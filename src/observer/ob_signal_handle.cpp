@@ -103,7 +103,7 @@ int ObSignalHandle::add_signums_to_set(sigset_t &sig_set)
     int rc = 0;
     int signals[] = {SIGPIPE, SIGTERM, SIGUSR1,
                      40, 41, 42, 43, 44, 45, 46, 47, 48, 49,
-                     50, 51, 52, 53, 55, 56, 57, 59, 60, 62,
+                     50, 51, 52, 53, 55, 56, 57, 59, 60,
                      63, 64};
     for (int64_t i = 0; OB_SUCC(ret) && i < ARRAYSIZEOF(signals); ++i) {
       if (0 != (rc = sigaddset(&sig_set, signals[i]))) {

@@ -559,7 +559,6 @@ pub(crate) mod ffi {
         SuspendMerge,
         ResumeMerge,
         ClearMergeError,
-        RefreshMemoryStat,
         CancelTask,
         ResetConfig,
         FlushCache,

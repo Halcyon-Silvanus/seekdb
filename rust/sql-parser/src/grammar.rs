@@ -1614,10 +1614,9 @@ peg::parser! {
                 let span=crate::Span { start,end };
                 let mut value=Node::data_type(name, parameters.unwrap_or_default(), unsigned, zerofill.is_some(), start, end)
                     .map_err(|message| diagnostics.record(message,span,end))?;
-                if binary.is_some() || charset.is_some() {
-                    if !matches!(name,"char"|"varchar"|"tinytext"|"text"|"mediumtext"|"longtext"|"string") {
-                        return Err(diagnostics.record("character type",span,end));
-                    }
+                if (binary.is_some() || charset.is_some())
+                    && !matches!(name,"char"|"varchar"|"tinytext"|"text"|"mediumtext"|"longtext"|"string") {
+                    return Err(diagnostics.record("character type",span,end));
                 }
                 if binary.is_some() { value.children.push(Node::new(Kind::BinaryAttribute,vec![]).value(1)); }
                 value.children.extend(charset);
@@ -1966,7 +1965,7 @@ peg::parser! {
                 }.into_node())
             }
         rule outline_query_end(start: usize, end: usize) -> usize = #{|input: &str, pos| {
-            let mut tokens = crate::prefix::Tokens::new(input[start..end].as_bytes(), mode);
+            let mut tokens = crate::prefix::Tokens::new(&input.as_bytes()[start..end], mode);
             let mut last = 0;
             loop {
                 match tokens.next() {
@@ -2221,7 +2220,6 @@ peg::parser! {
             flush_cache()
             / kind:(kw("suspend") { Kind::SuspendMerge } / kw("resume") { Kind::ResumeMerge }) kw("merge") { Node::new(kind,vec![]) }
             / kw("clear") kw("merge") kw("error") { Node::new(Kind::ClearMergeError,vec![]) }
-            / kw("refresh") kw("memory") kw("stat") { Node::new(Kind::RefreshMemoryStat,vec![]) }
             / kw("cancel") kw("task") id:string() { Node::new(Kind::CancelTask,vec![id]) }
             / kind:(kw("major") { 1 } / kw("minor") { 2 }) kw("freeze")
                 tablet:(kw("tablet_id") "=" _ value:load_integer() { value })? {

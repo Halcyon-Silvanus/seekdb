@@ -71,11 +71,6 @@ int ClearMergeErrorResolver::resolve(const peg::Node &statement)
   return create_stmt<ObClearMergeErrorStmt>() == nullptr ? OB_ALLOCATE_MEMORY_FAILED : OB_SUCCESS;
 }
 
-int RefreshMemoryStatResolver::resolve(const peg::Node &statement)
-{
-  return create_stmt<ObRefreshMemStatStmt>() == nullptr ? OB_ALLOCATE_MEMORY_FAILED : OB_SUCCESS;
-}
-
 int CancelTaskResolver::resolve(const peg::Node &statement)
 {
   int ret = OB_SUCCESS;

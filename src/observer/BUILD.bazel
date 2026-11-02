@@ -29,6 +29,8 @@ _OBSERVER_GENERATED_SOURCE_REPLACEMENTS = {
 
 
 _OBSERVER_NATIVE_DEPS = [
+    "//src/share:startup_result",
+    "//src/share:local_io_config",
     "//rust:sql_nio_headers",
     "//src/oblib/easy:easy",
     "//src/oblib:common_sql_mode",
@@ -399,7 +401,8 @@ _TAIL_LINK_DEPS = select({
 _ORDERED_LINK_FILES = [
     "//rust:archive",
 ] + select({
-    "//bazel:sanity_enabled": ["//deps/external:jemalloc_archive"],
+    "@platforms//os:linux": ["//deps/external:jemalloc_archive"],
+    "@platforms//os:macos": ["//deps/external:jemalloc_archive"],
     "//conditions:default": [],
 }) + select({
     "@platforms//os:windows": [],
@@ -438,6 +441,8 @@ _EXECUTABLE_LINKOPTS = select({
     "@platforms//os:windows": ["/INCREMENTAL:NO", "/OPT:REF", "/OPT:ICF"],
     "@platforms//os:android": ["-pie", "-fopenmp", "-static-openmp", "-Wl,--gc-sections", "-Wl,--build-id=sha1"],
     "@platforms//os:macos": [
+        # Retain jemalloc's standalone malloc-zone registration constructor.
+        "-Wl,-u,_je_zone_register",
         "-Wl,-dead_strip",
         "-Wl,-framework,Security",
         "-Wl,-framework,CoreFoundation",

@@ -34,7 +34,6 @@
 #include "common/ob_accuracy.h"
 #include "common/mysqlclient/ob_mysql_global.h"
 #include "query/engine/expr/ob_item_type.h"
-#include "query/engine/expr/ob_item_type.h"
 #include "query/engine/expr/ob_expr_res_type.h"
 #include "query/engine/expr/ob_expr.h"
 #include "query/engine/expr/ob_expr_cmp_func.h"

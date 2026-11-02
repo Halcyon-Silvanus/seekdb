@@ -119,7 +119,7 @@ pub fn default_expression(node: &Node) -> DefaultExpression<'_> {
     let timestamp_precision = if form == DefaultForm::Timestamp {
         call_arguments(node)
             .first()
-            .map_or(0, |value| integer_literal_value(value))
+            .map_or(0, integer_literal_value)
     } else {
         0
     };
@@ -197,7 +197,7 @@ impl<'a> DefaultArguments<'a> {
                 let index = index - usize::from(case_has_operand(node));
                 let arms = case_arms(node);
                 if let Some(arm) = arms.get(index / 2) {
-                    Some(if index % 2 == 0 {
+                    Some(if index.is_multiple_of(2) {
                         case_condition(arm)
                     } else {
                         case_result(arm)
