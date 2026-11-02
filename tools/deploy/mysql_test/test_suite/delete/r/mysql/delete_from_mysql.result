@@ -327,7 +327,7 @@ affected rows: 0
 INSERT INTO db2.t1 (a) SELECT * FROM t2;
 affected rows: 0
 DELETE FROM t1 alias USING t1, t2 alias WHERE t1.a = alias.a;
-ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near 'USING' at line 1, column 22
+ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near 'USING t1, t2 alias WHERE t1.a = alias.a' at line 1, column 22
 DELETE FROM alias USING t1, t2 alias WHERE t1.a = alias.a;
 affected rows: 0
 DELETE FROM t1, alias USING t1, t2 alias WHERE t1.a = alias.a;
@@ -335,7 +335,7 @@ affected rows: 0
 DELETE FROM t1, t2 USING t1, t2 alias WHERE t1.a = alias.a;
 ERROR 42S02: Unknown table 't2' in MULTI DELETE
 DELETE FROM db1.t1 alias USING db1.t1, db2.t1 alias WHERE db1.t1.a = alias.a;
-ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near 'USING' at line 1, column 26
+ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near 'USING db1.t1, db2.t1 alias WHERE db1.t1.a = alias.a' at line 1, column 26
 DELETE FROM alias USING db1.t1, db2.t1 alias WHERE db1.t1.a = alias.a;
 affected rows: 0
 DELETE FROM db2.alias USING db1.t1, db2.t1 alias WHERE db1.t1.a = alias.a;
@@ -346,7 +346,7 @@ SELECT * FROM t1;
 a
 affected rows: 0
 DELETE FROM t1 alias USING t1 alias WHERE a = 2;
-ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near 'USING' at line 1, column 22
+ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near 'USING t1 alias WHERE a = 2' at line 1, column 22
 SELECT * FROM t1;
 a
 affected rows: 0

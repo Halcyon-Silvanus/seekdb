@@ -1114,7 +1114,7 @@ ERROR 22023: Invalid GIS data provided to function st_geomfromtext.
 SELECT ST_INTERSECTS(ST_GEOMFROMTEXT('POINT(! 0)'),ST_GEOMFROMTEXT('LINESTRING(0 0,10 10)'));
 ERROR 22023: Invalid GIS data provided to function st_geomfromtext.
 SELECT ST_INTERSECTS(ST_GEOMFROMTEXT('POINT('!' 0)'),ST_GEOMFROMTEXT('LINESTRING(0 0,10 10)'));
-ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near '!' at line 1, column 46
+ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near '!' 0)'),ST_GEOMFROMTEXT('LINESTRING(0 0,10 10)'))' at line 1, column 46
 SELECT ST_INTERSECTS(ST_GEOMFROMTEXT('POINT(12,34 0)'),ST_GEOMFROMTEXT('LINESTRING(0 0,10 10)'));
 ERROR 22023: Invalid GIS data provided to function st_geomfromtext.
 SELECT ST_INTERSECTS(ST_GEOMFROMTEXT('LINESTRING(a 0,10 10)'),ST_GEOMFROMTEXT('LINESTRING(0 0,10 10)'));
@@ -1122,7 +1122,7 @@ ERROR 22023: Invalid GIS data provided to function st_geomfromtext.
 SELECT ST_INTERSECTS(ST_GEOMFROMTEXT('LINESTRING(0 0,! 10)'),ST_GEOMFROMTEXT('LINESTRING(0 0,10 10)'));
 ERROR 22023: Invalid GIS data provided to function st_geomfromtext.
 SELECT ST_INTERSECTS(ST_GEOMFROMTEXT('LINESTRING('!' 0,10 10)'),ST_GEOMFROMTEXT('LINESTRING(0 0,10 10)'));
-ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near '!' at line 1, column 51
+ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near '!' 0,10 10)'),ST_GEOMFROMTEXT('LINESTRING(0 0,10 10)'))' at line 1, column 51
 SELECT ST_INTERSECTS(ST_GEOMFROMTEXT('LINESTRING(12,34 0,10 10)'),ST_GEOMFROMTEXT('LINESTRING(0 0,10 10)'));
 ERROR 22023: Invalid GIS data provided to function st_geomfromtext.
 SELECT ST_INTERSECTS(ST_GEOMFROMTEXT('POLYGON((a 0,10 10,10 0,0 0))'),ST_GEOMFROMTEXT('LINESTRING(0 0,10 10)'));
@@ -1130,17 +1130,17 @@ ERROR 22023: Invalid GIS data provided to function st_geomfromtext.
 SELECT ST_INTERSECTS(ST_GEOMFROMTEXT('POLYGON((0 0,! 10,10 0,0 0))'),ST_GEOMFROMTEXT('LINESTRING(0 0,10 10)'));
 ERROR 22023: Invalid GIS data provided to function st_geomfromtext.
 SELECT ST_INTERSECTS(ST_GEOMFROMTEXT('POLYGON(('!' 0,10 10,10 0,0 0))'),ST_GEOMFROMTEXT('LINESTRING(0 0,10 10)'));
-ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near '!' at line 1, column 49
+ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near '!' 0,10 10,10 0,0 0))'),ST_GEOMFROMTEXT('LINESTRING(0 0,10 10)'))' at line 1, column 49
 SELECT ST_INTERSECTS(ST_GEOMFROMTEXT('POLYGON((12,34 0,10 10,10 0,0 0))'),ST_GEOMFROMTEXT('LINESTRING(0 0,10 10)'));
 ERROR 22023: Invalid GIS data provided to function st_geomfromtext.
 SELECT ST_INTERSECTS(ST_GEOMFROMTEXT('POLYGON((12,34 0,10 10,10 0,0 0)'),ST_GEOMFROMTEXT('LINESTRING(0 0,10 10)'));
 ERROR 22023: Invalid GIS data provided to function st_geomfromtext.
 SELECT ST_INTERSECTS(,);
-ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near ',' at line 1, column 22
+ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near ',)' at line 1, column 22
 SELECT ST_INTERSECTS(ST_GEOMFROMTEXT(@star_of_elems),);
 ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near ')' at line 1, column 54
 SELECT ST_INTERSECTS(,ST_GEOMFROMTEXT(@star_top));
-ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near ',' at line 1, column 22
+ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near ',ST_GEOMFROMTEXT(@star_top))' at line 1, column 22
 # SRID 0 (should pass)
 SELECT ST_INTERSECTS(
 ST_GEOMFROMTEXT('POINT(0 0)', 0),

@@ -2,9 +2,9 @@
 # Base test of GEOMETRY function.
 # ----------------------------------------------------------------------
 SELECT ST_ASTEXT(POINT(1));
-ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near ')' at line 1, column 25
+ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near '))' at line 1, column 25
 SELECT ST_ASTEXT(POINT(1,1,1));
-ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near ',' at line 1, column 27
+ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near ',1))' at line 1, column 27
 SELECT ST_ASTEXT(POINT(1, 1));
 ST_ASTEXT(POINT(1, 1))
 POINT(1 1)

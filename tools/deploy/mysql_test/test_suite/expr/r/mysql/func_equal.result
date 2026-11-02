@@ -36,7 +36,7 @@ id	value
 select * from t1 where (value) = (null);
 id	value
 select * from t1 where ROW(value) = ROW(null);
-ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near ')' at line 1, column 33
+ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near ') = ROW(null)' at line 1, column 33
 select * from t1 where (id, value) = (1, null);
 id	value
 drop table t1,t2;

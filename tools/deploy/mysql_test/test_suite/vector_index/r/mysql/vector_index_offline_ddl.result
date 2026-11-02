@@ -195,7 +195,7 @@ insert into t_vec values(1, '[1,2,1]');
 alter table t_vec add index idx1(c2);
 ERROR 0A000: create index on vector column is not supported
 alter table t_vec add vector index idx1(c2) with (distance=l2, type=hnsw);
-ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near 'index' at line 1, column 30
+ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near 'index idx1(c2) with (distance=l2, type=hnsw)' at line 1, column 30
 create index idx1 on t_vec(c2);
 ERROR 0A000: create index on vector or array column is not supported
 create vector index idx1 on t_vec(c2) with (distance=l2, type=hnsw);

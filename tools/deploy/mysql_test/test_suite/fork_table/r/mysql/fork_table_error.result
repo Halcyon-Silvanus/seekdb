@@ -136,9 +136,9 @@ id int primary key,
 name varchar(50)
 );
 fork table t6_fork from t6;
-ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use; expected '.' or TO near 'from' at line 1, column 20
+ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use; expected '.' or TO near 'from t6' at line 1, column 20
 fork t6_fork to t6;
-ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use; expected DATABASE or TABLE near 't6_fork' at line 1, column 6
+ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use; expected DATABASE or TABLE near 't6_fork to t6' at line 1, column 6
 fork table t6_fork;
 ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use; unexpected end of input; expected '.' or TO at line 1, column 19
 ============================================

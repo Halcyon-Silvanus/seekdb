@@ -239,7 +239,7 @@ int report_parse_error(const common::ObString &sql, const peg::ParseDiagnostic &
       ++column;
     }
   }
-  size_t length = std::min<size_t>(80, diagnostic.span.end - offset);
+  size_t length = std::min<size_t>(80, sql.length() - offset);
   while (length > 0 && offset + length < sql.length()
          && (static_cast<unsigned char>(sql.ptr()[offset + length]) & 0xc0) == 0x80) {
     --length;
@@ -279,7 +279,7 @@ int report_parse_error(const common::ObString &sql, const peg::ParseDiagnostic &
       if (sql.ptr()[offset + i] == '\0') description += "\\0";
       else description.push_back(sql.ptr()[offset + i]);
     }
-    if (length < diagnostic.span.end - offset) description += "...";
+    if (length < sql.length() - offset) description += "...";
     description += "'";
   }
   description += " at line " + std::to_string(line) + ", column " + std::to_string(column);

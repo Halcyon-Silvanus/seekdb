@@ -193,7 +193,7 @@ ERROR 22023: Invalid GIS data provided to function st_geomfromtext.
 SELECT ST_AREA(ST_GEOMFROMTEXT('POINT(! 0)'));
 ERROR 22023: Invalid GIS data provided to function st_geomfromtext.
 SELECT ST_AREA(ST_GEOMFROMTEXT('POINT('!' 0)'));
-ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near '!' at line 1, column 40
+ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near '!' 0)'))' at line 1, column 40
 SELECT ST_AREA(ST_GEOMFROMTEXT('POINT(12,34 0)'));
 ERROR 22023: Invalid GIS data provided to function st_geomfromtext.
 SELECT ST_AREA(ST_GEOMFROMTEXT('LINESTRING(a 0,10 10)'));
@@ -201,7 +201,7 @@ ERROR 22023: Invalid GIS data provided to function st_geomfromtext.
 SELECT ST_AREA(ST_GEOMFROMTEXT('LINESTRING(0 0,! 10)'));
 ERROR 22023: Invalid GIS data provided to function st_geomfromtext.
 SELECT ST_AREA(ST_GEOMFROMTEXT('LINESTRING('!' 0,10 10)'));
-ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near '!' at line 1, column 45
+ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near '!' 0,10 10)'))' at line 1, column 45
 SELECT ST_AREA(ST_GEOMFROMTEXT('LINESTRING(12,34 0,10 10)'));
 ERROR 22023: Invalid GIS data provided to function st_geomfromtext.
 SELECT ST_AREA(ST_GEOMFROMTEXT('POLYGON((a 0,10 10,10 0,0 0))'));
@@ -209,7 +209,7 @@ ERROR 22023: Invalid GIS data provided to function st_geomfromtext.
 SELECT ST_AREA(ST_GEOMFROMTEXT('POLYGON((0 0,! 10,10 0,0 0))'));
 ERROR 22023: Invalid GIS data provided to function st_geomfromtext.
 SELECT ST_AREA(ST_GEOMFROMTEXT('POLYGON(('!' 0,10 10,10 0,0 0))'));
-ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near '!' at line 1, column 43
+ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near '!' 0,10 10,10 0,0 0))'))' at line 1, column 43
 SELECT ST_AREA(ST_GEOMFROMTEXT('POLYGON((12,34 0,10 10,10 0,0 0))'));
 ERROR 22023: Invalid GIS data provided to function st_geomfromtext.
 SELECT ST_AREA(ST_GEOMFROMTEXT('POLYGON((0 0))'));
