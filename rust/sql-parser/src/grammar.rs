@@ -449,7 +449,8 @@ peg::parser! {
             Node::new(Kind::UserVariable, vec![]).text(text).at(start,end)
         }} / expected!("user variable")
         rule atom(level: usize) -> Node
-            = depth(level) start:position!() "{" _
+            = charset_literal() / temporal_literal() / binary_literal() / number() / string_expression() / bool_null() / parameter()
+            / depth(level) start:position!() "{" _
                 !(temporal_kind() (space()+ / "--" ['\n'|'\r'])? ['\''|'"'])
                 action:ident() operand:expr(level+1) "}" end:position!() _ {?
                 Node::odbc_escape(&action.text,operand,start,end)
@@ -514,7 +515,6 @@ peg::parser! {
                     value.children.extend(separator);
                     match window { Some(window) => Node::new(Kind::WindowFunction,vec![value,window]),None => value }.expression(start,end)
                 }
-            / charset_literal() / temporal_literal() / binary_literal() / number() / string_expression() / bool_null() / parameter()
             / depth(level) start:position!() names:name() column_end:position!() op:$("->>" / "->") _ path:string_expression() {?
                 let end=path.end;
                 let value=Node::named_call(Kind::Function,Node::new(Kind::Ident,vec![]).text("JSON_EXTRACT".into()),vec![Node::column(names,false,start,column_end)?,path]);
