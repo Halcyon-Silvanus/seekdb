@@ -933,6 +933,7 @@ pub(crate) mod ffi {
         WeightStringType,
         WeightStringLevels,
         WeightStringLevel,
+        MergeTable,
     }
 
     #[derive(Clone, Copy, Debug, Default)]
@@ -1922,6 +1923,16 @@ pub(crate) mod ffi {
         select_mode: TableSelectMode,
         has_partition: bool,
     }
+    enum MergeStrategy {
+        Fail,
+        Theirs,
+        Ours,
+    }
+    struct MergeTableDefinition<'a> {
+        incoming: &'a Node,
+        current: &'a Node,
+        strategy: MergeStrategy,
+    }
     struct ColumnSkipIndexSyntax {
         min_max: bool,
         sum: bool,
@@ -2185,6 +2196,7 @@ pub(crate) mod ffi {
         fn drop_relations(node: &Node) -> &[Node];
         fn fork_source(node: &Node) -> &Node;
         fn fork_destination(node: &Node) -> &Node;
+        unsafe fn merge_table_definition<'a>(node: &'a Node) -> MergeTableDefinition<'a>;
         fn rename_actions(node: &Node) -> &[Node];
         fn rename_source(node: &Node) -> &Node;
         fn rename_destination(node: &Node) -> &Node;
@@ -2812,7 +2824,7 @@ use crate::ddl::{
     database_if_not_exists,
     database_name, database_has_name, database_options, drop_if_exists, drop_index_name, drop_index_relation,
     drop_relations, drop_temporary, foreign_key_definition, foreign_key_index_name,
-    foreign_key_name, fork_destination, fork_source, index_column_descending,
+    foreign_key_name, fork_destination, fork_source, merge_table_definition, index_column_descending,
     index_column_expression, index_column_has_prefix, index_column_prefix, index_definition,
     index_definition_name, index_definition_partition, index_definition_table, index_option_global,
     partition_definition, partition_element, partition_subpartition, primary_key_columns,

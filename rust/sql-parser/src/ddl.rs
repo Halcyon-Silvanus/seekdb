@@ -706,6 +706,19 @@ pub(crate) fn fork_source(node: &Node) -> &Node {
 pub(crate) fn fork_destination(node: &Node) -> &Node {
     &node.children[0]
 }
+pub(crate) fn merge_table_definition(node: &Node) -> crate::bridge::ffi::MergeTableDefinition<'_> {
+    use crate::bridge::ffi::{MergeStrategy, MergeTableDefinition};
+    MergeTableDefinition {
+        incoming: &node.children[0],
+        current: &node.children[1],
+        strategy: match node.value {
+            0 => MergeStrategy::Fail,
+            1 => MergeStrategy::Theirs,
+            2 => MergeStrategy::Ours,
+            _ => unreachable!(),
+        },
+    }
+}
 pub(crate) fn rename_actions(node: &Node) -> &[Node] {
     &node.children
 }

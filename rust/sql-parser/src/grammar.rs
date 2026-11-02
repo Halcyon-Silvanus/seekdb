@@ -2022,6 +2022,10 @@ peg::parser! {
             / kw("fork") kw("database") source:ident() kw("to") destination:ident() {
                 Node::new(Kind::ForkDatabase,vec![Node::name(destination),Node::name(source)])
             }
+            / kw("merge") kw("table") incoming:relation_name() kw("into") current:relation_name()
+                strategy:(kw("strategy") value:(kw("fail") { 0 } / kw("theirs") { 1 } / kw("ours") { 2 }) { value })? {?
+                Ok(Node::new(Kind::MergeTable,vec![Node::relation(incoming)?,Node::relation(current)?]).value(strategy.unwrap_or(0)))
+            }
             / kw("drop") kw("view") exists:if_exists()? names:(relation_name() ++ ("," _)) (kw("cascade") / kw("restrict"))? {?
                 let views=names.into_iter().map(Node::relation).collect::<Result<Vec<_>,_>>()?;
                 Ok(Node::new(Kind::DropView,vec![Node::missing(),Node::optional(exists),Node::new(Kind::ViewList,views)]))

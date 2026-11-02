@@ -31,6 +31,7 @@
 #include "sql/resolver/ddl/ob_truncate_table_resolver.h"
 #include "sql/resolver/ddl/ob_fork_table_resolver.h"
 #include "sql/resolver/ddl/ob_fork_database_resolver.h"
+#include "sql/resolver/cmd/merge_table_resolver.h"
 #include "sql/resolver/ddl/ob_create_table_like_resolver.h"
 #include "sql/resolver/ddl/ob_alter_table_resolver.h"
 #include "sql/resolver/ddl/alter_database_resolver.h"
@@ -274,6 +275,10 @@ int ObResolver::resolve(const peg::Node &statement, ObStmt *&stmt)
       case peg::NodeKind::ForkDatabase:
         params_.resolver_scope_stmt_type_ = T_FORK_DATABASE;
         ret = stmt_resolver_func<ObForkDatabaseResolver>(params_, statement, stmt);
+        break;
+      case peg::NodeKind::MergeTable:
+        params_.resolver_scope_stmt_type_ = T_MERGE_TABLE;
+        ret = stmt_resolver_func<MergeTableResolver>(params_, statement, stmt);
         break;
       case peg::NodeKind::Freeze:
         params_.resolver_scope_stmt_type_ = T_FREEZE;

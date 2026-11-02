@@ -139,6 +139,7 @@ std::optional<NativeStatementTraits> native_statement_traits(Kind kind)
     case Kind::CreateTableLike: return NativeStatementTraits{stmt::T_CREATE_TABLE_LIKE, false, false};
     case Kind::ForkTable: return NativeStatementTraits{stmt::T_FORK_TABLE, false, false};
     case Kind::ForkDatabase: return NativeStatementTraits{stmt::T_FORK_DATABASE, false, false};
+    case Kind::MergeTable: return NativeStatementTraits{stmt::T_MERGE_TABLE, false, false};
     case Kind::Freeze: return NativeStatementTraits{stmt::T_FREEZE, false, false};
     case Kind::SuspendMerge:
     case Kind::ResumeMerge: return NativeStatementTraits{stmt::T_ADMIN_MERGE, false, false};
