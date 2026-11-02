@@ -16,7 +16,7 @@ select * from create_index_with_parser_properties where match(a) against('1a');
 | 1a   | 1a   |
 +------+------+
 alter table create_index_with_parser_properties add fulltext index fidx2(b) WITH PARSER ngram PARSER_PROPERTIES=(ngram_token_size=-1);
-ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near '-1)' at line 1
+ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near '-' at line 1, column 131
 alter table create_index_with_parser_properties add fulltext index fidx2(b) WITH PARSER ngram PARSER_PROPERTIES=(ngram_token_size=0);
 ERROR HY000: Incorrect arguments to the ngram_token_size must be in [1, 10]
 alter table create_index_with_parser_properties add fulltext index fidx2(b) WITH PARSER ngram PARSER_PROPERTIES=(ngram_token_size=11);
@@ -43,9 +43,9 @@ ERROR HY000: Incorrect arguments to the min_token_size must be in [1, 16]
 create fulltext index fidx3 on create_index_with_parser_properties(a, b) WITH PARSER space PARSER_PROPERTIES=(min_token_size=17);
 ERROR HY000: Incorrect arguments to the min_token_size must be in [1, 16]
 create fulltext index fidx3 on create_index_with_parser_properties(a, b) WITH PARSER space PARSER_PROPERTIES=(min_token_size=-1, max_token_size=0);
-ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near '-1, max_token_size=0)' at line 1
+ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near '-' at line 1, column 126
 create fulltext index fidx3 on create_index_with_parser_properties(a, b) WITH PARSER space PARSER_PROPERTIES=(min_token_size=1, max_token_size=-1);
-ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near '-1)' at line 1
+ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near '-' at line 1, column 144
 create fulltext index fidx3 on create_index_with_parser_properties(a, b) WITH PARSER space PARSER_PROPERTIES=(min_token_size=0, max_token_size=1);
 ERROR HY000: Incorrect arguments to the min_token_size must be in [1, 16]
 create fulltext index fidx3 on create_index_with_parser_properties(a, b) WITH PARSER ngram2 PARSER_PROPERTIES=(min_ngram_size=5);
@@ -93,8 +93,7 @@ CREATE TABLE fts_basic_article (
     content TEXT,
     FULLTEXT INDEX ctx(title, content) WITH PARSER_PROPERTIES=()
 );
-ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near 'PARSER_PROPERTIES=()
-)' at line 5
+ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use; expected '(' or PARSER near 'PARSER_PROPERTIES' at line 5, column 45
 CREATE TABLE fts_basic_article (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     title VARCHAR(200),

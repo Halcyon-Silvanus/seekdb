@@ -175,16 +175,16 @@ DROP TABLE IF EXISTS fts_test;
 create table fts_test(seq_id int PRIMARY KEY, detail varchar(4096));
 
 CREATE INDEX f200 on fts_test(detail) WITH PARSER ngram;
-ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near 'PARSER ngram' at line 1
+ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use; expected '(' near 'PARSER' at line 1, column 44
 
 CREATE SPATIAL INDEX f200 on fts_test(detail) WITH PARSER ngram;
-ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near 'PARSER ngram' at line 1
+ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use; expected '(' near 'PARSER' at line 1, column 52
 
 CREATE UNIQUE INDEX f200 on fts_test(detail) WITH PARSER ngram;
-ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near 'PARSER ngram' at line 1
+ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use; expected '(' near 'PARSER' at line 1, column 51
 
 CREATE VECTOR INDEX f200 on fts_test(detail) WITH PARSER ngram;
-ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near 'PARSER ngram' at line 1
+ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use; expected '(' near 'PARSER' at line 1, column 51
 
 DROP TABLE IF EXISTS fts_test;
 

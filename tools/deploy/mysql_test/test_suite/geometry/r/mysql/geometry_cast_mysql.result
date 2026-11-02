@@ -1132,23 +1132,23 @@ DROP TABLE gis_geometrycollection_castable;
 #
 # Casting to GEOMETRY must raise error.
 SELECT ST_ASTEXT(CAST(ST_GEOMFROMTEXT('POINT(1 1)') AS GEOMETRY));
-ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near 'GEOMETRY))' at line 1
+ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near 'GEOMETRY' at line 1, column 56
 #
 # Casting to CURVE must raise error.
 SELECT ST_ASTEXT(CAST(ST_GEOMFROMTEXT('POINT(1 1)') AS CURVE));
-ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near 'CURVE))' at line 1
+ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near 'CURVE' at line 1, column 56
 #
 # Casting to SURFACE must raise error.
 SELECT ST_ASTEXT(CAST(ST_GEOMFROMTEXT('POINT(1 1)') AS SURFACE));
-ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near 'SURFACE))' at line 1
+ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near 'SURFACE' at line 1, column 56
 #
 # Casting to MULTICURVE must raise error.
 SELECT ST_ASTEXT(CAST(ST_GEOMFROMTEXT('POINT(1 1)') AS MULTICURVE));
-ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near 'MULTICURVE))' at line 1
+ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near 'MULTICURVE' at line 1, column 56
 #
 # Casting to MULTISURFACE must raise error.
 SELECT ST_ASTEXT(CAST(ST_GEOMFROMTEXT('POINT(1 1)') AS MULTISURFACE));
-ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near 'MULTISURFACE))' at line 1
+ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near 'MULTISURFACE' at line 1, column 56
 #
 ####################################################################
 # Requirement F-1e:                                                #

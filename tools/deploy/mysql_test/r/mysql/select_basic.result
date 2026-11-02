@@ -242,9 +242,9 @@ drop table if exists a1,a2;
 create table a2(rowkey_suffix2 int primary key, price2 int);
 create table a1(rowkey_suffix int primary key, price int);
 select (select price from a2 where 1000 > price) as 'x', a1.* as 'with_alias' from a1;
-ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near 'as 'with_alias' from a1' at line 1
+ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near 'as' at line 1, column 63
 select (select price from a2 where 1000 > price) as 'x', a1.* as with_alias from a1;
-ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near 'as with_alias from a1' at line 1
+ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near 'as' at line 1, column 63
 select 1 from dual where @a:=1 and (1, 2);
 ERROR 21000: Operand should contain 1 column(s)
 select 1 from dual where @a:=1 and (1, (select 2));

@@ -29,17 +29,17 @@ explain delete from test where b=5;
 desc delete from test where b=5;
 describe delete from test where b=5;
 explain create table test(a int,b int primary key);
-ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near 'create table test(a int,b int primary key)' at line 1
+ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near 'create' at line 1, column 9
 desc create table test(a int,b int primary key);
-ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near 'create table test(a int,b int primary key)' at line 1
+ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near 'create' at line 1, column 6
 describe create table test(a int,b int primary key);
-ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near 'create table test(a int,b int primary key)' at line 1
+ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near 'create' at line 1, column 10
 explain drop table test;
-ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near 'drop table test' at line 1
+ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near 'drop' at line 1, column 9
 desc drop table test;
-ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near 'drop table test' at line 1
+ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near 'drop' at line 1, column 6
 describe drop table test;
-ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near 'drop table test' at line 1
+ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near 'drop' at line 1, column 10
 drop table if exists sd;
 create table sd(a int);
 insert into sd values(5),(4),(4),(3),(2),(2),(2),(1);

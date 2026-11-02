@@ -997,7 +997,7 @@ ERROR 22023: Invalid GIS data provided to function st_geomfromtext.
 SELECT _st_covers(ST_GEOMFROMTEXT('POINT(! 0)'),ST_GEOMFROMTEXT('LINESTRING(0 0,10 10)'));
 ERROR 22023: Invalid GIS data provided to function st_geomfromtext.
 SELECT _st_covers(ST_GEOMFROMTEXT('POINT('!' 0)'),ST_GEOMFROMTEXT('LINESTRING(0 0,10 10)'));
-ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near '!' 0)'),ST_GEOMFROMTEXT('LINESTRING(0 0,10 10)'))' at line 1
+ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near '!' at line 1, column 43
 SELECT _st_covers(ST_GEOMFROMTEXT('POINT(12,34 0)'),ST_GEOMFROMTEXT('LINESTRING(0 0,10 10)'));
 ERROR 22023: Invalid GIS data provided to function st_geomfromtext.
 SELECT _st_covers(ST_GEOMFROMTEXT('LINESTRING(a 0,10 10)'),ST_GEOMFROMTEXT('LINESTRING(0 0,10 10)'));
@@ -1005,7 +1005,7 @@ ERROR 22023: Invalid GIS data provided to function st_geomfromtext.
 SELECT _st_covers(ST_GEOMFROMTEXT('LINESTRING(0 0,! 10)'),ST_GEOMFROMTEXT('LINESTRING(0 0,10 10)'));
 ERROR 22023: Invalid GIS data provided to function st_geomfromtext.
 SELECT _st_covers(ST_GEOMFROMTEXT('LINESTRING('!' 0,10 10)'),ST_GEOMFROMTEXT('LINESTRING(0 0,10 10)'));
-ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near '!' 0,10 10)'),ST_GEOMFROMTEXT('LINESTRING(0 0,10 10)'))' at line 1
+ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near '!' at line 1, column 48
 SELECT _st_covers(ST_GEOMFROMTEXT('LINESTRING(12,34 0,10 10)'),ST_GEOMFROMTEXT('LINESTRING(0 0,10 10)'));
 ERROR 22023: Invalid GIS data provided to function st_geomfromtext.
 SELECT _st_covers(ST_GEOMFROMTEXT('POLYGON((a 0,10 10,10 0,0 0))'),ST_GEOMFROMTEXT('LINESTRING(0 0,10 10)'));
@@ -1013,17 +1013,17 @@ ERROR 22023: Invalid GIS data provided to function st_geomfromtext.
 SELECT _st_covers(ST_GEOMFROMTEXT('POLYGON((0 0,! 10,10 0,0 0))'),ST_GEOMFROMTEXT('LINESTRING(0 0,10 10)'));
 ERROR 22023: Invalid GIS data provided to function st_geomfromtext.
 SELECT _st_covers(ST_GEOMFROMTEXT('POLYGON(('!' 0,10 10,10 0,0 0))'),ST_GEOMFROMTEXT('LINESTRING(0 0,10 10)'));
-ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near '!' 0,10 10,10 0,0 0))'),ST_GEOMFROMTEXT('LINESTRING(0 0,10 10)'))' at line 1
+ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near '!' at line 1, column 46
 SELECT _st_covers(ST_GEOMFROMTEXT('POLYGON((12,34 0,10 10,10 0,0 0))'),ST_GEOMFROMTEXT('LINESTRING(0 0,10 10)'));
 ERROR 22023: Invalid GIS data provided to function st_geomfromtext.
 SELECT _st_covers(ST_GEOMFROMTEXT('POLYGON((12,34 0,10 10,10 0,0 0)'),ST_GEOMFROMTEXT('LINESTRING(0 0,10 10)'));
 ERROR 22023: Invalid GIS data provided to function st_geomfromtext.
 SELECT _st_covers(,);
-ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near ',)' at line 1
+ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near ',' at line 1, column 19
 SELECT _st_covers(ST_GEOMFROMTEXT(@star_of_elems),);
-ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near ')' at line 1
+ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near ')' at line 1, column 51
 SELECT _st_covers(,ST_GEOMFROMTEXT(@star_top));
-ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near ',ST_GEOMFROMTEXT(@star_top))' at line 1
+ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near ',' at line 1, column 19
 drop table if exists t1;
 CREATE TABLE t1 (g GEOMETRY NOT NULL);
 INSERT INTO t1 VALUES (ST_GEOMFROMTEXT('POINT(1 1)'));
