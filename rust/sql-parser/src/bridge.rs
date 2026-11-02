@@ -941,6 +941,7 @@ pub(crate) mod ffi {
         SwitchoverToPrimary,
         SwitchoverToStandby,
         ActivateStandby,
+        RuntimeSelector,
     }
 
     #[derive(Clone, Copy, Debug, Default)]
@@ -1949,6 +1950,10 @@ pub(crate) mod ffi {
         entries: &'a [Node],
         only_refresh: bool,
     }
+    struct RuntimeSelector<'a> {
+        marker: &'a str,
+        target: &'a str,
+    }
     struct ColumnSkipIndexSyntax {
         min_max: bool,
         sum: bool,
@@ -2147,6 +2152,7 @@ pub(crate) mod ffi {
         fn check_tables(statement: &Node) -> &[Node];
         fn show_filter(statement: &Node) -> ShowFilter;
         fn show_trace_format(statement: &Node) -> &str;
+        unsafe fn show_runtime_selector<'a>(statement: &'a Node) -> RuntimeSelector<'a>;
         fn show_filter_expression(statement: &Node) -> &Node;
         fn show_like_pattern(statement: &Node) -> &Node;
         fn show_like_escape(statement: &Node) -> &Node;
@@ -2862,7 +2868,7 @@ use crate::command::{
     show_account_has_host, show_account_host, show_account_name, show_database, show_database_status, show_count, show_extended,
     show_filter, show_filter_expression, show_full, show_global, show_has_account,
     show_has_database, show_has_limit, show_if_not_exists, show_like_escape, show_like_pattern,
-    show_limit_count, show_limit_offset, show_object, show_trace_format, check_tables,
+    show_limit_count, show_limit_offset, show_object, show_trace_format, show_runtime_selector, check_tables,
 };
 
 use crate::routine::{

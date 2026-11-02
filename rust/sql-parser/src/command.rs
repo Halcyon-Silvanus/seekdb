@@ -248,6 +248,13 @@ pub(crate) fn show_filter(statement: &Node) -> ShowFilter {
 pub(crate) fn show_trace_format(statement: &Node) -> &str {
     &statement.children[1].text
 }
+pub(crate) fn show_runtime_selector(statement: &Node) -> crate::bridge::ffi::RuntimeSelector<'_> {
+    let selector = &statement.children[1];
+    crate::bridge::ffi::RuntimeSelector {
+        marker: &selector.text,
+        target: selector.children.first().map_or("", |target| target.text.as_str()),
+    }
+}
 pub(crate) fn show_filter_expression(statement: &Node) -> &Node {
     &show_condition(statement).unwrap().children[0]
 }

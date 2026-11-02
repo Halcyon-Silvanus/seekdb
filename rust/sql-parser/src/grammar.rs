@@ -340,7 +340,8 @@ peg::parser! {
             / start:position!() text:$(cont()+) end:position!() _
             { Name { text: text.to_owned(), quoted: false, start, end } }
         rule qualified_name() -> Vec<Name>
-            = !(['0'..='9']+ _ ".") first:qualified_ident() "." _ rest:(qualified_ident() ++ ("." _)) {
+            = &quiet!{(cont()+ / ident()) _ "."} !(['0'..='9']+ _ ".")
+                first:qualified_ident() "." _ rest:(qualified_ident() ++ ("." _)) {
             let mut parts=vec![first];parts.extend(rest);parts
         }
         rule name() -> Vec<Name>
@@ -928,7 +929,7 @@ peg::parser! {
             "(" _ percent:sample_number(false) ")" _ seed:(kw("seed") "(" _ value:sample_number(true) ")" _ { value })? {
                 Node::new(Kind::Sample,vec![Node::new(Kind::DefaultInt,vec![]).value(method.unwrap_or(1)),percent,Node::optional(seed),Node::new(scope.unwrap_or(Kind::All),vec![])])
             }
-        rule use_partition() -> Node = kw("partition") "(" _ names:(ident() ++ ("," _)) ")" _ {
+        rule use_partition() -> Node = kw("partition") "(" _ names:(ident() ++ (("," _)?)) ")" _ {
             Node::new(Kind::UsePartition,vec![Node::new(Kind::Names,names.into_iter().map(Node::name).collect())])
         }
         rule table_index_hint() -> Node = kind:(kw("use") { Kind::Use } / kw("force") { Kind::Force } / kw("ignore") { Kind::Ignore })
@@ -1658,7 +1659,7 @@ peg::parser! {
             / kw("collate") value:collation_name() { value.with_kind(Kind::Collation) }
             / kw("column_format") (kw("default") / kw("fixed") / kw("dynamic")) { Node::missing() }
             / kw("storage") (kw("default") / kw("disk") / kw("memory")) { Node::missing() }
-            / kw("skip_index") "(" _ kinds:(skip_index_kind() ** ("," _)) ")" _ {
+            / kw("skip_index") "(" _ ("," _ &skip_index_kind())? kinds:(skip_index_kind() ** ("," _)) ")" _ {
                 Node::new(Kind::ColumnSkipIndex,kinds)
             }
         rule skip_index_kind() -> Node
@@ -2158,7 +2159,10 @@ peg::parser! {
                 roles:(enabled(user.as_ref().is_some_and(|user| user.kind!=Kind::Missing)) kw("using") values:roles() { values })? {
                     Node::new(Kind::ShowGrants,vec![Node::optional(user),Node::new(Kind::Roles,roles.unwrap_or_default())])
                 }
-            / kw("parameters") condition:show_condition()? { Node::new(Kind::ShowParameters,vec![Node::optional(condition),Node::missing()]) }
+            / kw("parameters") condition:show_condition()?
+                selector:(marker:ident() ("=" _)? target:(string() / kw("all") { Node::new(Kind::String,vec![]).text("all".into()) } / name:ident() { Node::name(name) }) {
+                    Node::new(Kind::RuntimeSelector,vec![target]).text(marker.text)
+                })? { Node::new(Kind::ShowParameters,vec![Node::optional(condition),Node::optional(selector)]) }
             / kw("trace") format:(kw("format") "=" _ value:string() { value })? condition:show_condition()? {
                 let format=format.unwrap_or_else(|| Node::new(Kind::String,vec![]).text("ROW".into()));
                 Node::new(Kind::ShowTrace,vec![Node::optional(condition),format])
@@ -2255,7 +2259,7 @@ peg::parser! {
             / kw("flush") kw("dag") kw("warnings") { Node::new(Kind::FlushDagWarnings,vec![]) }
             / kw("refresh") kw("io") kw("calibration")
                 storage:(kw("storage") ("=" _)? value:string() { value })?
-                entries:(kw("calibration_info") ("=" _)? "(" _ values:(string() ** ("," _)) ")" _ {
+                entries:(kw("calibration_info") ("=" _)? "(" _ ("," _ &string())? values:(string() ** ("," _)) ")" _ {
                     Node::new(Kind::StringList,values)
                 })? {
                     Node::new(Kind::RefreshIoCalibration,vec![Node::optional(storage),Node::optional(entries)])
@@ -2272,7 +2276,7 @@ peg::parser! {
                 Node::new(Kind::Freeze,vec![Node::new(Kind::HiddenInt,vec![]).value(kind),Node::missing(),Node::optional(tablet)])
             }
             / kw("checkpoint") { Node::new(Kind::Freeze,vec![Node::new(Kind::HiddenInt,vec![]).value(1),Node::missing(),Node::missing()]) }
-            / kw("set_tp") options:(tracepoint_option() ** ("," _)) { Node::new(Kind::SetTracepoint,vec![Node::list(Kind::TracepointOptions,options),Node::missing()]) }
+            / kw("set_tp") ("," _ &tracepoint_option())? options:(tracepoint_option() ** ("," _)) { Node::new(Kind::SetTracepoint,vec![Node::list(Kind::TracepointOptions,options),Node::missing()]) }
             / kw("reset") actions:((name:ident() scope:config_scope()? { Node::new(Kind::ConfigAction,vec![Node::name(name)]).value(scope.unwrap_or(2)) }) ++ ("," _)) {
                 Node::new(Kind::ResetConfig,vec![Node::new(Kind::ConfigList,actions)])
             }
@@ -2719,7 +2723,7 @@ peg::parser! {
         pub rule routine_body() -> Node = _ value:(anonymous_statement() / package_block() / kw("create") value:routine_definition(true,0) { value }
             / value:routine_definition(true,0) { value.into_children().into_iter().last().unwrap() } / pl_statement(0)) (";" _)* { value }
         rule prepared_statement() -> Node
-            = kw("prepare") name:ident() kw("from") source:(string() / binary_literal() / user_variable()) {
+            = kw("prepare") name:ident() kw("from") source:(string() / quiet!{binary_literal()} / user_variable()) {
                 Node::new(Kind::Prepare,vec![source]).text(name.text)
             }
             / kw("execute") name:ident() args:(kw("using") args:(user_variable() ++ ("," _)) { args })? {

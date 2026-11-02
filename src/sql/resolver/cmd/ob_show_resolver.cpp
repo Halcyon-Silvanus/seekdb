@@ -588,11 +588,20 @@ int ObShowResolver::resolve(const peg::Node &statement)
       }
       break;
     }
-    case peg::NodeKind::ShowParameters:
+    case peg::NodeKind::ShowParameters: {
+      const auto selector = peg::show_runtime_selector(statement);
+      const ObString marker(selector.marker.size(), selector.marker.data());
+      const ObString target(selector.target.size(), selector.target.data());
+      if (!marker.empty() && (marker.case_compare("tenant") != 0
+          || (target.case_compare("sys") != 0 && target.case_compare("all") != 0
+              && target.case_compare("all_user") != 0 && target.case_compare("all_meta") != 0))) {
+        ret = OB_NOT_SUPPORTED;
+      }
       show_resv_ctx.stmt_type_ = stmt::T_SHOW_PARAMETERS;
       GEN_SQL_STEP_1(ObShowSqlSet::SHOW_PARAMETERS_WITH_DEFAULT_VALUE);
       GEN_SQL_STEP_2(ObShowSqlSet::SHOW_PARAMETERS_WITH_DEFAULT_VALUE, OB_SYS_DATABASE_NAME, OB_ALL_VIRTUAL_PARAMETER_STAT_TNAME);
       break;
+    }
     case peg::NodeKind::ShowEngines:
       show_resv_ctx.stmt_type_ = stmt::T_SHOW_ENGINES;
       GEN_SQL_STEP_1(ObShowSqlSet::SHOW_ENGINES);
