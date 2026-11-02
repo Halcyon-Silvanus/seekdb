@@ -74,13 +74,20 @@ fn collect_columns(node: &Node, columns: &mut Vec<ColumnReference>) {
 }
 
 pub(crate) fn embedded_sql_references(statement: &Node) -> Vec<bridge::ffi::SqlReference<'_>> {
-    fn visit<'a>(node: &'a Node, references: &mut Vec<bridge::ffi::SqlReference<'a>>) {
+    fn visit<'a>(node: &'a Node, bound: &mut Vec<&'a str>, references: &mut Vec<bridge::ffi::SqlReference<'a>>) {
         use bridge::ffi::{SqlReference, SqlReferenceKind as Role};
+        if node.kind == Kind::Lambda {
+            let outer = bound.len();
+            bound.extend(crate::expression::lambda_parameters(node).iter().map(|name| name.text.as_str()));
+            visit(crate::expression::lambda_body(node), bound, references);
+            bound.truncate(outer);
+            return;
+        }
         if node.kind == Kind::InsertColumns {
             return;
         }
         if node.kind == Kind::Assignment {
-            visit(crate::query::assignment_value(node), references);
+            visit(crate::query::assignment_value(node), bound, references);
             return;
         }
         if matches!(node.kind, Kind::IntoVariables | Kind::TrailingIntoVariables) {
@@ -100,7 +107,7 @@ pub(crate) fn embedded_sql_references(statement: &Node) -> Vec<bridge::ffi::SqlR
                         node: argument,
                     });
                 } else {
-                    visit(argument, references);
+                    visit(argument, bound, references);
                 }
             }
             return;
@@ -111,7 +118,22 @@ pub(crate) fn embedded_sql_references(statement: &Node) -> Vec<bridge::ffi::SqlR
                 && crate::expression::call_name(node).eq_ignore_ascii_case("values");
         if !column_argument {
             for child in &node.children {
-                visit(child, references);
+                visit(child, bound, references);
+            }
+        }
+        if !bound.is_empty() {
+            let column = if node.kind == Kind::Projection
+                && crate::query::projection_alias_form(node) == crate::AliasForm::Absent
+            {
+                crate::query::projection_expression(node)
+            } else {
+                node
+            };
+            if column.kind == Kind::Column && !crate::query::name_is_wildcard(column) {
+                let names = crate::query::name_parts(column);
+                if names.len() == 1 && bound.contains(&names[0].text.as_str()) {
+                    return;
+                }
             }
         }
         let kind = match node.kind {
@@ -125,7 +147,7 @@ pub(crate) fn embedded_sql_references(statement: &Node) -> Vec<bridge::ffi::SqlR
         references.push(SqlReference { kind, node });
     }
     let mut references = Vec::new();
-    visit(statement, &mut references);
+    visit(statement, &mut Vec::new(), &mut references);
     references
 }
 
