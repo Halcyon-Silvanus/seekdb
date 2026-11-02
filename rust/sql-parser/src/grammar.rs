@@ -1517,11 +1517,11 @@ peg::parser! {
             / kw("boolean") { "boolean" } / kw("bool") { "bool" }
             / (kw("varchar") / kw("varcharacter") / (kw("char") / kw("character")) kw("varying")) { "varchar" }
             / (kw("char") / kw("character")) { "char" }
-            / kw("long") kw("varbinary") { "mediumblob" }
-            / kw("long") (kw("varchar") / kw("varcharacter"))? { "mediumtext" }
+            / (kw("long") / kw("mediumtext")) kw("varbinary") { "mediumblob" }
+            / (kw("long") / kw("mediumtext")) (kw("varchar") / kw("varcharacter"))? { "mediumtext" }
             / kw("text") { "text" } / kw("blob") { "blob" }
             / kw("tinytext") { "tinytext" } / kw("tinyblob") { "tinyblob" }
-            / kw("mediumtext") { "mediumtext" } / kw("mediumblob") { "mediumblob" } / kw("string") { "string" }
+            / kw("mediumblob") { "mediumblob" } / kw("string") { "string" }
             / kw("longtext") { "longtext" } / kw("longblob") { "longblob" }
             / kw("varbinary") { "varbinary" } / kw("binary") { "binary" }
             / kw("datetime") { "datetime" } / kw("timestamp") { "timestamp" }
@@ -1681,6 +1681,9 @@ peg::parser! {
                 / kw("set") kw("default") { Kind::SetDefault }) {
                 Node::new(Kind::ReferenceOption,vec![Node::new(action,vec![])]).value(u64::from(delete))
             }
+        rule column_reference() = kw("references") relation_name() "(" _ (ident() ++ ("," _)) ")" _
+            (kw("match") (kw("simple") / kw("full") / kw("partial")))?
+            (reference_option() / kw("check") "(" _ expr(0) ")" _)*
         rule foreign_key() -> Node = constraint:constraint_name()? kw("foreign") kw("key") index:ident()?
             "(" _ columns:(ident() ++ ("," _)) ")" _ kw("references") table:relation_name()
             "(" _ parent:(ident() ++ ("," _)) ")" _ (kw("match") (kw("simple") / kw("full") / kw("partial")))?
@@ -1709,13 +1712,13 @@ peg::parser! {
                 generated:(kw("generated") kw("always"))?
                 kw("as") "(" _ start:position!() value:expr(0) end:position!() ")" _
                 storage:(kind:(kw("virtual") { Kind::VirtualColumn } / kw("stored") { Kind::StoredColumn }) { Node::new(kind,vec![]) })?
-                attributes:generated_column_attribute()* position:column_position()? {
+                attributes:generated_column_attribute()* column_reference()? position:column_position()? {
                     ddl::ColumnTail {
                         attributes, position, collation,
                         generation:Some(ddl::GeneratedColumn { expression:value.at(start,end), storage, always:generated.is_some() }),
                     }
                 }
-                / attributes:column_attribute()* position:column_position()? {
+                / attributes:column_attribute()* column_reference()? position:column_position()? {
                     ddl::ColumnTail { attributes, position, ..Default::default() }
                 }) {
                 ddl::Column { name, data_type, tail }.into_node()
@@ -1764,7 +1767,10 @@ peg::parser! {
             / kind:(kw("compression") { Kind::Compression } / kw("comment") { Kind::ColumnComment }
                 / kw("semistruct_encoding_type") { Kind::SemistructEncodingType }
                 / kw("table_mode") { Kind::TableMode }) ("=" _)? value:string() { Node::new(kind,vec![value]) }
-            / kind:(kw("auto_increment") { Kind::TableAutoIncrement } / kw("block_size") { Kind::BlockSize }
+            / kw("auto_increment") ("=" _)? value:(fractional_type_size() / type_size()) {
+                Node::new(Kind::TableAutoIncrement,vec![value])
+            }
+            / kind:(kw("block_size") { Kind::BlockSize }
                 / kw("tablet_size") { Kind::TabletSize } / kw("pctfree") { Kind::PctFree }
                 / (kw("lob_inrow_threshold") / kw("default_lob_inrow_threshold")) { Kind::LobInrowThreshold }) ("=" _)? value:type_size() { Node::new(kind,vec![value]) }
             / kw("row_format") ("=" _)? value:(kw("redundant") { 1 } / kw("compact") { 2 }
@@ -2647,7 +2653,7 @@ peg::parser! {
         rule diagnostics_target() -> Node = user_variable() / parameter() / name:pl_ident() { Node::name(name) }
         rule diagnostics_item(condition: bool) -> Node = target:diagnostics_target() "=" _ name:(
             enabled(condition) name:(kw("returned_sqlstate") { "RETURNED_SQLSTATE" } / name:signal_item_name() { name.0 }) { name }
-            / enabled(!condition) name:(kw("number") { "NUMBER" } / kw("row_count") { "ROW_COUNT" }) { name }
+            / enabled(!condition) name:((kw("number") / kw("dec")) { "NUMBER" } / kw("row_count") { "ROW_COUNT" }) { name }
         ) { Node::binary_operands("=".into(),vec![target,Node::new(Kind::String,vec![]).text(name.into())]) }
         rule diagnostics() -> Node = kw("get") current:(kw("current") { 1 } / kw("stacked") { 0 })? kw("diagnostics")
             condition:(kw("condition") value:(user_variable() / parameter() / string() / type_size() / name:pl_ident() { Node::name(name) }) { value })?
@@ -2690,7 +2696,7 @@ peg::parser! {
         pub rule routine_body() -> Node = _ value:(anonymous_statement() / package_block() / kw("create") value:routine_definition(true,0) { value }
             / value:routine_definition(true,0) { value.into_children().into_iter().last().unwrap() } / pl_statement(0)) (";" _)* { value }
         rule prepared_statement() -> Node
-            = kw("prepare") name:ident() kw("from") source:(string() / user_variable()) {
+            = kw("prepare") name:ident() kw("from") source:(string() / binary_literal() / user_variable()) {
                 Node::new(Kind::Prepare,vec![source]).text(name.text)
             }
             / kw("execute") name:ident() args:(kw("using") args:(user_variable() ++ ("," _)) { args })? {
@@ -2788,7 +2794,7 @@ peg::parser! {
             kw("into") kw("table") table:relation_name()
             partitions:(kw("partition") "(" _ names:(ident() ++ ("," _)) ")" _ { names.into_iter().map(Node::name).collect() })?
             compression:(kw("compression") ("=" _)? value:(load_string() / name:ident() { Node::name(name) }) { value })?
-            charset:(kw("character") kw("set") value:charset_name() { value })?
+            charset:((kw("character") / kw("char")) kw("set") value:charset_name() { value })?
             fields:((kw("fields") / kw("columns")) values:load_field_option()+ { values })?
             lines:(kw("lines") values:load_line_option()+ { values })?
             ignore_rows:((kw("ignore") / kw("generated")) value:load_integer() (kw("lines") / kw("rows")) { value })?

@@ -37,26 +37,33 @@ int resolve_command_value(const peg::Node &source, ObResolverParams &params, ObR
 {
   int ret = OB_SUCCESS;
   ObString text;
-  const auto source_spelling = source.text();
+  const bool binary = source.kind() == peg::NodeKind::HexString || source.kind() == peg::NodeKind::BitString;
+  rust::Vec<uint8_t> decoded;
+  auto source_spelling = source.text();
+  if (binary) {
+    const auto literal = peg::expression_literal(source);
+    decoded = peg::decode_binary_literal(literal.text, literal.binary_notation);
+    source_spelling = rust::Str(reinterpret_cast<const char *>(decoded.data()), decoded.size());
+  }
   const ObString source_text(static_cast<int32_t>(source_spelling.size()), source_spelling.data());
   if (OB_FAIL(ob_write_string(*params.allocator_, source_text, text))) {
   } else if (source.kind() == peg::NodeKind::UserVariable) {
     // The expression helper normalizes its owned name in place.
     ret = ObRawExprUtils::build_get_user_var(*params.expr_factory_, text, expr,
                                             params.session_info_, params.query_ctx_);
-  } else if (source.kind() == peg::NodeKind::String) {
+  } else if (source.kind() == peg::NodeKind::String || binary) {
     ObCollationType collation = CS_TYPE_INVALID;
     ObObjParam value;
     ObString prefix;
     ObConstRawExpr *literal_expr = nullptr;
-    const LiteralToken literal{peg::LiteralKind::String, 0, text, {}, false, 0};
+    const LiteralToken literal{binary ? peg::LiteralKind::Binary : peg::LiteralKind::String, 0, text, {}, false, 0};
     if (OB_FAIL(params.session_info_->get_collation_connection(collation))) {
     } else {
       const LiteralDecodeOptions options{{stmt::T_PREPARE, false, false, false, 0},
           collation, params.session_info_->get_timezone_info(), params.session_info_->get_sql_mode(),
           share::COMPAT_MYSQL57, false, false, nullptr, NumericSignMode::Source};
       if (OB_FAIL(ObResolverUtils::resolve_literal(literal, options, *params.allocator_, value, prefix))) {
-      } else if (OB_FAIL(params.expr_factory_->create_raw_expr(T_VARCHAR, literal_expr))) {
+      } else if (OB_FAIL(params.expr_factory_->create_raw_expr(binary ? T_HEX_STRING : T_VARCHAR, literal_expr))) {
       } else {
         literal_expr->set_value(value);
         literal_expr->set_expr_obj_meta(value.get_param_meta());
