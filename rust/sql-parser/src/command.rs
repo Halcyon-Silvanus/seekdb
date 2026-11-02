@@ -106,6 +106,16 @@ pub(crate) fn cache_flush_kind(statement: &Node) -> CacheKind {
         _ => unreachable!(),
     }
 }
+pub(crate) fn io_calibration_definition(statement: &Node) -> crate::bridge::ffi::IoCalibrationDefinition<'_> {
+    crate::bridge::ffi::IoCalibrationDefinition {
+        storage: &statement.children[0].text,
+        entries: &statement.children[1].children,
+        only_refresh: statement.children[1].kind == Kind::Missing,
+    }
+}
+pub(crate) fn role_switch_verify(statement: &Node) -> bool {
+    statement.value != 0
+}
 pub(crate) fn cache_flush_has_namespace(statement: &Node) -> bool {
     statement.children[1].kind != Kind::Missing
 }

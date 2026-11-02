@@ -141,6 +141,11 @@ std::optional<NativeStatementTraits> native_statement_traits(Kind kind)
     case Kind::ForkDatabase: return NativeStatementTraits{stmt::T_FORK_DATABASE, false, false};
     case Kind::MergeTable: return NativeStatementTraits{stmt::T_MERGE_TABLE, false, false};
     case Kind::DiffTable: return NativeStatementTraits{stmt::T_DIFF_TABLE, true, false};
+    case Kind::FlushDagWarnings: return NativeStatementTraits{stmt::T_FLUSH_DAG_WARNINGS, false, false};
+    case Kind::RefreshIoCalibration: return NativeStatementTraits{stmt::T_REFRESH_IO_CALIBRATION, false, false};
+    case Kind::SwitchoverToPrimary: return NativeStatementTraits{stmt::T_SWITCHOVER_TO_PRIMARY, false, false};
+    case Kind::SwitchoverToStandby: return NativeStatementTraits{stmt::T_SWITCHOVER_TO_STANDBY, false, false};
+    case Kind::ActivateStandby: return NativeStatementTraits{stmt::T_ACTIVATE_STANDBY, false, false};
     case Kind::Freeze: return NativeStatementTraits{stmt::T_FREEZE, false, false};
     case Kind::SuspendMerge:
     case Kind::ResumeMerge: return NativeStatementTraits{stmt::T_ADMIN_MERGE, false, false};

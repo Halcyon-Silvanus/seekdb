@@ -1810,11 +1810,16 @@ int ObRawExprResolverImpl::process_any_or_all_node(const peg::Node &node, ObRawE
   OZ (recursive_resolve(query, operand));
   const ObItemType type = exists ? T_OP_EXISTS
       : peg::quantified_comparison(node) == peg::ComparisonQuantifier::Any ? T_ANY : T_ALL;
-  if (OB_SUCC(ret) && operand->get_expr_type() == T_REF_QUERY) {
-    static_cast<ObQueryRefRawExpr *>(operand)->set_is_set(true);
+  if (OB_SUCC(ret) && (operand->get_expr_type() == T_REF_QUERY
+      || (!exists && operand->get_expr_type() == T_OP_ROW))) {
+    if (operand->get_expr_type() == T_REF_QUERY) {
+      static_cast<ObQueryRefRawExpr *>(operand)->set_is_set(true);
+    }
     OZ (ctx_.expr_factory_.create_raw_expr(type, operation));
     OZ (operation->set_param_expr(operand));
     OX (expr = operation);
+  } else if (OB_SUCC(ret) && !exists) {
+    expr = operand;
   } else if (OB_SUCC(ret)) {
     ret = OB_ERR_UNEXPECTED;
   }

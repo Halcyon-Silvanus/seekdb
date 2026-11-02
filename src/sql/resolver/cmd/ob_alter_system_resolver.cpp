@@ -26,6 +26,7 @@
 #include "share/ob_server_struct.h"
 #include "share/ob_share_util.h"
 #include "rust/config.h"
+#include "sql/syntax.h"
 
 namespace oceanbase
 {
@@ -69,6 +70,51 @@ int MergeControlResolver::resolve(const peg::Node &statement)
 int ClearMergeErrorResolver::resolve(const peg::Node &statement)
 {
   return create_stmt<ObClearMergeErrorStmt>() == nullptr ? OB_ALLOCATE_MEMORY_FAILED : OB_SUCCESS;
+}
+
+int FlushDagWarningsResolver::resolve(const peg::Node &statement)
+{
+  return create_stmt<ObFlushDagWarningsStmt>() == nullptr ? OB_ALLOCATE_MEMORY_FAILED : OB_SUCCESS;
+}
+
+int RefreshIoCalibrationResolver::resolve(const peg::Node &statement)
+{
+  int ret = OB_SUCCESS;
+  ObRefreshIOCalibraitonStmt *stmt = create_stmt<ObRefreshIOCalibraitonStmt>();
+  if (OB_ISNULL(stmt)) {
+    ret = OB_ALLOCATE_MEMORY_FAILED;
+  } else {
+    const auto syntax = peg::io_calibration_definition(statement);
+    auto &parameter = stmt->get_param();
+    parameter.only_refresh_ = syntax.only_refresh;
+    OZ(ob_write_string(*allocator_, ObString(syntax.storage.size(), syntax.storage.data()), parameter.storage_name_));
+    for (size_t i = 0; OB_SUCC(ret) && i < syntax.entries.size(); ++i) {
+      const auto text = peg::expression_literal(syntax.entries[i]).text;
+      if (i == 0 && text.empty()) {
+        parameter.only_refresh_ = false;
+        break;
+      }
+      common::ObIOBenchResult item;
+      OZ(ObIOCalibration::parse_calibration_string(ObString(text.size(), text.data()), item));
+      OZ(parameter.calibration_list_.push_back(item));
+    }
+  }
+  return ret;
+}
+
+int SwitchRoleResolver::resolve(const peg::Node &statement)
+{
+  int ret = OB_SUCCESS;
+  ObSwitchRoleStmt *stmt = create_stmt<ObSwitchRoleStmt>();
+  stmt::StmtType type = stmt::T_NONE;
+  if (OB_ISNULL(stmt)) {
+    ret = OB_ALLOCATE_MEMORY_FAILED;
+  } else {
+    OZ(statement_type(statement, type));
+    OX(stmt->set_stmt_type(type));
+    OX(stmt->set_verify(peg::role_switch_verify(statement)));
+  }
+  return ret;
 }
 
 int CancelTaskResolver::resolve(const peg::Node &statement)

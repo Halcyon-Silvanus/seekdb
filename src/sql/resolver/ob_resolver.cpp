@@ -310,6 +310,26 @@ int ObResolver::resolve(const peg::Node &statement, ObStmt *&stmt)
         params_.resolver_scope_stmt_type_ = T_FLUSH_KVCACHE;
         ret = stmt_resolver_func<ObFlushKVCacheResolver>(params_, statement, stmt);
         break;
+      case peg::NodeKind::FlushDagWarnings:
+        params_.resolver_scope_stmt_type_ = T_FLUSH_DAG_WARNINGS;
+        ret = stmt_resolver_func<FlushDagWarningsResolver>(params_, statement, stmt);
+        break;
+      case peg::NodeKind::RefreshIoCalibration:
+        params_.resolver_scope_stmt_type_ = T_REFRESH_IO_CALIBRATION;
+        ret = stmt_resolver_func<RefreshIoCalibrationResolver>(params_, statement, stmt);
+        break;
+      case peg::NodeKind::SwitchoverToPrimary:
+        params_.resolver_scope_stmt_type_ = T_SWITCHOVER_TO_PRIMARY;
+        ret = stmt_resolver_func<SwitchRoleResolver>(params_, statement, stmt);
+        break;
+      case peg::NodeKind::SwitchoverToStandby:
+        params_.resolver_scope_stmt_type_ = T_SWITCHOVER_TO_STANDBY;
+        ret = stmt_resolver_func<SwitchRoleResolver>(params_, statement, stmt);
+        break;
+      case peg::NodeKind::ActivateStandby:
+        params_.resolver_scope_stmt_type_ = T_ACTIVATE_STANDBY;
+        ret = stmt_resolver_func<SwitchRoleResolver>(params_, statement, stmt);
+        break;
       case peg::NodeKind::SetConfig:
         params_.resolver_scope_stmt_type_ = T_ALTER_SYSTEM_SET_PARAMETER;
         ret = stmt_resolver_func<ObSetConfigResolver>(params_, statement, stmt);

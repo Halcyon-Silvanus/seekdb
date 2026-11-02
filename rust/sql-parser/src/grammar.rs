@@ -283,6 +283,7 @@ peg::parser! {
                 } else { peg::RuleResult::Failed }
             }} !cont() !("." cont())} / expected!(word)
         rule kw(word: &'static str) -> () = keyword(word) _
+        rule distinct_keyword() = kw("distinct") / kw("distinctrow") / kw("unique")
         rule hint_slot() -> Option<Vec<Node>> = hint_gap() value:hints()? !"/*+" _ { value }
         rule unterminated_token() -> &'static str
             = "/*" (!"*/" [_])* ![_] { "unterminated block comment" }
@@ -335,23 +336,23 @@ peg::parser! {
                 start:position!() text:$(word()) end:position!() _
                 { Name { text: text.to_owned(), quoted: false, start, end } }
         rule dotted_ident() -> Name = ident() / name_keyword()
-        rule compact_ident() -> Name = start:position!() text:$(cont()+) end:position!()
+        rule qualified_ident() -> Name = ident()
+            / start:position!() text:$(cont()+) end:position!() _
             { Name { text: text.to_owned(), quoted: false, start, end } }
-        rule compact_name() -> Vec<Name> = &quiet!{cont()+ "."} !(['0'..='9']+ ".")
-            first:compact_ident() "." rest:(compact_ident() ++ ".") _ {
+        rule qualified_name() -> Vec<Name>
+            = !(['0'..='9']+ _ ".") first:qualified_ident() "." _ rest:(qualified_ident() ++ ("." _)) {
             let mut parts=vec![first];parts.extend(rest);parts
         }
         rule name() -> Vec<Name>
-            = head:(compact_name() / first:ident() { vec![first] })
-                rest:("." !['0'..='9'] _ parts:(compact_name() / part:dotted_ident() { vec![part] }) { parts })* {
-                let mut parts=head;parts.extend(rest.into_iter().flatten());parts
-            }
+            = qualified_name() / first:ident() { vec![first] }
+        rule column_name() -> Vec<Name>
+            = "." _ first:qualified_ident() "." _ last:qualified_ident() { vec![first,last] }
+            / name()
         rule relation_name() -> Vec<Name>
             = "." !['0'..='9'] _ !(kw("true") / kw("false") / kw("null")) name:dotted_ident() { vec![name] }
             / name()
         rule expression_name() -> Vec<Name>
-            = name()
-            / &quiet!{word() _ "."} first:name_keyword() "." _ last:name_keyword() { vec![first,last] }
+            = column_name()
             / quiet!{ name:name_keyword() enabled(keyword_function(&name.text)) { vec![name] } }
             / start:position!() name:(kw("database") { "database" } / kw("schema") { "schema" }
                 / kw("replace") { "replace" } / kw("insert") { "insert" }
@@ -507,7 +508,7 @@ peg::parser! {
                 Node::new(Kind::WindowFunction,vec![function,window]).expression(start,end)
             }
             / depth(level) start:position!() listagg:(kw("group_concat") { false } / kw("listagg") { true }) "(" _
-                modifier:((kw("distinct") / kw("unique")) { Node::new(Kind::Distinct,vec![]) })?
+                modifier:(distinct_keyword() { Node::new(Kind::Distinct,vec![]) })?
                 arguments:expr_list(level+1) order:(kw("order") kw("by") values:(order_item(level+1) ++ ("," _)) { values })?
                 separator:(kw("separator") value:string() { Node::new(Kind::Separator,vec![value]) })? ")" close:position!() _
                 window:(kw("over") value:window(level+1) { value })? !(enabled(window.is_none()) kw("over")) {?
@@ -534,7 +535,7 @@ peg::parser! {
                     "array_map","array_filter","array_first","array_sortby","vector_distance","vector_similarity","group_concat","listagg","get_format","cast","convert"]
                     .iter().any(|name| parts[0].text.eq_ignore_ascii_case(name)))
                     &"(" valid_function(parts.as_slice(),start)
-                    "(" _ modifier:((kw("distinct") / kw("unique")) { Kind::Distinct } / kw("all") { Kind::All })?
+                    "(" _ modifier:(distinct_keyword() { Kind::Distinct } / kw("all") { Kind::All })?
                     args:(enabled(parts.len()==1 && !parts[0].quoted && parts[0].text.eq_ignore_ascii_case("count")
                             && modifier!=Some(Kind::Distinct)) value:star() { vec![value] }
                         / values:(function_argument(level+1) ++ ("," _))? { values.unwrap_or_default() }) ")" close:position!() _
@@ -578,7 +579,7 @@ peg::parser! {
                 "[" _ args:expr_list(level) "]" { Node::callable(Kind::ArrayLiteral,args) }
                 / kind:(kw("array") { Kind::ArrayLiteral } / kw("map") { Kind::MapLiteral })
                     "(" _ args:expr_list(level) ")" { Node::callable(kind,args) }
-                / kw("array_agg") "(" _ distinct:kw("distinct")? value:expr(level)
+                / kw("array_agg") "(" _ distinct:(distinct_keyword() { true })? value:expr(level)
                     order:(kw("order") kw("by") keys:(array_order_item(level) ++ ("," _)) { keys })? ")" {
                     let mut result=Node::callable(Kind::ArrayAgg,vec![value]);
                     if distinct.is_some() { result.children.push(Node::new(Kind::Distinct,vec![])); }
@@ -749,8 +750,8 @@ peg::parser! {
         }
         rule unary_parts(level: usize) -> (Vec<(usize, &'input str)>, Node)
             = ops:(start:position!() op:$(['+' | '-' | '!' | '~']) _ { (start, op) }
-                / enabled(mode.high_not_precedence) start:position!() kw("not") { (start, "not") }
-                / start:position!() kw("binary") { (start, "binary") })* value:collated(level) { (ops,value) }
+                / enabled(mode.high_not_precedence) start:position!() kw("not") !"." { (start, "not") }
+                / start:position!() kw("binary") !"." { (start, "binary") })* value:collated(level) { (ops,value) }
         rule unary(level: usize) -> Node = parts:unary_parts(level) {?
             parts.0.into_iter().rev().try_fold(parts.1, |value, (start, op)| Node::unary(op,value,start))
         }
@@ -786,6 +787,9 @@ peg::parser! {
                     "(" _ query:select(level+1) ")" end:position!() _ {?
                         Node::new(kind,vec![query]).expression(start,end).map(|right| Tail::Compare(op.into(),right))
                     }
+                    / enabled(op=="=") start:position!() kw("all") "(" _ value:expr(level+1) ")" end:position!() _ {?
+                        Node::new(Kind::All,vec![value]).expression(start,end).map(|right| Tail::Compare(op.into(),right))
+                    }
                     / enabled(op=="=") (kw("any") / kw("some")) "(" _ value:expr(level+1) ")" end:position!() _ { Tail::ArrayMember(value,end) }
                     / right:predicate(level) { Tail::Compare(op.into(),right) }) { tail }
             / kw("is") negated:kw("not")? test:null_literal() { Tail::Is(negated.is_some(), test) }
@@ -811,7 +815,7 @@ peg::parser! {
                 / start:position!() kw("unknown") { Node::new(Kind::DefaultNull,vec![]).at(start,start+7) }) { Tail::Is(negated.is_some(),test) })? {?
             tails.into_iter().chain(truth).try_fold(left, |value, tail| tail.apply(value))
         }
-        rule not_expr(level: usize) -> Node = ops:(enabled(!mode.high_not_precedence) start:position!() kw("not") { start })* value:bool_primary(level) {?
+        rule not_expr(level: usize) -> Node = ops:(enabled(!mode.high_not_precedence) start:position!() kw("not") !"." { start })* value:bool_primary(level) {?
             ops.into_iter().rev().try_fold(value, |value, start| { Node::unary("not", value, start) })
         }
         rule and_expr(level: usize) -> Node = left:not_expr(level) rest:((kw("and") / "&&" _) right:not_expr(level) { right })* {? boolean_chain("and", left, rest) }
@@ -1308,7 +1312,7 @@ peg::parser! {
                 query.into_cte(name,columns.unwrap_or_default(),recursive)
             }
         rule set_operator() -> Kind
-            = kw("union") modifier:(kw("all") { Kind::UnionAll } / (kw("distinct") / kw("distinctrow") / kw("unique")) { Kind::Union })? { modifier.unwrap_or(Kind::Union) }
+            = kw("union") modifier:(kw("all") { Kind::UnionAll } / distinct_keyword() { Kind::Union })? { modifier.unwrap_or(Kind::Union) }
             / kw("intersect") { Kind::Intersect }
             / (kw("except") / kw("minus")) { Kind::Except }
         rule query_expression(level: usize) -> Box<Select> = depth(level) with:with_clause(level)? first:query_term(level)
@@ -1375,7 +1379,7 @@ peg::parser! {
             / kind:(kw("compression") { Kind::OutputCompression } / kw("binary_format") { Kind::OutputBinaryFormat })
                 "=" _ value:(load_string() / name:ident() { Node::name(name) }) { Node::new(kind,vec![value]) }
         rule select_option() -> Node
-            = kind:((kw("distinct") / kw("distinctrow") / kw("unique")) { Kind::Distinct } / kw("all") { Kind::All }
+            = kind:(distinct_keyword() { Kind::Distinct } / kw("all") { Kind::All }
                 / kw("sql_calc_found_rows") { Kind::FoundRows } / kw("straight_join") { Kind::StraightJoin }) { Node::new(kind,vec![]) }
             / (kw("sql_no_cache") / kw("sql_cache") / kw("high_priority") / kw("sql_small_result")
                 / kw("sql_big_result") / kw("sql_buffer_result")) { Node::missing() }
@@ -1404,7 +1408,7 @@ peg::parser! {
                 let mut query=Box::<Select>::default();
                 query.projection=vec![projection];query.from=vec![Node::new(Kind::Table,vec![values])];query
             }
-        rule column() -> Node = start:position!() names:name() {? let end = names.last().unwrap().end; Node::column(names, false, start, end) }
+        rule column() -> Node = start:position!() names:column_name() {? let end = names.last().unwrap().end; Node::column(names, false, start, end) }
         rule insert_column() -> Node = start:position!() names:name() wildcard:("." _ "*" end:position!() _ { end })? {?
             let end = wildcard.unwrap_or_else(|| names.last().unwrap().end); Node::column(names, wildcard.is_some(), start, end)
         }
@@ -1546,7 +1550,7 @@ peg::parser! {
                 / kw("unsigned") (kw("int") / kw("integer"))? { "unsigned" } / kw("binary") { "binary" }
                 / (kw("char") / kw("character")) { "char" }
                 / (kw("decimal") / kw("dec") / kw("numeric") / kw("number") / kw("fixed")) { "decimal" }
-                / kw("double") { "double" } / kw("float") { "float" } / kw("json") { "json" }
+                / (kw("double") / kw("float8")) { "double" } / (kw("float") / kw("float4")) { "float" } / kw("json") { "json" }
                 / kw("datetime") { "datetime" } / kw("date") { "date" } / kw("time") { "time" } / kw("year") { "year" })
             parameters:("(" _ values:(enabled(matches!(name,"char"|"binary")) value:string_length() { vec![value] }
                 / values:(type_size() ++ ("," _)) { values }) ")" _ { values })?
@@ -2218,7 +2222,7 @@ peg::parser! {
                     Node::new(Kind::LikeClause,vec![value,Node::new(Kind::String,vec![]).text("\\".into())])
                 })? {? Ok(Node::new(Kind::ShowColumns,vec![Node::new(Kind::Int,vec![]),Node::relation(table)?,Node::missing(),Node::optional(column)])) }
         rule config_scope() -> u64 = kw("scope") "=" _ value:(kw("memory") { 0 } / kw("spfile") { 1 } / kw("both") { 2 }) { value }
-        rule config_value() -> Node = string() / bool_null() / system_variable() / number()
+        rule config_value() -> Node = string() / temporal_literal() / bool_null() / system_variable() / number()
             / start:position!() "-" _ value:number() {? Node::unary("-",value,start) }
         rule config_assignment() -> Node = name:ident() "=" _ value:config_value()
             comment:(kw("comment") value:string() { value })? scope:config_scope()? {
@@ -2248,6 +2252,18 @@ peg::parser! {
         ) { value }
         rule alter_system() -> Node = kw("alter") kw("system") value:(
             flush_cache()
+            / kw("flush") kw("dag") kw("warnings") { Node::new(Kind::FlushDagWarnings,vec![]) }
+            / kw("refresh") kw("io") kw("calibration")
+                storage:(kw("storage") ("=" _)? value:string() { value })?
+                entries:(kw("calibration_info") ("=" _)? "(" _ values:(string() ** ("," _)) ")" _ {
+                    Node::new(Kind::StringList,values)
+                })? {
+                    Node::new(Kind::RefreshIoCalibration,vec![Node::optional(storage),Node::optional(entries)])
+                }
+            / kind:(kw("switchover") kw("to") target:(kw("primary") { Kind::SwitchoverToPrimary } / kw("standby") { Kind::SwitchoverToStandby }) { target }
+                / kw("activate") kw("standby") { Kind::ActivateStandby }) verify:kw("verify")? {
+                    Node::new(kind,vec![]).value(u64::from(verify.is_some()))
+                }
             / kind:(kw("suspend") { Kind::SuspendMerge } / kw("resume") { Kind::ResumeMerge }) kw("merge") { Node::new(kind,vec![]) }
             / kw("clear") kw("merge") kw("error") { Node::new(Kind::ClearMergeError,vec![]) }
             / kw("cancel") kw("task") id:string() { Node::new(Kind::CancelTask,vec![id]) }
@@ -2624,7 +2640,7 @@ peg::parser! {
             variable:(start:position!() scope:assignment_scope() name:assignment_name(true) {
                     let end=name.end; Node::new(Kind::SystemVariable,vec![]).text(name.text).value(scope).at(start,end)
                 } / user_variable() / system_variable()
-                / start:position!() parts:compact_name() enabled(parts.len()==2) end:position!() {? Node::column(parts,false,start,end) }
+                / start:position!() parts:qualified_name() enabled(parts.len()==2) end:position!() {? Node::column(parts,false,start,end) }
                 / &quiet!{ident() "."} start:position!() first:ident() "." _ second:ident() end:position!() {? Node::column(vec![first,second],false,start,end) }
                 / name:assignment_name(false) { Node::name(name) }) (":=" / "=" / kw("to")) _
                 value:(enabled(variable.kind!=Kind::UserVariable) keyword:setting_keyword() { keyword } / expr(level)) {?
