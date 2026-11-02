@@ -267,7 +267,8 @@ impl Column {
         let last_default = self.tail.attributes.iter().rposition(|attr| attr.kind == Kind::ColumnDefault);
         let attributes: Vec<_> = self.tail.attributes.into_iter().enumerate()
             .filter_map(|(index, attr)| {
-                (attr.kind != Kind::ColumnDefault || Some(index) == last_default).then_some(attr)
+                (attr.kind != Kind::Missing
+                    && (attr.kind != Kind::ColumnDefault || Some(index) == last_default)).then_some(attr)
             }).collect();
         if !attributes.is_empty() {
             children.push(Node::new(Kind::ColumnAttributes, attributes));

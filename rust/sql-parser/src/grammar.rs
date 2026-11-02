@@ -1308,7 +1308,7 @@ peg::parser! {
                 query.into_cte(name,columns.unwrap_or_default(),recursive)
             }
         rule set_operator() -> Kind
-            = kw("union") modifier:(kw("all") { Kind::UnionAll } / (kw("distinct") / kw("unique")) { Kind::Union })? { modifier.unwrap_or(Kind::Union) }
+            = kw("union") modifier:(kw("all") { Kind::UnionAll } / (kw("distinct") / kw("distinctrow") / kw("unique")) { Kind::Union })? { modifier.unwrap_or(Kind::Union) }
             / kw("intersect") { Kind::Intersect }
             / (kw("except") / kw("minus")) { Kind::Except }
         rule query_expression(level: usize) -> Box<Select> = depth(level) with:with_clause(level)? first:query_term(level)
@@ -1652,6 +1652,8 @@ peg::parser! {
             / kw("default") value:column_default_value(true) { Node::new(Kind::ColumnDefault, vec![value]) }
             / kw("on") kw("update") value:current_timestamp("ON UPDATE requires CURRENT_TIMESTAMP") { Node::new(Kind::OnUpdate,vec![value]) }
             / kw("collate") value:collation_name() { value.with_kind(Kind::Collation) }
+            / kw("column_format") (kw("default") / kw("fixed") / kw("dynamic")) { Node::missing() }
+            / kw("storage") (kw("default") / kw("disk") / kw("memory")) { Node::missing() }
             / kw("skip_index") "(" _ kinds:(skip_index_kind() ** ("," _)) ")" _ {
                 Node::new(Kind::ColumnSkipIndex,kinds)
             }
@@ -1747,7 +1749,13 @@ peg::parser! {
             }
             / kw("delay_key_write") ("=" _)? kw("all") { Node::missing() }
             / kw("pack_keys") ("=" _)? kw("default") { Node::missing() }
-            / (kw("checksum") / kw("avg_row_length") / kw("delay_key_write") / kw("pack_keys")) ("=" _)? type_size() { Node::missing() }
+            / (kw("checksum") / kw("avg_row_length") / kw("delay_key_write") / kw("pack_keys")
+                / kw("key_block_size") / kw("max_rows") / kw("min_rows")) ("=" _)? type_size() { Node::missing() }
+            / (kw("stats_auto_recalc") / kw("stats_persistent") / kw("stats_sample_pages"))
+                ("=" _)? (kw("default") / type_size()) { Node::missing() }
+            / (kw("password") / kw("connection") / (kw("data") / kw("index")) kw("directory"))
+                ("=" _)? string() { Node::missing() }
+            / kw("insert_method") ("=" _)? (kw("no") / kw("first") / kw("last")) { Node::missing() }
             / kw("union") ("=" _)? "(" _ (relation_name() ** ("," _)) ")" _ { Node::missing() }
             / kw("micro_index_clustered") ("=" _)? value:(kw("true") { 1 } / kw("false") { 0 }) {
                 Node::new(Kind::MicroIndexClustered,vec![Node::new(Kind::Bool,vec![]).value(value)])
@@ -1786,6 +1794,8 @@ peg::parser! {
             / parallel_option()
             / kw("comment") value:string() { Node::new(Kind::ColumnComment,vec![value]) }
             / kw("block_size") ("=" _)? value:type_size() { Node::new(Kind::BlockSize,vec![value]) }
+            / kw("key_block_size") ("=" _)? type_size() { Node::missing() }
+            / kw("with") kw("rowid") { Node::missing() }
             / kw("with") value:vector_parameter_list() { value }
         rule fulltext_property() -> Node
             = kind:(kw("min_token_size") { Kind::ParserMinTokenSize } / kw("max_token_size") { Kind::ParserMaxTokenSize }
