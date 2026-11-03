@@ -386,7 +386,8 @@ peg::parser! {
         rule string() -> Node = quiet!{string_token(<"'">)
             / enabled(!mode.ansi_quotes) value:string_token(<"\"">) { value }} / expected!("string literal")
         rule string_expression() -> Node
-            = &("n'" / "N'") start:position!() ['n'|'N'] value:string_token(<"'">) {
+            = charset_literal()
+            / &("n'" / "N'") start:position!() ['n'|'N'] value:string_token(<"'">) {
                 let end=value.end;value.with_kind(Kind::NationalString).at(start,end)
             }
             / first:string() rest:string()* {?
@@ -406,7 +407,7 @@ peg::parser! {
         rule bool_null() -> Node = null_literal() / boolean_literal()
         rule signed_literal() -> Node
             = start:position!() op:$(['+' | '-']) _ value:number() {? Node::unary(op,value,start) }
-            / charset_literal() / temporal_literal() / binary_literal() / number() / string_expression() / bool_null()
+            / temporal_literal() / binary_literal() / number() / string_expression() / bool_null()
         rule temporal_kind() -> Kind = keyword("date") { Kind::DateLiteral }
             / keyword("time") { Kind::TimeLiteral } / keyword("timestamp") { Kind::TimestampLiteral }
         rule temporal_literal() -> Node = start:position!() kind:temporal_kind() _
@@ -455,7 +456,7 @@ peg::parser! {
                 Node::new(Kind::UserVariable,vec![]).text(name.0).at(start,name.1)
         }} / expected!("user variable")
         rule atom(level: usize) -> Node
-            = charset_literal() / temporal_literal() / binary_literal() / number() / string_expression() / bool_null() / parameter()
+            = temporal_literal() / binary_literal() / number() / string_expression() / bool_null() / parameter()
             / depth(level) start:position!() "{" _
                 !(temporal_kind() (space()+ / "--" ['\n'|'\r'])? ['\''|'"'])
                 action:ident() operand:expr(level+1) "}" end:position!() _ {?
@@ -653,11 +654,10 @@ peg::parser! {
                 if crate::expression::is_call_expression(&value) || matches!(value.kind,Kind::Binary|Kind::JsonValue|Kind::JsonQuery) { Ok(value) }
                 else { Err("literal or function search argument") }
             }
-        rule fulltext_boosted_column() -> Node = column:fulltext_column() "^" _ boost:signed_literal() {
+        rule fulltext_boosted_column() -> Node = column:column() "^" _ boost:signed_literal() {
             Node::new(Kind::MatchColumn,vec![column,boost])
         }
-        rule fulltext_column() -> Node = start:position!() names:name() end:position!() {? Node::column(names,false,start,end) }
-        rule fulltext_search(level: usize) -> Node = start:position!() kw("match") "(" _ columns:(fulltext_column() ++ ("," _)) ")" _ kw("against") "(" _ search:fulltext_argument(level)
+        rule fulltext_search(level: usize) -> Node = start:position!() kw("match") "(" _ columns:(column() ++ ("," _)) ")" _ kw("against") "(" _ search:fulltext_argument(level)
             search_mode:(kw("in") kw("natural") kw("language") kw("mode") expansion:(kw("with") kw("query") kw("expansion"))? { u64::from(expansion.is_some()) }
                 / kw("in") kw("boolean") kw("mode") { 2 } / kw("with") kw("query") kw("expansion") { 3 }
                 / kw("in") kw("match") kw("phrase") kw("mode") { 4 })? ")" end:position!() _ {?
@@ -929,8 +929,8 @@ peg::parser! {
             "(" _ percent:sample_number(false) ")" _ seed:(kw("seed") "(" _ value:sample_number(true) ")" _ { value })? {
                 Node::new(Kind::Sample,vec![Node::new(Kind::DefaultInt,vec![]).value(method.unwrap_or(1)),percent,Node::optional(seed),Node::new(scope.unwrap_or(Kind::All),vec![])])
             }
-        rule use_partition() -> Node = kw("partition") "(" _ names:(ident() ++ (("," _)?)) ")" _ {
-            Node::new(Kind::UsePartition,vec![Node::new(Kind::Names,names.into_iter().map(Node::name).collect())])
+        rule use_partition() -> Node = kw("partition") "(" _ names:partition_names(true) ")" _ {
+            Node::new(Kind::UsePartition,vec![names])
         }
         rule table_index_hint() -> Node = kind:(kw("use") { Kind::Use } / kw("force") { Kind::Force } / kw("ignore") { Kind::Ignore })
             (kw("index") / kw("key")) (kw("for") (kw("join") / ((kw("order") / kw("group")) kw("by"))))?
@@ -958,7 +958,12 @@ peg::parser! {
         rule table(level: usize) -> Node = value:table_reference(level,false) { value }
         rule table_reference(level: usize, escaped: bool) -> Node = depth(level)
             head:(value:relation(level) { (value,false) }
-                / "{" _ kw("oj") value:table_reference(level+1,true) "}" _ { (value,true) })
+                / "{" _ kw("oj") value:table_reference(level+1,true) "}" _
+                    alias:(enabled(value.kind==Kind::Table && !crate::query::table_has_alias(&value)) name:table_alias() { name })? {
+                    let mut value=value;
+                    if let Some(alias)=alias { value.children.push(Node::new(Kind::TableAlias,vec![Node::name(alias)])); }
+                    (value,true)
+                })
             joins:join(level)* {?
                 if escaped && head.1 && joins.is_empty() { return Err("table factor or joined table"); }
                 joins.into_iter().try_fold(head.0, |left, (kind, right, condition)| {
@@ -1300,7 +1305,7 @@ peg::parser! {
             ) ")" _ { Node::new(Kind::OptParam,vec![name,value]) }
         rule hints() -> Vec<Node> = "/*+" _ options:((value:hint_option() { value }
                 / (&['\''|'"'|'`'] opaque_comment_token() / cont()+
-                    / !['\''|'"'|'`'] !"*/" [_]) _ { Node::missing() }) ** (("," _)?)) "*/" _ {
+                    / !['\''|'"'|'`'] !"*/" [_]) _ { Node::missing() })*) "*/" _ {
             options.into_iter().filter(|value| value.kind!=Kind::Missing).collect()
         }
         rule select(level: usize) -> Node = value:query_expression(level) {? Node::select(value) }
@@ -1351,8 +1356,7 @@ peg::parser! {
             = kw("format") ("=" _)? "(" _ values:(output_format_option(level) ++ (("," _)?)) ")" _ file_options:output_file_option()* {
                 select_into::FileOutput { external_format:values,file_options,..Default::default() }
             }
-            / charset:((kw("character") kw("set") / kw("charset")) value:(load_string()
-                    / !kw("default") name:ident() { Node::name(name) }) { value })?
+            / charset:(charset_keyword() !kw("default") value:charset_name() { value })?
                 fields:((kw("fields") / kw("columns")) values:load_field_option()+ { values })?
                 lines:(kw("lines") values:load_line_option()+ { values })? file_options:output_file_option()* {
                     select_into::FileOutput { charset,fields:fields.unwrap_or_default(),lines:lines.unwrap_or_default(),file_options,..Default::default() }
@@ -1410,7 +1414,7 @@ peg::parser! {
                 query.projection=vec![projection];query.from=vec![Node::new(Kind::Table,vec![values])];query
             }
         rule column() -> Node = start:position!() names:column_name() {? let end = names.last().unwrap().end; Node::column(names, false, start, end) }
-        rule insert_column() -> Node = start:position!() names:name() wildcard:("." _ "*" end:position!() _ { end })? {?
+        rule insert_column() -> Node = start:position!() names:column_name() wildcard:("." _ "*" end:position!() _ { end })? {?
             let end = wildcard.unwrap_or_else(|| names.last().unwrap().end); Node::column(names, wildcard.is_some(), start, end)
         }
         rule expr_or_default() -> Node = kw("default") !"(" { Node::new(Kind::Default, vec![]) } / expr(0)
@@ -1923,7 +1927,7 @@ peg::parser! {
                 let mut children=vec![Node::name(name)];children.extend(value.into_children());
                 Node::new(kind,children).value(flags)
             }
-        rule partition_names() -> Node = names:(ident() ++ ("," _)) !"," { Node::new(Kind::Names,names.into_iter().map(Node::name).collect()) }
+        rule partition_names(spaced: bool) -> Node = names:(ident() ++ ("," _ / enabled(spaced))) !"," { Node::new(Kind::Names,names.into_iter().map(Node::name).collect()) }
         rule alter_partition() -> Node
             = value:partition_option() { Node::new(Kind::Repartition,value.into_children()) }
             / kw("exchange") kw("partition") name:ident() kw("with") kw("table") table:relation_name() kw("without") kw("validation") {?
@@ -1940,7 +1944,7 @@ peg::parser! {
             }
             / truncate:(kw("truncate") { true } / kw("drop") { false })
                 sub:(kw("subpartition") { true } / kw("partition") { false })
-                names:(partition_names() / enabled(!truncate) "(" _ names:partition_names() ")" _ { names }) {
+                names:(partition_names(truncate) / enabled(!truncate) "(" _ names:partition_names(false) ")" _ { names }) {
                 let kind=match (sub,truncate) {
                     (false,false)=>Kind::PartitionDrop,(false,true)=>Kind::PartitionTruncate,
                     (true,false)=>Kind::SubpartitionDrop,(true,true)=>Kind::SubpartitionTruncate,
@@ -2779,7 +2783,7 @@ peg::parser! {
                 / kw("format") "=" _ kind:(kw("traditional") { Kind::ExplainTraditional } / kw("json") { Kind::ExplainJson }) { kind })?
             display:(kw("pretty") { Kind::ExplainPretty } / kw("pretty_color") { Kind::ExplainPrettyColor })?
             into:(enabled(format.is_none() && display.is_none()) kw("into") name:ident() { Node::name(name) })?
-            statement_id:(enabled(format.is_none() && display.is_none()) kw("set") kw("statement_id") "=" _ value:(charset_literal() / string_expression() / number() / bool_null() / binary_literal() / temporal_literal()) {
+            statement_id:(enabled(format.is_none() && display.is_none()) kw("set") kw("statement_id") "=" _ value:(string_expression() / number() / bool_null() / binary_literal() / temporal_literal()) {
                 if value.kind==Kind::StringConcat {
                     let text=crate::expression::call_arguments(&value).iter().map(|part| part.text.as_str()).collect();
                     Node::new(Kind::String,vec![]).text(text).at(value.start,value.end)
